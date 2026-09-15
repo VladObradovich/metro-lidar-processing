@@ -1,0 +1,49 @@
+{
+  "name": "Metro LiDAR · ROS 2 Humble",
+  "build": {
+    "dockerfile": "../docker/Dockerfile",
+    "context": "../docker"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/metro-lidar-processing,type=bind",
+  "workspaceFolder": "/workspaces/metro-lidar-processing",
+  "remoteUser": "dev",
+  "updateRemoteUserUID": true,
+  "init": true,
+  "runArgs": ["--network=host", "--shm-size=1g"],
+  "containerEnv": {
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "ROS_DOMAIN_ID": "42",
+    "ROS_LOCALHOST_ONLY": "1",
+    "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+    "QT_X11_NO_MITSHM": "1",
+    "LIBGL_ALWAYS_SOFTWARE": "1"
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/../archive/for_hackathon,target=/data,type=bind,readonly",
+    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind",
+    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,readonly"
+  ],
+  "postCreateCommand": "bash scripts/build.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.defaultInterpreterPath": "/usr/bin/python3",
+        "python.analysis.extraPaths": [
+          "/opt/ros/humble/local/lib/python3.10/dist-packages",
+          "/opt/ros/humble/lib/python3.10/site-packages"
+        ],
+        "C_Cpp.default.compilerPath": "/usr/bin/g++",
+        "C_Cpp.default.cppStandard": "c++17",
+        "C_Cpp.default.includePath": ["${workspaceFolder}/**", "/opt/ros/humble/include/**"],
+        "cmake.configureOnOpen": false
+      }
+    }
+  }
+}
