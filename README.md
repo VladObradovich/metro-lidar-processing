@@ -177,19 +177,19 @@ Container**. Расширения и настройки удобнее уста�
 
 Документация: [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers).
 
-## Panoramic depth image
+## Панорамное изображение глубины
 
-`depth_image` converts `sensor_msgs/msg/PointCloud2` into a lidar range image.
-The horizontal image axis is lidar azimuth. Each of the 128 vertical rows
-corresponds to one physical laser ring, so the tunnel is not distorted by an
-arbitrary vertical field of view. For every image pixel the nearest point is
-retained. Empty directions remain black.
+`depth_image` преобразует `sensor_msgs/msg/PointCloud2` в дальностное изображение лидара.
+Горизонтальная ось изображения соответствует азимуту лидара. Каждая из 128 строк
+по вертикали соответствует одному физическому лазерному каналу, поэтому тоннель не
+искажается из-за произвольно заданного вертикального поля зрения. Для каждого пикселя
+сохраняется ближайшая точка. Направления без данных остаются чёрными.
 
-Colorization matches the default Intel RealSense colorizer: the Jet palette
-with per-frame histogram equalization. Near depth percentiles are blue/cyan,
-middle percentiles are yellow, and far percentiles are red/dark red.
+Цветовая раскраска соответствует стандартному colorizer Intel RealSense: используется
+палитра Jet с покадровым выравниванием гистограммы. Ближние значения глубины отображаются
+синим/голубым, средние — жёлтым, дальние — красным/тёмно-красным.
 
-### Build
+### Сборка
 
 ```bash
 cd /workspaces/metro-lidar-processing
@@ -197,13 +197,13 @@ bash scripts/build.sh
 source ~/ros_ws/install/local_setup.bash
 ```
 
-### Run for five `/lidar_points` bags
+### Запуск для пяти bag-файлов с `/lidar_points`
 
 ```bash
 ros2 launch metro_lidar_processing depth_image.launch.py
 ```
 
-### Run for `doubleT_obstacle`
+### Запуск для `doubleT_obstacle`
 
 ```bash
 ros2 launch metro_lidar_processing depth_image.launch.py \
@@ -213,11 +213,11 @@ ros2 launch metro_lidar_processing depth_image.launch.py \
   point_stride:=2
 ```
 
-The larger recording contains 921600 points per frame. `point_stride:=2`
-processes every second point when a higher frame rate is more important than
-maximum angular detail.
+В более крупной записи содержится 921600 точек в одном кадре. `point_stride:=2`
+обрабатывает каждую вторую точку, если более высокая частота обработки важнее
+максимальной угловой детализации.
 
-### Play a bag
+### Проигрывание bag-файла
 
 ```bash
 ros2 bag play \
@@ -225,16 +225,16 @@ ros2 bag play \
   --loop
 ```
 
-The output topic is `/lidar/depth_image` with type `sensor_msgs/msg/Image` and
-encoding `rgb8`. In RViz, add an `Image` display and select this topic. The
-Image display does not require a Fixed Frame or TF data.
+Выходной топик — `/lidar/depth_image` типа `sensor_msgs/msg/Image` с кодировкой
+`rgb8`. В RViz добавьте отображение `Image` и выберите этот топик. Для `Image`
+не требуется настраивать Fixed Frame или TF.
 
-### Record a timestamp-synchronized MP4
+### Запись MP4 с синхронизацией по временным меткам
 
-The node can write MP4 directly while continuing to publish the image topic.
-Video frame positions come from the original PointCloud2 timestamps. If live
-processing temporarily falls behind, the last frame is held instead of making
-the resulting video shorter and faster.
+Нода может напрямую записывать MP4, продолжая одновременно публиковать топик с изображением.
+Положение кадров видео определяется исходными временными метками `PointCloud2`. Если обработка
+в реальном времени временно не успевает за входным потоком, предыдущий кадр удерживается,
+вместо того чтобы делать итоговое видео короче и быстрее.
 
 ```bash
 ros2 launch metro_lidar_processing depth_image.launch.py \
@@ -242,14 +242,14 @@ ros2 launch metro_lidar_processing depth_image.launch.py \
   video_fps:=10.0
 ```
 
-Start `ros2 bag play` once, without `--loop`. After playback finishes, stop the
-depth node with Ctrl+C so that it finalizes the MP4 container.
+Запустите `ros2 bag play` один раз, без `--loop`. После окончания воспроизведения
+остановите ноду глубины через Ctrl+C, чтобы она корректно завершила MP4-контейнер.
 
-The recordings contain roughly 10 lidar scans per second. A lower value shown
-by `ros2 topic hz /lidar/depth_image` is the live conversion throughput, not the
-source recording rate. If the machine cannot convert at 10 scans/s, slow down
-playback so that every source scan can be processed while keeping the finished
-video on the original bag timeline:
+Записи содержат примерно 10 лидарных сканов в секунду. Меньшее значение, которое показывает
+`ros2 topic hz /lidar/depth_image`, отражает фактическую скорость преобразования в реальном
+времени, а не исходную частоту записи. Если компьютер не успевает обрабатывать 10 сканов/с,
+замедлите воспроизведение так, чтобы каждый исходный кадр был обработан, сохранив при этом
+исходную временную шкалу итогового видео:
 
 ```bash
 ros2 bag play \
@@ -258,23 +258,23 @@ ros2 bag play \
   --read-ahead-queue-size 2
 ```
 
-At `--rate 0.1`, an 88-second bag takes about 15 minutes to process, but the
-resulting MP4 is still about 88 seconds long. Close RViz or disable its
-PointCloud2 display while recording to reduce the load.
+При `--rate 0.1` обработка 88-секундного bag-файла занимает примерно 15 минут,
+но итоговый MP4 всё равно длится около 88 секунд. Чтобы снизить нагрузку во время записи,
+закройте RViz или отключите в нём отображение `PointCloud2`.
 
-### Parameters
+### Параметры
 
-| Parameter | Default | Meaning |
+| Параметр | По умолчанию | Назначение |
 |---|---:|---|
-| `input_topic` | `/lidar_points` | Input `PointCloud2` topic |
-| `output_topic` | `/lidar/depth_image` | Output RGB image topic |
-| `image_width` | `320` | Width matching the measured 100-degree sector |
-| `image_height` | `128` | Range-image height; matches 128 lidar rings |
-| `min_depth` | `1.0` | Nearest displayed range, metres |
-| `max_depth` | `300.0` | Farthest displayed range, metres |
-| `min_azimuth_deg` | `-140.0` | Left edge for the five forward-sector bags |
-| `max_azimuth_deg` | `-40.0` | Right edge for the five forward-sector bags |
-| `histogram_equalization` | `true` | RealSense-style dynamic depth colors |
-| `point_stride` | `1` | Process each Nth input point |
-| `video_path` | empty | Optional timestamp-synchronized MP4 output path |
-| `video_fps` | `10.0` | Constant output video frame rate |
+| `input_topic` | `/lidar_points` | Входной топик `PointCloud2` |
+| `output_topic` | `/lidar/depth_image` | Выходной топик RGB-изображения |
+| `image_width` | `320` | Ширина, соответствующая измеренному сектору 100° |
+| `image_height` | `128` | Высота дальностного изображения; соответствует 128 каналам лидара |
+| `min_depth` | `1.0` | Ближайшая отображаемая дальность, м |
+| `max_depth` | `300.0` | Максимальная отображаемая дальность, м |
+| `min_azimuth_deg` | `-140.0` | Левая граница для пяти bag-файлов с передним сектором |
+| `max_azimuth_deg` | `-40.0` | Правая граница для пяти bag-файлов с передним сектором |
+| `histogram_equalization` | `true` | Динамическая раскраска глубины в стиле RealSense |
+| `point_stride` | `1` | Обрабатывать каждую N-ю входную точку |
+| `video_path` | пусто | Необязательный путь для MP4 с синхронизацией по временным меткам |
+| `video_fps` | `10.0` | Постоянная частота кадров выходного видео |
