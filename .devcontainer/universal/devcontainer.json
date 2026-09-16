@@ -8,7 +8,7 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/dev/metro_ws/src/metro-lidar-processing,type=bind",
   "workspaceFolder": "/home/dev/metro_ws/src/metro-lidar-processing",
   "remoteUser": "dev",
-  "updateRemoteUserUID": true,
+  "updateRemoteUserUID": false,
   "init": true,
   "runArgs": ["--shm-size=1g"],
   "containerEnv": {

@@ -8,7 +8,7 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/dev/metro_ws/src/metro-lidar-processing,type=bind",
   "workspaceFolder": "/home/dev/metro_ws/src/metro-lidar-processing",
   "remoteUser": "dev",
-  "updateRemoteUserUID": true,
+  "updateRemoteUserUID": false,
   "init": true,
   "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start",
   "runArgs": ["--shm-size=1g", "--gpus=all"],
