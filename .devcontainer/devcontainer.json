@@ -11,16 +11,18 @@
   "init": true,
   "runArgs": ["--network=host", "--shm-size=1g"],
   "containerEnv": {
-    "DISPLAY": "${localEnv:DISPLAY}",
+    "XDG_RUNTIME_DIR": "/tmp/wayland-runtime",
+    "WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
+    "QT_QPA_PLATFORM": "wayland",
     "ROS_DOMAIN_ID": "42",
     "ROS_LOCALHOST_ONLY": "1",
     "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
-    "QT_X11_NO_MITSHM": "1",
     "LIBGL_ALWAYS_SOFTWARE": "1"
   },
   "mounts": [
     "source=${localWorkspaceFolder}/../archive/for_hackathon,target=/data,type=bind,readonly",
-    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind"
+    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind",
+    "source=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},target=/tmp/wayland-runtime/${localEnv:WAYLAND_DISPLAY},type=bind"
   ],
   "postCreateCommand": "bash scripts/build.sh",
   "customizations": {

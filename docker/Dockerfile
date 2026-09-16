@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rosbag2 ros-humble-rosbag2-py \
     ros-humble-rmw-cyclonedds-cpp ros-humble-rviz2 \
     ros-humble-launch-testing-ament-cmake ros-humble-launch-testing-ros \
-    mesa-utils xauth xvfb \
+    qtwayland5 mesa-utils xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
@@ -31,9 +31,10 @@ RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" \
     && chmod 0440 "/etc/sudoers.d/${USERNAME}" \
     && mkdir -p /workspaces/metro-lidar-processing /data /results \
-       "/home/${USERNAME}/ros_ws/src" \
+       "/home/${USERNAME}/ros_ws/src" /tmp/wayland-runtime \
     && ln -s /workspaces/metro-lidar-processing "/home/${USERNAME}/ros_ws/src/metro-lidar-processing" \
-    && chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}/ros_ws" /results
+    && chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}/ros_ws" /results /tmp/wayland-runtime \
+    && chmod 0700 /tmp/wayland-runtime
 
 COPY ros-dev-env.sh /etc/ros-dev-env.sh
 COPY entrypoint.sh /usr/local/bin/metro-dev-entrypoint
@@ -43,7 +44,8 @@ RUN chmod 0755 /usr/local/bin/metro-dev-entrypoint \
 ENV ROS_DOMAIN_ID=42 \
     ROS_LOCALHOST_ONLY=1 \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
-    QT_X11_NO_MITSHM=1 \
+    XDG_RUNTIME_DIR=/tmp/wayland-runtime \
+    QT_QPA_PLATFORM=wayland \
     LIBGL_ALWAYS_SOFTWARE=1
 
 USER ${USERNAME}

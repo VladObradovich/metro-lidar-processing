@@ -103,16 +103,23 @@ rosdep install --from-paths ~/ros_ws/src --ignore-src --rosdistro humble -y
 Для воспроизводимости затем отразите необходимые зависимости в `package.xml`
 и Dockerfile. Не подключайте старый `install/setup.bash` из Jazzy.
 
-### 5. RViz на Linux / X11 / XWayland
+### 5. RViz на Linux / Wayland
 
-Dev Container передаёт `DISPLAY` и сокет `/tmp/.X11-unix`. Перед первым запуском
-GUI разрешите своему локальному пользователю доступ к X-серверу **на хосте**:
+Dev Container использует нативный Wayland: в контейнер передаются
+`WAYLAND_DISPLAY` и сокет текущей Wayland-сессии из `${XDG_RUNTIME_DIR}`.
+Для Qt принудительно задаётся `QT_QPA_PLATFORM=wayland`, поэтому `xhost` и
+`/tmp/.X11-unix` не нужны.
+
+Проверьте на хосте перед запуском контейнера:
 
 ```bash
-xhost +si:localuser:$(id -un)
+echo "$XDG_SESSION_TYPE"           # wayland
+echo "$XDG_RUNTIME_DIR"            # например /run/user/1000
+echo "$WAYLAND_DISPLAY"            # обычно wayland-0
+ls -l "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 ```
 
-Затем в контейнере:
+Затем внутри контейнера:
 
 ```bash
 rviz2
@@ -123,16 +130,9 @@ rviz2
 Fixed Frame по его `header.frame_id`: `hesai_lidar` либо `lidar_livox`.
 
 По умолчанию включён программный OpenGL (`LIBGL_ALWAYS_SOFTWARE=1`), поэтому
-GPU-проброс не требуется. Ошибка `could not connect to display` означает,
-что нужно проверить `DISPLAY`, локальный XWayland и разрешение X-сервера.
-Разрешение можно отозвать на хосте:
-
-```bash
-xhost -si:localuser:$(id -un)
-```
-
-На сервере без GUI удалите X11 mount из devcontainer.json; сборка и обработка
-bag не требуют RViz. Конфигурация рассчитана на локальный Linux Docker Engine.
+проброс GPU не требуется. Если RViz сообщает, что Wayland display недоступен,
+проверьте `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR` на хосте и наличие сокета.
+Конфигурация рассчитана на локальный Linux Docker Engine и активную Wayland-сессию.
 
 ### 6. ROS-сеть
 
@@ -159,11 +159,13 @@ bag-файлы и видео в Docker-образ не копируются.
 ```bash
 docker run -d --init --name metro-lidar-dev \
   --network host --shm-size 1g \
-  -e DISPLAY="$DISPLAY" \
+  -e XDG_RUNTIME_DIR=/tmp/wayland-runtime \
+  -e WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+  -e QT_QPA_PLATFORM=wayland \
   --mount "type=bind,source=$PWD,target=/workspaces/metro-lidar-processing" \
   --mount "type=bind,source=$PWD/../archive/for_hackathon,target=/data,readonly" \
   --mount "type=bind,source=$PWD/../videos,target=/results" \
-  --mount type=bind,source=/tmp/.X11-unix,target=/tmp/.X11-unix,readonly \
+  --mount "type=bind,source=$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY,target=/tmp/wayland-runtime/$WAYLAND_DISPLAY" \
   metro-lidar-dev:humble
 docker exec -it metro-lidar-dev bash
 ```
