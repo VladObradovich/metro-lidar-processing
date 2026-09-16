@@ -20,8 +20,7 @@
   },
   "mounts": [
     "source=${localWorkspaceFolder}/../archive/for_hackathon,target=/data,type=bind,readonly",
-    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind",
-    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,readonly"
+    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind"
   ],
   "postCreateCommand": "bash scripts/build.sh",
   "customizations": {
