@@ -1,0 +1,56 @@
+{
+  "name": "Desktop (NVIDIA GPU)",
+  "build": {
+    "dockerfile": "../../docker/Dockerfile",
+    "context": "../../docker",
+    "target": "desktop"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/dev/metro_ws/src/metro-lidar-processing,type=bind",
+  "workspaceFolder": "/home/dev/metro_ws/src/metro-lidar-processing",
+  "remoteUser": "dev",
+  "updateRemoteUserUID": true,
+  "init": true,
+  "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start",
+  "runArgs": ["--shm-size=1g", "--gpus=all"],
+  "containerEnv": {
+    "ROS_DOMAIN_ID": "42",
+    "ROS_LOCALHOST_ONLY": "1",
+    "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "QT_QPA_PLATFORM": "xcb",
+    "QT_X11_NO_MITSHM": "1",
+    "LIBGL_ALWAYS_SOFTWARE": "0",
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "all",
+    "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
+    "__NV_PRIME_RENDER_OFFLOAD": "1"
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/../archive/for_hackathon,target=/data,type=bind,readonly",
+    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind",
+    "source=${localWorkspaceFolder}/.devcontainer/.runtime/x11,target=/tmp/.X11-unix,type=bind"
+  ],
+  "postCreateCommand": "bash scripts/build.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.defaultInterpreterPath": "/usr/bin/python3",
+        "python.analysis.extraPaths": [
+          "/opt/ros/humble/local/lib/python3.10/dist-packages",
+          "/opt/ros/humble/lib/python3.10/site-packages"
+        ],
+        "C_Cpp.default.compilerPath": "/usr/bin/g++",
+        "C_Cpp.default.cppStandard": "c++17",
+        "C_Cpp.default.includePath": ["${workspaceFolder}/**", "/opt/ros/humble/include/**"],
+        "cmake.configureOnOpen": false
+      }
+    }
+  }
+}

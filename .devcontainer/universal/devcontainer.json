@@ -1,28 +1,24 @@
 {
-  "name": "Metro LiDAR · ROS 2 Humble",
+  "name": "Universal (Server, Headless)",
   "build": {
-    "dockerfile": "../docker/Dockerfile",
-    "context": "../docker"
+    "dockerfile": "../../docker/Dockerfile",
+    "context": "../../docker",
+    "target": "universal"
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/dev/metro_ws/src/metro-lidar-processing,type=bind",
   "workspaceFolder": "/home/dev/metro_ws/src/metro-lidar-processing",
   "remoteUser": "dev",
   "updateRemoteUserUID": true,
   "init": true,
-  "runArgs": ["--network=host", "--shm-size=1g"],
+  "runArgs": ["--shm-size=1g"],
   "containerEnv": {
-    "XDG_RUNTIME_DIR": "/tmp/wayland-runtime",
-    "WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
-    "QT_QPA_PLATFORM": "wayland",
     "ROS_DOMAIN_ID": "42",
     "ROS_LOCALHOST_ONLY": "1",
-    "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
-    "LIBGL_ALWAYS_SOFTWARE": "1"
+    "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp"
   },
   "mounts": [
     "source=${localWorkspaceFolder}/../archive/for_hackathon,target=/data,type=bind,readonly",
-    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind",
-    "source=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},target=/tmp/wayland-runtime/${localEnv:WAYLAND_DISPLAY},type=bind"
+    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind"
   ],
   "postCreateCommand": "bash scripts/build.sh",
   "customizations": {

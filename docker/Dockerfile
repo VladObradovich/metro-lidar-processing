@@ -1,4 +1,4 @@
-FROM ros:humble-ros-base
+FROM ros:humble-ros-base AS universal
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG USERNAME=dev
@@ -21,9 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-pcl-ros ros-humble-pcl-conversions \
     ros-humble-vision-msgs ros-humble-diagnostic-updater \
     ros-humble-rosbag2 ros-humble-rosbag2-py \
-    ros-humble-rmw-cyclonedds-cpp ros-humble-rviz2 \
+    ros-humble-rmw-cyclonedds-cpp \
     ros-humble-launch-testing-ament-cmake ros-humble-launch-testing-ros \
-    qtwayland5 mesa-utils xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
@@ -41,10 +40,7 @@ RUN chmod 0755 /usr/local/bin/metro-dev-entrypoint \
 
 ENV ROS_DOMAIN_ID=42 \
     ROS_LOCALHOST_ONLY=1 \
-    RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
-    XDG_RUNTIME_DIR=/tmp/wayland-runtime \
-    QT_QPA_PLATFORM=wayland \
-    LIBGL_ALWAYS_SOFTWARE=1
+    RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}/metro_ws/src/metro-lidar-processing
@@ -52,3 +48,14 @@ RUN rosdep update --rosdistro humble
 
 ENTRYPOINT ["/usr/local/bin/metro-dev-entrypoint"]
 CMD ["sleep", "infinity"]
+
+FROM universal AS desktop
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-rviz2 qtwayland5 mesa-utils xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
+USER ${USERNAME}
+
+FROM universal AS default

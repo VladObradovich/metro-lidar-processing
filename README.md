@@ -4,16 +4,20 @@ ROS 2 package for processing the hackathon metro lidar recordings.
 
 ## Установка и разработка в VS Code
 
-Для проекта используется отдельный Dev Container **Ubuntu 22.04 / ROS 2 Humble**.
-Он включает Python 3.10, C++/CMake, Eigen/PCL, NumPy/SciPy/OpenCV, RViz2,
-rosbag2, Cyclone DDS, отладчик и средства тестирования. Сейчас реализована
-визуализация глубины; детектор препятствий будет разрабатываться дальше.
+Для проекта используется Dev Container **Ubuntu 22.04 / ROS 2 Humble** с тремя
+профилями. Общая часть включает Python 3.10, C++/CMake, Eigen/PCL,
+NumPy/SciPy/OpenCV, rosbag2, Cyclone DDS, отладчик и средства тестирования.
+
+| Профиль | Назначение | Хост |
+|---|---|---|
+| **Universal (Server, Headless)** | Сборка, тесты и обработка bag без GUI | Прежде всего Linux-серверы и CI |
+| **Desktop (Software Graphics)** | Полная среда с RViz и программным OpenGL | Linux через XWayland и Windows через WSL2/WSLg |
+| **Desktop (NVIDIA GPU)** | RViz с аппаратным ускорением NVIDIA | Linux или Windows/WSL2 с NVIDIA |
 
 ### 1. Подготовить хост
 
-На Linux-хосте нужны Docker Engine, VS Code и расширение
-**Dev Containers** (`ms-vscode-remote.remote-containers`). ROS на хосте не нужен.
-Проверьте Docker в обычном терминале хоста:
+На Linux нужны Docker Engine, VS Code и расширение **Dev Containers**
+(`ms-vscode-remote.remote-containers`). ROS на хосте не нужен. Проверьте Docker:
 
 ```bash
 docker context show
@@ -22,9 +26,15 @@ docker ps
 code --install-extension ms-vscode-remote.remote-containers
 ```
 
-Docker должен быть доступен тому же пользователю, который запускает VS Code.
-Если локальный Engine работает в контексте `default`, а выбран другой,
-переключитесь через `docker context use default`.
+На Windows используйте Docker Desktop с WSL2 backend и включённой интеграцией
+с выбранным WSL-дистрибутивом. Установите расширения **WSL** и
+**Dev Containers**, храните репозиторий и данные в файловой системе WSL, а не
+на диске `C:`. Открывайте проект из терминала WSL:
+
+```bash
+cd ~/hahaton/metro-lidar-processing
+code .
+```
 
 Ожидаемое расположение данных:
 
@@ -35,31 +45,30 @@ hahaton/
 │   ├── docker/
 │   └── scripts/
 ├── archive/for_hackathon/    # Распакованные bag-файлы
-└── videos/                  # Результаты и видео
+└── videos/                   # Результаты и видео
 ```
 
-Оба соседних каталога должны существовать до открытия контейнера. В текущем
-проекте они уже есть. При другом расположении измените `mounts` в
-`.devcontainer/devcontainer.json`.
+Оба соседних каталога должны существовать до открытия контейнера. При другом
+расположении измените `mounts` в выбранном файле
+`.devcontainer/<profile>/devcontainer.json`.
 
-### 2. Открыть отдельный контейнер
+### 2. Выбрать и открыть профиль
 
-1. Если VS Code подключён к другому контейнеру, вернитесь на хост через
-   **Dev Containers: Reopen Folder Locally** либо откройте новое локальное окно.
-2. Откройте **именно `hahaton/metro-lidar-processing`**, а не родительскую
-   `hahaton`: конфигурация Dev Containers находится в корне репозитория.
-3. Выполните **Dev Containers: Reopen in Container** из палитры команд.
-4. Дождитесь сборки образа и выполнения `postCreateCommand` — он собирает
-   существующий ROS-пакет. Первая сборка скачивает несколько ГБ зависимостей.
-5. Откройте новый терминал VS Code и проверьте:
+1. Если VS Code подключён к другому контейнеру, выполните
+   **Dev Containers: Reopen Folder Locally**.
+2. Откройте **`metro-lidar-processing`**.
+3. Выполните **Dev Containers: Reopen in Container**.
+4. Выберите один из трёх профилей. Для сервера без GUI выбирайте `Universal`,
+   для обычного рабочего компьютера — `Desktop (Software Graphics)`.
+5. Дождитесь сборки образа и выполнения `postCreateCommand`. Первая сборка
+   скачивает несколько гигабайт зависимостей.
+6. В новом терминале проверьте:
 
 ```bash
 echo "$ROS_DISTRO"                 # humble
 python3 --version                  # Python 3.10.x
 ros2 pkg prefix metro_lidar_processing
 ```
-
-Название среды в VS Code: **Metro LiDAR · ROS 2 Humble**.
 
 ### 3. Где находятся файлы
 
@@ -74,15 +83,14 @@ ros2 pkg prefix metro_lidar_processing
 они создаются повторно автоматически. Исходники, bag и `/results` сохраняются.
 Старые `build/install/log` в репозитории не используются и не удаляются.
 
-Процессы работают от пользователя `dev`; VS Code подстраивает его UID/GID
-под пользователя хоста. Для установки дополнительных инструментов есть `sudo`.
-Постоянные зависимости добавляйте в Dockerfile, затем выполняйте
-**Dev Containers: Rebuild Container**. Это образ для разработки, не финальный
-минимальный образ сдачи.
+Процессы работают от пользователя `dev`; VS Code на Linux подстраивает его
+UID/GID под пользователя хоста. Для установки дополнительных инструментов есть
+`sudo`. Постоянные зависимости добавляйте в Dockerfile, затем выполняйте
+**Dev Containers: Rebuild Container**.
 
 ### 4. Сборка и тесты
 
-Из корня репозитория внутри контейнера:
+Во всех профилях из корня репозитория доступны одинаковые команды:
 
 ```bash
 bash scripts/build.sh
@@ -91,90 +99,94 @@ bash scripts/test.sh
 ```
 
 В новых интерактивных терминалах Humble и готовый workspace подключаются
-автоматически. После изменения исходников C++ или launch/setup требуется
-повторная сборка. Новые зависимости ROS устанавливайте внутри контейнера:
+автоматически. Новые зависимости ROS устанавливайте внутри контейнера:
 
 ```bash
 rosdep update --rosdistro humble
 rosdep install --from-paths ~/metro_ws/src --ignore-src --rosdistro humble -y
 ```
 
-Для воспроизводимости затем отразите необходимые зависимости в `package.xml`
-и Dockerfile. Не подключайте старый `install/setup.bash` из Jazzy.
+Для воспроизводимости отразите зависимости в `package.xml` и Dockerfile. Не
+подключайте старый `install/setup.bash` из Jazzy.
 
-### 5. RViz на Linux / Wayland
+### 5. RViz на Linux и Windows
 
-Dev Container использует нативный Wayland: в контейнер передаются
-`WAYLAND_DISPLAY` и сокет текущей Wayland-сессии из `${XDG_RUNTIME_DIR}`.
-Для Qt принудительно задаётся `QT_QPA_PLATFORM=wayland`, поэтому `xhost` и
-`/tmp/.X11-unix` не нужны.
+RViz установлен только в профилях `Desktop`. RViz из ROS 2 Humble использует
+OGRE с GLX, поэтому профили передают X11/XWayland-сокет и `DISPLAY`, даже если
+рабочий стол хоста использует Wayland. Профиль `Universal` не зависит от дисплея
+и не содержит RViz.
 
-Проверьте на хосте перед запуском контейнера:
+На Linux перед открытием Desktop-профиля проверьте:
 
 ```bash
-echo "$XDG_SESSION_TYPE"           # wayland
-echo "$XDG_RUNTIME_DIR"            # например /run/user/1000
-echo "$WAYLAND_DISPLAY"            # обычно wayland-0
-ls -l "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+echo "$DISPLAY"                    # например :0 или :1
+ls -l /tmp/.X11-unix
 ```
 
-Затем внутри контейнера:
+На Windows обновите WSL (`wsl --update` в PowerShell), включите WSL Integration
+в Docker Desktop и запускайте VS Code командой `code .` из WSL. WSLg должен
+предоставить `DISPLAY` и каталог `/tmp/.X11-unix` в WSL-сессии.
+
+Desktop-профили автоматически запускают на хосте локальный X11-прокси. Контейнер
+подключается к сокету в `.devcontainer/.runtime/x11`, поэтому один и тот же
+профиль работает с обычным Docker Engine, Snap Docker и Docker Desktop/WSLg.
+Runtime-каталог добавлен в `.gitignore` и не попадает в репозиторий. Если
+графическая сессия или XWayland недоступны, создание контейнера остановится с
+понятным сообщением `X11 proxy` вместо последующей ошибки Qt.
+
+Внутри Desktop-контейнера запустите:
 
 ```bash
 rviz2
 ```
 
-Для изображения глубины добавьте `Image`, топик `/lidar/depth_image`.
-Для 3D-облака добавьте `PointCloud2`, выберите входной топик и установите
-Fixed Frame по его `header.frame_id`: `hesai_lidar` либо `lidar_livox`.
+Для изображения глубины добавьте `Image`, топик `/lidar/depth_image`. Для
+3D-облака добавьте `PointCloud2`, выберите входной топик и установите Fixed Frame
+по его `header.frame_id`: `hesai_lidar` либо `lidar_livox`.
 
-По умолчанию включён программный OpenGL (`LIBGL_ALWAYS_SOFTWARE=1`), поэтому
-проброс GPU не требуется. Если RViz сообщает, что Wayland display недоступен,
-проверьте `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR` на хосте и наличие сокета.
-Конфигурация рассчитана на локальный Linux Docker Engine и активную Wayland-сессию.
+`Desktop (Software Graphics)` задаёт `LIBGL_ALWAYS_SOFTWARE=1` и не требует GPU.
+`Desktop (NVIDIA GPU)` запускается с `--gpus=all` и требует заранее настроенной
+поддержки NVIDIA Container Toolkit на Linux либо NVIDIA GPU в Docker Desktop с
+WSL2 на Windows. CUDA в образ не установлена: текущий алгоритм её не использует.
 
 ### 6. ROS-сеть
 
-По умолчанию `ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=1`,
-`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`; используется сеть хоста.
-Проигрывайте bag и запускайте обработку в новой среде с одинаковыми настройками.
-Domain ID отделяет discovery от обычных запусков с domain 0, но не является
-механизмом защиты. Для внешнего датчика потребуется отключить localhost-only
-и согласовать домен и сеть.
+Во всех профилях по умолчанию используются обычная bridge-сеть,
+`ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=1` и
+`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`. Это подходит, когда bag и обработка
+запущены внутри одного контейнера. Domain ID не является механизмом защиты.
+
+Для физического лидара или ROS-узлов на других компьютерах потребуется отдельная
+сетевая конфигурация: отключить localhost-only и настроить Cyclone DDS либо явно
+включить host networking на поддерживаемом хосте.
 
 ### 7. Сборка образа без VS Code
 
-В корне репозитория на хосте:
+Dockerfile содержит targets `universal` и `desktop`:
 
 ```bash
-docker build -t metro-lidar-dev:humble docker
+docker build --target universal -t metro-lidar-dev:universal docker
+docker build --target desktop -t metro-lidar-dev:desktop docker
 ```
 
-Контекст сборки — только маленький каталог `docker`: исходники, архивы,
-bag-файлы и видео в Docker-образ не копируются.
+Без `--target` собирается headless-вариант. Контекст сборки — только каталог
+`docker`: исходники, архивы, bag-файлы и видео в образ не копируются.
 
-Ручной запуск (альтернатива Dev Containers, UID/GID по умолчанию 1000):
+Ручной запуск Universal-профиля:
 
 ```bash
-docker run -d --init --name metro-lidar-dev \
-  --network host --shm-size 1g \
-  -e XDG_RUNTIME_DIR=/tmp/wayland-runtime \
-  -e WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-  -e QT_QPA_PLATFORM=wayland \
+docker run -d --init --name metro-lidar-dev --shm-size 1g \
   --mount "type=bind,source=$PWD,target=/home/dev/metro_ws/src/metro-lidar-processing" \
   --mount "type=bind,source=$PWD/../archive/for_hackathon,target=/data,readonly" \
   --mount "type=bind,source=$PWD/../videos,target=/results" \
-  --mount "type=bind,source=$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY,target=/tmp/wayland-runtime/$WAYLAND_DISPLAY" \
-  metro-lidar-dev:humble
+  metro-lidar-dev:universal
 docker exec -it metro-lidar-dev bash
 ```
 
-При ручном запуске с другим UID/GID соберите образ с
-`--build-arg USER_UID="$(id -u)" --build-arg USER_GID="$(id -g)"`.
-В контейнере выполните `bash scripts/build.sh`. Для подключения VS Code к уже
-запущенной ручной среде доступна команда **Dev Containers: Attach to Running
-Container**. Расширения и настройки удобнее устанавливаются при основном
-сценарии **Reopen in Container**.
+При ручном запуске с другим UID/GID передайте при сборке
+`--build-arg USER_UID="$(id -u)" --build-arg USER_GID="$(id -g)"`. Для Desktop
+нужно дополнительно передать X11-сокет и переменные из соответствующего
+`devcontainer.json`; для NVIDIA также добавляется `--gpus=all`.
 
 Документация: [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers).
 
