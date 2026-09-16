@@ -2,7 +2,7 @@
 set -eo pipefail
 source /opt/ros/humble/setup.bash
 
-workspace="${HOME}/ros_ws"
+workspace="${HOME}/metro_ws"
 if [[ ! -d "${workspace}/src/metro-lidar-processing" ]]; then
     echo 'Source mount missing: open the repository in its Metro LiDAR dev container.' >&2
     exit 1

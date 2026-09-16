@@ -65,11 +65,10 @@ ros2 pkg prefix metro_lidar_processing
 
 | В контейнере | Назначение |
 |---|---|
-| `/workspaces/metro-lidar-processing` | Исходники с хоста; изменения сразу видны в Git |
+| `~/metro_ws/src/metro-lidar-processing` | Исходники с хоста; изменения сразу видны в Git |
 | `/data` | `archive/for_hackathon`, подключён только для чтения |
 | `/results` | Каталог `videos` на хосте; результаты сохраняются после пересоздания |
-| `~/ros_ws/src/metro-lidar-processing` | Ссылка на исходники |
-| `~/ros_ws/build`, `install`, `log` | Новая сборка Humble внутри контейнера |
+| `~/metro_ws/build`, `install`, `log` | Сборка Humble внутри контейнера |
 
 Сборочные каталоги внутри контейнера могут исчезнуть при **Rebuild Container**;
 они создаются повторно автоматически. Исходники, bag и `/results` сохраняются.
@@ -87,7 +86,7 @@ ros2 pkg prefix metro_lidar_processing
 
 ```bash
 bash scripts/build.sh
-source ~/ros_ws/install/local_setup.bash
+source ~/metro_ws/install/local_setup.bash
 bash scripts/test.sh
 ```
 
@@ -97,7 +96,7 @@ bash scripts/test.sh
 
 ```bash
 rosdep update --rosdistro humble
-rosdep install --from-paths ~/ros_ws/src --ignore-src --rosdistro humble -y
+rosdep install --from-paths ~/metro_ws/src --ignore-src --rosdistro humble -y
 ```
 
 Для воспроизводимости затем отразите необходимые зависимости в `package.xml`
@@ -162,7 +161,7 @@ docker run -d --init --name metro-lidar-dev \
   -e XDG_RUNTIME_DIR=/tmp/wayland-runtime \
   -e WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
   -e QT_QPA_PLATFORM=wayland \
-  --mount "type=bind,source=$PWD,target=/workspaces/metro-lidar-processing" \
+  --mount "type=bind,source=$PWD,target=/home/dev/metro_ws/src/metro-lidar-processing" \
   --mount "type=bind,source=$PWD/../archive/for_hackathon,target=/data,readonly" \
   --mount "type=bind,source=$PWD/../videos,target=/results" \
   --mount "type=bind,source=$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY,target=/tmp/wayland-runtime/$WAYLAND_DISPLAY" \
@@ -194,9 +193,9 @@ Container**. Расширения и настройки удобнее уста�
 ### Сборка
 
 ```bash
-cd /workspaces/metro-lidar-processing
+cd ~/metro_ws/src/metro-lidar-processing
 bash scripts/build.sh
-source ~/ros_ws/install/local_setup.bash
+source ~/metro_ws/install/local_setup.bash
 ```
 
 ### Запуск для пяти bag-файлов с `/lidar_points`
@@ -218,65 +217,3 @@ ros2 launch metro_lidar_processing depth_image.launch.py \
 В более крупной записи содержится 921600 точек в одном кадре. `point_stride:=2`
 обрабатывает каждую вторую точку, если более высокая частота обработки важнее
 максимальной угловой детализации.
-
-### Проигрывание bag-файла
-
-```bash
-ros2 bag play \
-  /data/doubleT_platform \
-  --loop
-```
-
-Выходной топик — `/lidar/depth_image` типа `sensor_msgs/msg/Image` с кодировкой
-`rgb8`. В RViz добавьте отображение `Image` и выберите этот топик. Для `Image`
-не требуется настраивать Fixed Frame или TF.
-
-### Запись MP4 с синхронизацией по временным меткам
-
-Нода может напрямую записывать MP4, продолжая одновременно публиковать топик с изображением.
-Положение кадров видео определяется исходными временными метками `PointCloud2`. Если обработка
-в реальном времени временно не успевает за входным потоком, предыдущий кадр удерживается,
-вместо того чтобы делать итоговое видео короче и быстрее.
-
-```bash
-ros2 launch metro_lidar_processing depth_image.launch.py \
-  video_path:=/results/doubleT_platform_depth.mp4 \
-  video_fps:=10.0
-```
-
-Запустите `ros2 bag play` один раз, без `--loop`. После окончания воспроизведения
-остановите ноду глубины через Ctrl+C, чтобы она корректно завершила MP4-контейнер.
-
-Записи содержат примерно 10 лидарных сканов в секунду. Меньшее значение, которое показывает
-`ros2 topic hz /lidar/depth_image`, отражает фактическую скорость преобразования в реальном
-времени, а не исходную частоту записи. Если компьютер не успевает обрабатывать 10 сканов/с,
-замедлите воспроизведение так, чтобы каждый исходный кадр был обработан, сохранив при этом
-исходную временную шкалу итогового видео:
-
-```bash
-ros2 bag play \
-  /data/doubleT_platform \
-  --rate 0.1 \
-  --read-ahead-queue-size 2
-```
-
-При `--rate 0.1` обработка 88-секундного bag-файла занимает примерно 15 минут,
-но итоговый MP4 всё равно длится около 88 секунд. Чтобы снизить нагрузку во время записи,
-закройте RViz или отключите в нём отображение `PointCloud2`.
-
-### Параметры
-
-| Параметр | По умолчанию | Назначение |
-|---|---:|---|
-| `input_topic` | `/lidar_points` | Входной топик `PointCloud2` |
-| `output_topic` | `/lidar/depth_image` | Выходной топик RGB-изображения |
-| `image_width` | `320` | Ширина, соответствующая измеренному сектору 100° |
-| `image_height` | `128` | Высота дальностного изображения; соответствует 128 каналам лидара |
-| `min_depth` | `1.0` | Ближайшая отображаемая дальность, м |
-| `max_depth` | `300.0` | Максимальная отображаемая дальность, м |
-| `min_azimuth_deg` | `-140.0` | Левая граница для пяти bag-файлов с передним сектором |
-| `max_azimuth_deg` | `-40.0` | Правая граница для пяти bag-файлов с передним сектором |
-| `histogram_equalization` | `true` | Динамическая раскраска глубины в стиле RealSense |
-| `point_stride` | `1` | Обрабатывать каждую N-ю входную точку |
-| `video_path` | пусто | Необязательный путь для MP4 с синхронизацией по временным меткам |
-| `video_fps` | `10.0` | Постоянная частота кадров выходного видео |

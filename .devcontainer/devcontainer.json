@@ -4,8 +4,8 @@
     "dockerfile": "../docker/Dockerfile",
     "context": "../docker"
   },
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/metro-lidar-processing,type=bind",
-  "workspaceFolder": "/workspaces/metro-lidar-processing",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/dev/metro_ws/src/metro-lidar-processing,type=bind",
+  "workspaceFolder": "/home/dev/metro_ws/src/metro-lidar-processing",
   "remoteUser": "dev",
   "updateRemoteUserUID": true,
   "init": true,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 source /etc/ros-dev-env.sh
-cd "${HOME}/ros_ws"
+cd "${HOME}/metro_ws"
 if [[ ! -f install/local_setup.bash ]]; then
     echo 'Build the workspace first: bash scripts/build.sh' >&2
     exit 1

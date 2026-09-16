@@ -30,10 +30,8 @@ RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" \
     && chmod 0440 "/etc/sudoers.d/${USERNAME}" \
-    && mkdir -p /workspaces/metro-lidar-processing /data /results \
-       "/home/${USERNAME}/ros_ws/src" /tmp/wayland-runtime \
-    && ln -s /workspaces/metro-lidar-processing "/home/${USERNAME}/ros_ws/src/metro-lidar-processing" \
-    && chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}/ros_ws" /results /tmp/wayland-runtime \
+    && mkdir -p "/home/${USERNAME}/metro_ws/src" /data /results /tmp/wayland-runtime \
+    && chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}/metro_ws" /results /tmp/wayland-runtime \
     && chmod 0700 /tmp/wayland-runtime
 
 COPY ros-dev-env.sh /etc/ros-dev-env.sh
@@ -49,7 +47,7 @@ ENV ROS_DOMAIN_ID=42 \
     LIBGL_ALWAYS_SOFTWARE=1
 
 USER ${USERNAME}
-WORKDIR /workspaces/metro-lidar-processing
+WORKDIR /home/${USERNAME}/metro_ws/src/metro-lidar-processing
 RUN rosdep update --rosdistro humble
 
 ENTRYPOINT ["/usr/local/bin/metro-dev-entrypoint"]
