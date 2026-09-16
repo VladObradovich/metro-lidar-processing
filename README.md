@@ -36,6 +36,32 @@ cd ~/hahaton/metro-lidar-processing
 code .
 ```
 
+Для профиля **Desktop (NVIDIA GPU)** на Linux заранее установите драйвер NVIDIA,
+убедитесь, что `nvidia-smi` видит видеокарту, и один раз из корня репозитория
+выполните:
+
+```bash
+bash scripts/setup_nvidia_host.sh
+```
+
+Скрипт проверяет драйвер и при необходимости устанавливает
+`nvidia-container-toolkit` из официального репозитория NVIDIA на системах с
+`apt`, `dnf` или `zypper`. Для другого пакетного менеджера он остановится со
+ссылкой на [официальную инструкцию NVIDIA](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+не изменяя репозитории. Затем скрипт регистрирует NVIDIA runtime, создаёт
+CDI-spec, перезапускает Docker через `systemctl`, `sv` или `service` и проверяет
+GPU в тестовом контейнере. Потребуется пароль `sudo`; перезапуск Docker остановит
+уже запущенные контейнеры. Эту настройку не нужно повторять при каждой сборке.
+Сам профиль, как и NVIDIA-профиль `clover2-dev`, запрашивает GPU через Docker
+Compose с явным `driver: nvidia`; после подготовки хоста достаточно выбрать
+**Rebuild/Reopen in Container**.
+
+Ошибка `docker: unknown command: docker buildx` в логе Dev Containers означает,
+что на хосте нет Buildx-плагина. Dev Containers умеет продолжить legacy-сборкой;
+если ниже присутствует `Successfully built`, эта строка не является причиной
+падения. Чтобы убрать предупреждение и сохранить поддержку будущих версий
+Docker, установите Buildx-плагин из пакетов своего дистрибутива.
+
 Ожидаемое расположение данных:
 
 ```text
@@ -145,9 +171,10 @@ rviz2
 по его `header.frame_id`: `hesai_lidar` либо `lidar_livox`.
 
 `Desktop (Software Graphics)` задаёт `LIBGL_ALWAYS_SOFTWARE=1` и не требует GPU.
-`Desktop (NVIDIA GPU)` запускается с `--gpus=all` и требует заранее настроенной
-поддержки NVIDIA Container Toolkit на Linux либо NVIDIA GPU в Docker Desktop с
-WSL2 на Windows. CUDA в образ не установлена: текущий алгоритм её не использует.
+`Desktop (NVIDIA GPU)` запрашивает GPU через Docker Compose с явным
+`driver: nvidia` и требует заранее настроенной поддержки NVIDIA Container
+Toolkit на Linux либо NVIDIA GPU в Docker Desktop с WSL2 на Windows. CUDA в
+образ не установлена: текущий алгоритм её не использует.
 
 ### 6. ROS-сеть
 
@@ -186,7 +213,8 @@ docker exec -it metro-lidar-dev bash
 При ручном запуске с другим UID/GID передайте при сборке
 `--build-arg USER_UID="$(id -u)" --build-arg USER_GID="$(id -g)"`. Для Desktop
 нужно дополнительно передать X11-сокет и переменные из соответствующего
-`devcontainer.json`; для NVIDIA также добавляется `--gpus=all`.
+`devcontainer.json`; NVIDIA-профиль запускается через
+`.devcontainer/desktop-nvidia/compose.yaml`.
 
 Документация: [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers).
 
