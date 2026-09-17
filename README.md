@@ -165,7 +165,7 @@ exec ros2 launch -n metro_lidar_processing depth_image.launch.py rviz:=true
 `rviz:=true fixed_frame:=lidar_livox`. Для другого источника укажите его
 `header.frame_id` через `fixed_frame` (посмотреть можно в сообщении PointCloud2).
 После начала `ros2 bag play` в RViz появятся данные. Используется программный
-OpenGL, установка NVIDIA Container Toolkit для этого сценария не требуется.
+OpenGL и не требует доступа к GPU из контейнера.
 
 После выхода из графического контейнера остановите прокси:
 
@@ -252,7 +252,7 @@ docker run --rm -i --init --network none \
 
 ## Установка и разработка в VS Code
 
-Для проекта используется Dev Container **Ubuntu 22.04 / ROS 2 Humble** с тремя
+Для проекта используется Dev Container **Ubuntu 22.04 / ROS 2 Humble** с двумя
 профилями. Общая часть включает Python 3.10, C++/CMake, Eigen/PCL,
 NumPy/SciPy/OpenCV, rosbag2, Cyclone DDS, отладчик и средства тестирования.
 
@@ -260,7 +260,6 @@ NumPy/SciPy/OpenCV, rosbag2, Cyclone DDS, отладчик и средства �
 |---|---|---|
 | **Universal (Server, Headless)** | Сборка, тесты и обработка bag без GUI | Прежде всего Linux-серверы и CI |
 | **Desktop (Software Graphics)** | Полная среда с RViz и программным OpenGL | Linux через XWayland и Windows через WSL2/WSLg |
-| **Desktop (NVIDIA GPU)** | RViz с аппаратным ускорением NVIDIA | Linux или Windows/WSL2 с NVIDIA |
 
 ### 1. Подготовить хост
 
@@ -283,26 +282,6 @@ code --install-extension ms-vscode-remote.remote-containers
 cd ~/hahaton/metro-lidar-processing
 code .
 ```
-
-Для профиля **Desktop (NVIDIA GPU)** на Linux заранее установите драйвер NVIDIA,
-убедитесь, что `nvidia-smi` видит видеокарту, и один раз из корня репозитория
-выполните:
-
-```bash
-bash scripts/setup_nvidia_host.sh
-```
-
-Скрипт проверяет драйвер и при необходимости устанавливает
-`nvidia-container-toolkit` из официального репозитория NVIDIA на системах с
-`apt`, `dnf` или `zypper`. Для другого пакетного менеджера он остановится со
-ссылкой на [официальную инструкцию NVIDIA](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
-не изменяя репозитории. Затем скрипт регистрирует NVIDIA runtime, создаёт
-CDI-spec, перезапускает Docker через `systemctl`, `sv` или `service` и проверяет
-GPU в тестовом контейнере. Потребуется пароль `sudo`; перезапуск Docker остановит
-уже запущенные контейнеры. Эту настройку не нужно повторять при каждой сборке.
-Сам профиль, как и NVIDIA-профиль `clover2-dev`, запрашивает GPU через Docker
-Compose с явным `driver: nvidia`; после подготовки хоста достаточно выбрать
-**Rebuild/Reopen in Container**.
 
 Ошибка `docker: unknown command: docker buildx` в логе Dev Containers означает,
 что на хосте нет Buildx-плагина. Dev Containers умеет продолжить legacy-сборкой;
@@ -401,7 +380,7 @@ ls -l /tmp/.X11-unix
 в Docker Desktop и запускайте VS Code командой `code .` из WSL. WSLg должен
 предоставить `DISPLAY` и каталог `/tmp/.X11-unix` в WSL-сессии.
 
-Desktop-профили автоматически запускают на хосте локальный X11-прокси. Контейнер
+Desktop-профиль автоматически запускает на хосте локальный X11-прокси. Контейнер
 подключается к сокету в `.devcontainer/.runtime/x11`, поэтому один и тот же
 профиль работает с обычным Docker Engine, Snap Docker и Docker Desktop/WSLg.
 Runtime-каталог добавлен в `.gitignore` и не попадает в репозиторий. Если
@@ -418,11 +397,8 @@ rviz2
 3D-облака добавьте `PointCloud2`, выберите входной топик и установите Fixed Frame
 по его `header.frame_id`: `hesai_lidar` либо `lidar_livox`.
 
-`Desktop (Software Graphics)` задаёт `LIBGL_ALWAYS_SOFTWARE=1` и не требует GPU.
-`Desktop (NVIDIA GPU)` запрашивает GPU через Docker Compose с явным
-`driver: nvidia` и требует заранее настроенной поддержки NVIDIA Container
-Toolkit на Linux либо NVIDIA GPU в Docker Desktop с WSL2 на Windows. CUDA в
-образ не установлена: текущий алгоритм её не использует.
+`Desktop (Software Graphics)` задаёт `LIBGL_ALWAYS_SOFTWARE=1` и работает без
+доступа к GPU из контейнера.
 
 ### 6. ROS-сеть
 
@@ -463,8 +439,7 @@ source ~/metro_ws/install/local_setup.bash
 При ручном запуске с другим UID/GID передайте при сборке
 `--build-arg USER_UID="$(id -u)" --build-arg USER_GID="$(id -g)"`. Для Desktop
 нужно дополнительно передать X11-сокет и переменные из соответствующего
-`devcontainer.json`; NVIDIA-профиль запускается через
-`.devcontainer/desktop-nvidia/compose.yaml`.
+`devcontainer.json`.
 
 Документация: [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers).
 
