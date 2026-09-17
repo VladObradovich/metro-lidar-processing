@@ -5,7 +5,7 @@
   "workspaceFolder": "/home/dev/metro_ws/src/metro-lidar-processing",
   "remoteUser": "dev",
   "updateRemoteUserUID": false,
-  "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start",
+  "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start || echo \"X11 proxy unavailable; using Dev Containers GUI forwarding\"",
   "postCreateCommand": "bash scripts/build.sh",
   "customizations": {
     "vscode": {
