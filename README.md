@@ -1,6 +1,254 @@
 # metro-lidar-processing
 
-ROS 2 package for processing the hackathon metro lidar recordings.
+ROS 2-пакет обработки лидарных записей для хакатона. Текущая нода преобразует
+`PointCloud2` в панорамное изображение глубины и при необходимости сохраняет видео.
+Обнаружение препятствий пока не реализовано.
+
+## Быстрый запуск на своём датасете
+
+Для запуска нужен Docker. ROS, Python-зависимости и собранный пакет находятся
+в образе; VS Code и ROS на хосте не нужны. Основной сценарий — Linux с Docker
+Engine. На Windows команды выполняются в WSL2 с интеграцией Docker Desktop;
+пути к данным должны быть доступны из WSL.
+
+### 1. Собрать образ один раз
+
+Из корня этого репозитория:
+
+```bash
+docker build -f docker/Dockerfile.runtime --target runtime -t metro-lidar:local .
+```
+
+Образ использует Ubuntu 22.04 / ROS 2 Humble. Зависимости устанавливаются и пакет
+собирается при `docker build`. При изменении кода образ нужно пересобрать.
+При запуске ничего скачивать или собирать не требуется. Данные в образ не входят.
+
+### 2. Подключить свой датасет и открыть контейнер
+
+Замените `/absolute/path/to/dataset` на **существующий абсолютный путь** к своему
+каталогу с bag-файлами. Его расположение и имя на хосте произвольные:
+
+```bash
+docker run --rm -it --init --name metro-lidar \
+  --mount "type=bind,source=/absolute/path/to/dataset,target=/data,readonly" \
+  metro-lidar:local
+```
+
+Например, запись `/absolute/path/to/dataset/my_bag/metadata.yaml` будет доступна
+как `/data/my_bag/metadata.yaml`. Подключайте каталог вместе с `metadata.yaml`
+и всеми файлами `.db3`, указанными в метаданных. Предоставленные записи имеют
+формат rosbag2 SQLite3. Входной каталог подключается только для чтения.
+
+### 3. Запустить обработку в контейнере
+
+```bash
+exec ros2 launch -n metro_lidar_processing depth_image.launch.py
+```
+
+### 4. Проиграть свою запись из второго терминала хоста
+
+Замените `my_bag` на имя записи в своём датасете:
+
+```bash
+docker exec -it metro-lidar /usr/local/bin/metro-entrypoint \
+  ros2 bag play /data/my_bag
+```
+
+Имена bag не влияют на настройки алгоритма. Если в `/data` смонтирован сам каталог
+одной записи, используйте `ros2 bag play /data`.
+Обработка и проигрывание работают в одном контейнере; настройка ROS-сети хоста
+не требуется. Обёртка `metro-entrypoint` нужна для `docker exec`, потому что Docker
+не вызывает entrypoint образа при exec автоматически.
+
+Для просмотра метаданных записи и результата:
+
+```bash
+docker exec metro-lidar /usr/local/bin/metro-entrypoint ros2 bag info /data/my_bag
+docker exec metro-lidar /usr/local/bin/metro-entrypoint \
+  ros2 topic echo /lidar/depth_image --once --no-arr
+```
+
+Нода ждёт сообщения до начала проигрывания. `exec` заменяет оболочку процессом
+launch, а `-n` включает штатный noninteractive-режим ROS launch, который сам
+передаёт сигнал дочерним процессам. Это позволяет `docker stop metro-lidar`
+мягко остановить ноду и закрыть видеофайл. Для завершения также можно нажать Ctrl+C в терминале launch;
+контейнер завершится и удалится. Если запустить launch без `exec`, сначала
+остановите его через Ctrl+C, затем выйдите из оболочки командой `exit`.
+
+## Входные данные и параметры
+
+Вход: `sensor_msgs/msg/PointCloud2`, поля `x`, `y`, `z` — FLOAT32, `ring` — UINT16.
+Текущая подписка использует Reliable QoS; предоставленные записи совместимы.
+Для нового источника требуется проверить поля и QoS, а не только имя топика.
+Выход: `sensor_msgs/msg/Image` в `/lidar/depth_image`.
+
+| Аргумент launch | По умолчанию | Назначение |
+|---|---|---|
+| `input_topic` | `/lidar_points` | Входной топик из `ros2 bag info` |
+| `output_topic` | `/lidar/depth_image` | Изображение глубины |
+| `min_azimuth_deg`, `max_azimuth_deg` | `-140.0`, `-40.0` | Сектор проекции в градусах |
+| `min_depth`, `max_depth` | `1.0`, `300.0` | Диапазон расстояний в метрах |
+| `image_width`, `image_height` | `320`, `128` | Размер изображения |
+| `point_stride` | `1` | Шаг выборки точек |
+| `histogram_equalization` | `true` | Выравнивание гистограммы раскраски |
+| `video_path`, `video_fps` | пустой путь, `10.0` | Запись видео; пустой путь отключает её |
+| `rviz` | `false` | Открыть RViz, нужен desktop-образ |
+| `fixed_frame` | `hesai_lidar` | Fixed Frame RViz, равный `header.frame_id` облака |
+
+Для пяти предоставленных записей с `/lidar_points` подходят значения по умолчанию.
+Для `doubleT_obstacle`:
+
+```bash
+exec ros2 launch -n metro_lidar_processing depth_image.launch.py \
+  input_topic:=/sensing/lidar/hesai128/pointcloud \
+  min_azimuth_deg:=-180.0 max_azimuth_deg:=180.0 point_stride:=2
+```
+
+Для неизвестного датасета задайте его топик и подходящий сектор через аргументы
+launch. Пересборка образа для смены датасета или этих параметров не нужна.
+
+## Сохранение видео на хост
+
+Перед запуском создайте каталог результатов и добавьте его к `docker run`.
+UID/GID пользователя хоста обеспечивают доступ к файлам без последующего `sudo`:
+
+```bash
+mkdir -p results
+docker run --rm -it --init --name metro-lidar \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=/absolute/path/to/dataset,target=/data,readonly" \
+  --mount "type=bind,source=$PWD/results,target=/results" \
+  metro-lidar:local
+```
+
+В контейнере:
+
+```bash
+exec ros2 launch -n metro_lidar_processing depth_image.launch.py \
+  video_path:=/results/depth.mp4
+```
+
+Запустите bag из второго терминала как выше. После проигрывания остановите launch
+через Ctrl+C, чтобы закрыть видеофайл. Результат останется в `results/depth.mp4`
+после удаления контейнера. Это видео панорамы глубины, не результат детекции.
+
+## Необязательная визуализация в RViz
+
+Headless-образ не требует дисплея и GPU. Для RViz соберите отдельный вариант:
+
+```bash
+docker build -f docker/Dockerfile.runtime --target runtime-desktop \
+  -t metro-lidar:desktop .
+```
+
+В графической Linux-сессии с X11/XWayland или WSLg выполните из корня репозитория
+(нужен Python 3 на хосте; на Linux также `xhost`):
+
+```bash
+python3 .devcontainer/scripts/x11_proxy.py start
+docker run --rm -it --init --name metro-lidar \
+  --user "$(id -u):$(id -g)" \
+  -e DISPLAY="$DISPLAY" \
+  --mount "type=bind,source=$PWD/.devcontainer/.runtime/x11,target=/tmp/.X11-unix" \
+  --mount "type=bind,source=/absolute/path/to/dataset,target=/data,readonly" \
+  metro-lidar:desktop
+```
+
+В контейнере запустите обработку с `rviz:=true`. Готовый конфиг показывает облако
+и изображение; топики следуют аргументам `input_topic` и `output_topic`:
+
+```bash
+exec ros2 launch -n metro_lidar_processing depth_image.launch.py rviz:=true
+```
+
+Для `doubleT_obstacle` добавьте к команде обработки выше
+`rviz:=true fixed_frame:=lidar_livox`. Для другого источника укажите его
+`header.frame_id` через `fixed_frame` (посмотреть можно в сообщении PointCloud2).
+После начала `ros2 bag play` в RViz появятся данные. Используется программный
+OpenGL, установка NVIDIA Container Toolkit для этого сценария не требуется.
+
+После выхода из графического контейнера остановите прокси:
+
+```bash
+python3 .devcontainer/scripts/x11_proxy.py stop
+```
+
+## Масштаб интерфейса RViz (HiDPI)
+
+При старте X11-прокси масштаб определяется на **хосте** и передаётся в контейнер
+через файл в уже подключённом каталоге X11. Это работает и для готового
+Desktop-образа, и для обоих Desktop Dev Containers. На хосте не меняются настройки
+монитора или рабочего стола.
+
+Приоритет: `start --scale` → `METRO_QT_SCALE_FACTOR` → `QT_SCALE_FACTOR` хоста →
+масштаб активного монитора Niri/Sway/Hyprland → `GDK_SCALE` → `Xft.dpi / 96` → `1`.
+В Niri используется монитор сфокусированного рабочего пространства. Для другого
+монитора можно передать `--output DP-1`. Если фокус неизвестен и масштабы мониторов
+различаются, скрипт не выбирает произвольный монитор. Источник и значение масштаба
+выводятся при запуске прокси.
+
+Ручной выбор (в том числе для WSLg и композиторов без доступного источника масштаба):
+
+```bash
+python3 .devcontainer/scripts/x11_proxy.py start --scale 1.5
+```
+
+Для Dev Containers можно задать `METRO_QT_SCALE_FACTOR=1.5` в окружении VS Code
+перед открытием контейнера. Для ручного `docker run` переменная
+`-e QT_SCALE_FACTOR=1.5` переопределяет переданный хостом масштаб.
+Поддерживаются значения от `0.5` до `4`, включая дробные.
+
+После обновления файлов пересоберите Desktop-образ или выполните **Rebuild
+Container**. Масштаб выбирается при старте прокси; при смене монитора перезапустите
+прокси и RViz (в Dev Containers откройте новый терминал). Уже открытое окно RViz
+не меняет масштаб автоматически при переносе между экранами.
+Для обычного X11 без прокси и без явного масштаба настройки Qt не переопределяются.
+Используется [QT_SCALE_FACTOR](https://doc.qt.io/archives/qt-5.15/highdpi.html),
+в режиме `METRO_QT_SCALING_MODE=full`. По умолчанию включён режим `font`:
+`QT_SCALE_FACTOR=1`, а `QT_FONT_DPI=96 × масштаб`. Так текст и зависящие от шрифта
+элементы остаются крупными, но OpenGL-область не масштабируется. Это обход
+[мерцания RViz Humble при HiDPI](https://github.com/ros2/rviz/issues/1052).
+Некоторые иконки в этом режиме могут оставаться небольшими. Полное масштабирование
+можно явно включить через `-e METRO_QT_SCALING_MODE=full`, если на вашем оборудовании
+оно не вызывает мерцания. Для переопределения желаемого размера используйте
+`METRO_QT_SCALE_FACTOR` (например, `-e METRO_QT_SCALE_FACTOR=1.5`).
+
+Если контейнер уже открыт, до пересборки можно закрыть RViz и проверить обход:
+
+```bash
+QT_SCALE_FACTOR=1 QT_SCREEN_SCALE_FACTORS=1 QT_AUTO_SCREEN_SCALE_FACTOR=0 \
+  QT_ENABLE_HIGHDPI_SCALING=0 QT_FONT_DPI=192 rviz2
+```
+
+Значение `192` в этой разовой команде соответствует экрану с масштабом 2×.
+Автоматическая настройка в образе вычисляет DPI из масштаба хоста.
+
+## Проверка готового образа
+
+Из корня репозитория можно проверить обработку внешней записи без сети и без
+монтирования исходников. Сам проверочный скрипт передаётся через stdin:
+
+```bash
+mkdir -p results
+docker run --rm -i --init --network none \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=/absolute/path/to/dataset,target=/data,readonly" \
+  --mount "type=bind,source=$PWD/results,target=/results" \
+  metro-lidar:local python3 - /data/my_bag \
+  --video /results/smoke.mp4 < scripts/smoke_runtime.py
+```
+
+Проверка ждёт готовности ноды, проигрывает начало записи, получает пять непустых
+изображений, останавливает процессы через SIGINT и декодирует сохранённое видео.
+Для второго формата входа добавьте `--input-topic /sensing/lidar/hesai128/pointcloud
+--min-azimuth -180.0 --max-azimuth 180.0`. Для повторного запуска задайте новый
+`--video`: проверка не перезаписывает существующие результаты.
+
+## Разработка
+
+Далее описана среда разработки с монтированием исходников. Для запуска готового
+решения достаточно разделов выше. Образы `metro-lidar-dev:*` содержат инструменты
+разработки, а `metro-lidar:local` и `metro-lidar:desktop` — установленный пакет.
 
 ## Установка и разработка в VS Code
 
@@ -208,6 +456,8 @@ docker run -d --init --name metro-lidar-dev --shm-size 1g \
   --mount "type=bind,source=$PWD/../videos,target=/results" \
   metro-lidar-dev:universal
 docker exec -it metro-lidar-dev bash
+bash scripts/build.sh
+source ~/metro_ws/install/local_setup.bash
 ```
 
 При ручном запуске с другим UID/GID передайте при сборке

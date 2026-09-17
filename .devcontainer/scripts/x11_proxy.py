@@ -21,6 +21,8 @@ import sys
 import threading
 import time
 
+from display_scale import detect_scale
+
 
 SCRIPT_PATH = Path(__file__).resolve()
 DEVCONTAINER_DIR = SCRIPT_PATH.parent.parent
@@ -75,7 +77,7 @@ def allow_host_user(display: str) -> None:
         pass
 
 
-def start_proxy() -> int:
+def start_proxy(scale_override=None, output=None) -> int:
     display = os.environ.get("DISPLAY", "")
     if not display:
         print(
@@ -100,9 +102,17 @@ def start_proxy() -> int:
         )
         return 1
 
+    try:
+        scale, scale_source = detect_scale(scale_override, output)
+    except ValueError as error:
+        print(f"X11 proxy: {error}", file=sys.stderr)
+        return 1
+
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     PROXY_DIR.mkdir(mode=0o777, parents=True, exist_ok=True)
     os.chmod(PROXY_DIR, 0o777)
+    (PROXY_DIR / "metro-scale").write_text(f"{scale:g}\n", encoding="utf-8")
+    print(f"X11 proxy: Qt scale {scale:g} ({scale_source})")
     stop_previous_proxy()
     destination.unlink(missing_ok=True)
     allow_host_user(display)
@@ -192,14 +202,20 @@ def serve(source_path: Path, destination_path: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("start")
+    start_parser = subparsers.add_parser("start")
+    start_parser.add_argument("--scale", help="Explicit Qt scale, e.g. 1, 1.5, 2")
+    start_parser.add_argument("--output", help="Host compositor output name")
+    subparsers.add_parser("stop")
     serve_parser = subparsers.add_parser("serve")
     serve_parser.add_argument("source", type=Path)
     serve_parser.add_argument("destination", type=Path)
     arguments = parser.parse_args()
 
     if arguments.command == "start":
-        return start_proxy()
+        return start_proxy(arguments.scale, arguments.output)
+    if arguments.command == "stop":
+        stop_previous_proxy()
+        return 0
     return serve(arguments.source, arguments.destination)
 
 

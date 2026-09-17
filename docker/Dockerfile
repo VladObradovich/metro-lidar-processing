@@ -33,6 +33,7 @@ RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}/metro_ws" /results /tmp/wayland-runtime \
     && chmod 0700 /tmp/wayland-runtime
 
+COPY gui-env.sh /etc/metro-gui-env.sh
 COPY ros-dev-env.sh /etc/ros-dev-env.sh
 COPY entrypoint.sh /usr/local/bin/metro-dev-entrypoint
 RUN chmod 0755 /usr/local/bin/metro-dev-entrypoint \

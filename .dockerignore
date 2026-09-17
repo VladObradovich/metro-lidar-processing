@@ -1,0 +1,16 @@
+.git
+.devcontainer
+build
+install
+log
+__pycache__
+**/__pycache__
+.pytest_cache
+*.egg-info
+archive
+videos
+results
+*.zip
+*.db3
+*.mcap
+*.mp4
