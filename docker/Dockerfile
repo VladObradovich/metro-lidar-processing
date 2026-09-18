@@ -54,7 +54,11 @@ FROM universal AS desktop
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-humble-rviz2 qtwayland5 mesa-utils xvfb \
+    software-properties-common \
+    && add-apt-repository -y ppa:kisak/turtle \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-rviz2 qtwayland5 mesa-utils \
+    libgl1-mesa-dri libglx-mesa0 libgl1-mesa-dev xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 USER ${USERNAME}

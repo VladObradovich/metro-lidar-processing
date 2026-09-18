@@ -10,6 +10,7 @@ with classic Docker and WSLg, keeping the devcontainer files portable.
 from __future__ import annotations
 
 import argparse
+import array
 import getpass
 import os
 from pathlib import Path
@@ -139,11 +140,42 @@ def start_proxy(scale_override=None, output=None) -> int:
     return 1
 
 
+MAX_ANCILLARY_FDS = 16
+
+
+def close_received_fds(ancillary_data) -> None:
+    """Close SCM_RIGHTS descriptors after they have been forwarded."""
+    for level, kind, data in ancillary_data:
+        if level != socket.SOL_SOCKET or kind != socket.SCM_RIGHTS:
+            continue
+        descriptors = array.array("i")
+        descriptors.frombytes(data[: len(data) - (len(data) % descriptors.itemsize)])
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def pump(source: socket.socket, destination: socket.socket) -> None:
+    ancillary_size = socket.CMSG_SPACE(MAX_ANCILLARY_FDS * array.array("i").itemsize)
     try:
-        while chunk := source.recv(65536):
-            destination.sendall(chunk)
-    except (BrokenPipeError, ConnectionResetError, OSError):
+        while True:
+            chunk, ancillary_data, flags, _address = source.recvmsg(
+                65536, ancillary_size
+            )
+            if not chunk:
+                break
+            if flags & socket.MSG_CTRUNC:
+                close_received_fds(ancillary_data)
+                raise RuntimeError("X11 proxy received too many file descriptors")
+            try:
+                sent = destination.sendmsg([chunk], ancillary_data)
+                if sent < len(chunk):
+                    destination.sendall(chunk[sent:])
+            finally:
+                close_received_fds(ancillary_data)
+    except (BrokenPipeError, ConnectionResetError, OSError, RuntimeError):
         pass
     finally:
         try:

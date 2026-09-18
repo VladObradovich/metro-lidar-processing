@@ -182,6 +182,8 @@ docker build -f docker/Dockerfile.runtime --target runtime-desktop \
 python3 .devcontainer/scripts/x11_proxy.py start
 docker run --rm -it --init --name metro-lidar \
   --user "$(id -u):$(id -g)" \
+  --device=/dev/dri \
+  --group-add "$(stat -c '%g' /dev/dri/renderD128)" \
   -e DISPLAY="$DISPLAY" \
   --mount "type=bind,source=$PWD/.devcontainer/.runtime/x11,target=/tmp/.X11-unix" \
   --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
@@ -198,8 +200,10 @@ exec ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true
 Для `doubleT_obstacle` добавьте к команде обработки выше
 `rviz:=true fixed_frame:=lidar_livox`. Для другого источника укажите его
 `header.frame_id` через `fixed_frame` (посмотреть можно в сообщении PointCloud2).
-После начала `ros2 bag play` в RViz появятся данные. Используется программный
-OpenGL и не требует доступа к GPU из контейнера.
+После начала `ros2 bag play` в RViz появятся данные. На Linux параметр
+`--device=/dev/dri` и следующая строка `--group-add` включают аппаратный
+Mesa/OpenGL для Intel и AMD. Если каталога `/dev/dri` на хосте нет, уберите обе
+строки: Mesa перейдёт на программный рендеринг. В WSLg они обычно не нужны.
 
 После выхода из графического контейнера остановите прокси:
 
@@ -293,7 +297,7 @@ NumPy/SciPy/OpenCV, rosbag2, Cyclone DDS, отладчик и средства �
 | Профиль | Назначение | Хост |
 |---|---|---|
 | **Universal (Server, Headless)** | Сборка, тесты и обработка bag без GUI | Прежде всего Linux-серверы и CI |
-| **Desktop (Software Graphics)** | Полная среда с RViz и программным OpenGL | Linux через XWayland и Windows через WSL2/WSLg |
+| **Desktop** | Полная среда с RViz; аппаратный Mesa/OpenGL с программным fallback | Linux через XWayland и Windows через WSL2/WSLg |
 
 ### 1. Подготовить хост
 
@@ -335,7 +339,7 @@ Docker, установите Buildx-плагин из пакетов своег�
 2. Откройте **`metro-lidar-processing`**.
 3. Выполните **Dev Containers: Reopen in Container**.
 4. Выберите один из двух профилей. Для сервера без GUI выбирайте `Universal`,
-   для обычного рабочего компьютера — `Desktop (Software Graphics)`.
+   для обычного рабочего компьютера — `Desktop`.
 5. Дождитесь сборки образа и выполнения `postCreateCommand`. Первая сборка
    скачивает несколько гигабайт зависимостей.
 6. В новом терминале проверьте:
@@ -409,6 +413,9 @@ ls -l /tmp/.X11-unix
 Desktop-профиль автоматически запускает на хосте локальный X11-прокси. Контейнер
 подключается к сокету в `.devcontainer/.runtime/x11`, поэтому один и тот же
 профиль работает с обычным Docker Engine, Snap Docker и Docker Desktop/WSLg.
+Прокси передаёт также DRI3-дескрипторы, нужные аппаратному OpenGL. На Linux
+профиль создаёт в контейнере доступные хосту DRM-устройства из `/sys/class/drm`;
+если их нет, этот шаг завершается без ошибки.
 Runtime-каталог добавлен в `.gitignore` и не попадает в репозиторий. Если
 графическая сессия или XWayland недоступны, выводится предупреждение
 `X11 proxy unavailable`; Dev Containers попробует своё перенаправление GUI.
@@ -424,8 +431,10 @@ rviz2
 3D-облака добавьте `PointCloud2`, выберите входной топик и установите Fixed Frame
 по его `header.frame_id`: `hesai_lidar` либо `lidar_livox`.
 
-`Desktop (Software Graphics)` задаёт `LIBGL_ALWAYS_SOFTWARE=1` и работает без
-доступа к GPU из контейнера.
+Проверить выбранный рендерер можно командой `glxinfo -B`. Для аппаратного режима
+строка `Accelerated` должна содержать `yes`, а `OpenGL renderer` — имя Intel или
+AMD GPU. `llvmpipe` означает программный fallback и заметно снижает FPS больших
+облаков точек.
 
 ### 6. ROS-сеть
 

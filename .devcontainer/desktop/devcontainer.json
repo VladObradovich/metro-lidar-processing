@@ -1,5 +1,5 @@
 {
-  "name": "Desktop (Software Graphics)",
+  "name": "Desktop",
   "build": {
     "dockerfile": "../../docker/Dockerfile",
     "context": "../../docker",
@@ -11,19 +11,22 @@
   "updateRemoteUserUID": false,
   "init": true,
   "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start || echo \"X11 proxy unavailable; using Dev Containers GUI forwarding\"",
-  "runArgs": ["--shm-size=1g"],
+  "runArgs": ["--shm-size=1g", "--device-cgroup-rule=c 226:* rmw"],
   "containerEnv": {
     "ROS_DOMAIN_ID": "42",
     "ROS_LOCALHOST_ONLY": "1",
     "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "QT_QPA_PLATFORM": "xcb",
     "QT_X11_NO_MITSHM": "1",
-    "LIBGL_ALWAYS_SOFTWARE": "1"
+    "LIBGL_ALWAYS_SOFTWARE": "0"
   },
   "mounts": [
     "source=${localWorkspaceFolder}/rosbags,target=/data,type=bind,readonly",
     "source=${localWorkspaceFolder}/results,target=/results,type=bind",
     "source=${localWorkspaceFolder}/.devcontainer/.runtime/x11,target=/tmp/.X11-unix,type=bind"
   ],
+  "postStartCommand": "bash .devcontainer/scripts/setup_dri.sh",
   "postCreateCommand": "bash scripts/build.sh",
   "customizations": {
     "vscode": {
