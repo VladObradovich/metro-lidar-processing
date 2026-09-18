@@ -1,4 +1,4 @@
-from metro_lidar_processing.depth_image_node import (
+from metro_perception_tools.depth_image import (
     colorize_depth,
     project_depth_panorama,
     video_frame_index,
