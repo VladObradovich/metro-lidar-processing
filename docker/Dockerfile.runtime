@@ -10,18 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ws
-COPY package.xml /ws/src/metro-lidar-processing/package.xml
+COPY metro_perception_tools/package.xml /ws/src/metro_perception_tools/package.xml
+COPY metro_perception_bringup/package.xml /ws/src/metro_perception_bringup/package.xml
 RUN rosdep update --rosdistro humble \
     && apt-get update \
     && rosdep install --from-paths src --ignore-src --rosdistro humble \
        --dependency-types build --dependency-types buildtool --dependency-types exec -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY setup.py setup.cfg /ws/src/metro-lidar-processing/
-COPY resource /ws/src/metro-lidar-processing/resource
-COPY metro_lidar_processing /ws/src/metro-lidar-processing/metro_lidar_processing
-COPY launch /ws/src/metro-lidar-processing/launch
-COPY rviz /ws/src/metro-lidar-processing/rviz
+COPY metro_perception_tools /ws/src/metro_perception_tools
+COPY metro_perception_bringup /ws/src/metro_perception_bringup
 RUN source /opt/ros/humble/setup.bash \
     && colcon build --merge-install \
     && rm -rf /ws/src /ws/build /ws/log

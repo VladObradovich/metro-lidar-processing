@@ -51,7 +51,7 @@ def main():
         lambda message: frames.add(message.header.frame_id), 10,
     )
     launch = subprocess.Popen([
-        'ros2', 'launch', 'metro_lidar_processing', 'depth_image.launch.py',
+        'ros2', 'launch', 'metro_perception_bringup', 'depth_image.launch.py',
         f'input_topic:={args.input_topic}',
         f'min_azimuth_deg:={args.min_azimuth}',
         f'max_azimuth_deg:={args.max_azimuth}',
