@@ -79,6 +79,12 @@ def allow_host_user(display: str) -> None:
 
 
 def start_proxy(scale_override=None, output=None) -> int:
+    # The desktop devcontainer always bind-mounts PROXY_DIR. Create it before
+    # any X11 validation so fallback paths still have a valid mount source.
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    PROXY_DIR.mkdir(mode=0o777, parents=True, exist_ok=True)
+    os.chmod(PROXY_DIR, 0o777)
+
     display = os.environ.get("DISPLAY", "")
     if not display:
         print(
@@ -109,9 +115,6 @@ def start_proxy(scale_override=None, output=None) -> int:
         print(f"X11 proxy: {error}", file=sys.stderr)
         return 1
 
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    PROXY_DIR.mkdir(mode=0o777, parents=True, exist_ok=True)
-    os.chmod(PROXY_DIR, 0o777)
     (PROXY_DIR / "metro-scale").write_text(f"{scale:g}\n", encoding="utf-8")
     print(f"X11 proxy: Qt scale {scale:g} ({scale_source})")
     stop_previous_proxy()
