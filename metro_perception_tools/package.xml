@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>metro_lidar_processing</name>
+  <name>metro_perception_tools</name>
   <version>0.1.0</version>
-  <description>ROS 2 processing nodes for metro tunnel lidar data.</description>
+  <description>Auxiliary tools for metro tunnel lidar data.</description>
 
   <maintainer email="team@example.com">Hackathon Team</maintainer>
   <license>MIT</license>

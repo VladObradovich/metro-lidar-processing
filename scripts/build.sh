@@ -2,13 +2,9 @@
 set -eo pipefail
 source /opt/ros/humble/setup.bash
 
-workspace="${HOME}/metro_ws"
-if [[ ! -d "${workspace}/src/metro-lidar-processing" ]]; then
-    echo 'Source mount missing: open the repository in its Metro LiDAR dev container.' >&2
-    exit 1
-fi
+workspace="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${workspace}"
-colcon build --symlink-install \
+colcon build --base-paths "${workspace}"/metro_perception_* --symlink-install \
     --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     "$@"
 

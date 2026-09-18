@@ -25,7 +25,7 @@ def generate_launch_description():
         DeclareLaunchArgument('video_fps', default_value='10.0'),
     ]
     node = Node(
-        package='metro_lidar_processing',
+        package='metro_perception_tools',
         executable='depth_image',
         name='lidar_depth_image',
         output='screen',
@@ -70,7 +70,7 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('rviz')),
         arguments=[
             '-d', PathJoinSubstitution([
-                FindPackageShare('metro_lidar_processing'), 'rviz', 'depth_image.rviz'
+                FindPackageShare('metro_perception_bringup'), 'rviz', 'depth_image.rviz'
             ]),
             '-f', LaunchConfiguration('fixed_frame'),
         ],

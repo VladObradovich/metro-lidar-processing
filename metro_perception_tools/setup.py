@@ -1,9 +1,7 @@
-from glob import glob
-
 from setuptools import find_packages, setup
 
 
-package_name = 'metro_lidar_processing'
+package_name = 'metro_perception_tools'
 
 
 setup(
@@ -13,19 +11,17 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', [f'resource/{package_name}']),
         (f'share/{package_name}', ['package.xml']),
-        (f'share/{package_name}/launch', glob('launch/*.launch.py')),
-        (f'share/{package_name}/rviz', glob('rviz/*.rviz')),
     ],
     install_requires=['setuptools'],
     tests_require=['pytest'],
     zip_safe=True,
     maintainer='Hackathon Team',
     maintainer_email='team@example.com',
-    description='ROS 2 processing nodes for metro tunnel lidar data.',
+    description='Auxiliary tools for metro tunnel lidar data.',
     license='MIT',
     entry_points={
         'console_scripts': [
-            'depth_image = metro_lidar_processing.depth_image_node:main',
+            'depth_image = metro_perception_tools.depth_image:main',
         ],
     },
 )
