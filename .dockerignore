@@ -6,8 +6,11 @@ log
 __pycache__
 **/__pycache__
 .pytest_cache
+**/.pytest_cache
 *.egg-info
+**/*.egg-info
 archive
+rosbags
 videos
 results
 *.zip

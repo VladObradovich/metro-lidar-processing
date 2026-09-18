@@ -29,8 +29,8 @@ RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" \
     && chmod 0440 "/etc/sudoers.d/${USERNAME}" \
-    && mkdir -p "/home/${USERNAME}/metro_ws/src" /data /results /tmp/wayland-runtime \
-    && chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}/metro_ws" /results /tmp/wayland-runtime \
+    && mkdir -p /ws /data /results /tmp/wayland-runtime \
+    && chown -R "${USER_UID}:${USER_GID}" /ws /results /tmp/wayland-runtime \
     && chmod 0700 /tmp/wayland-runtime
 
 COPY gui-env.sh /etc/metro-gui-env.sh
@@ -44,7 +44,7 @@ ENV ROS_DOMAIN_ID=42 \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 USER ${USERNAME}
-WORKDIR /home/${USERNAME}/metro_ws/src/metro-lidar-processing
+WORKDIR /ws
 RUN rosdep update --rosdistro humble
 
 ENTRYPOINT ["/usr/local/bin/metro-dev-entrypoint"]

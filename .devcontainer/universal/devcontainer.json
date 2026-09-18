@@ -5,8 +5,8 @@
     "context": "../../docker",
     "target": "universal"
   },
-  "workspaceMount": "source=${localWorkspaceFolder},target=/home/dev/metro_ws/src/metro-lidar-processing,type=bind",
-  "workspaceFolder": "/home/dev/metro_ws/src/metro-lidar-processing",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/ws,type=bind",
+  "workspaceFolder": "/ws",
   "remoteUser": "dev",
   "updateRemoteUserUID": false,
   "init": true,
@@ -17,8 +17,8 @@
     "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp"
   },
   "mounts": [
-    "source=${localWorkspaceFolder}/../archive/for_hackathon,target=/data,type=bind,readonly",
-    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind"
+    "source=${localWorkspaceFolder}/rosbags,target=/data,type=bind,readonly",
+    "source=${localWorkspaceFolder}/results,target=/results,type=bind"
   ],
   "postCreateCommand": "bash scripts/build.sh",
   "customizations": {
