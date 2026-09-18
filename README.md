@@ -1,12 +1,43 @@
 # metro-lidar-processing
 
-ROS 2-пакет обработки лидарных записей для хакатона. Текущая нода преобразует
+ROS 2-проект обработки лидарных записей для хакатона. Текущая нода преобразует
 `PointCloud2` в панорамное изображение глубины и при необходимости сохраняет видео.
 Обнаружение препятствий пока не реализовано.
 
+## Структура проекта
+
+Существующая функциональность распределена по пакетам из плана:
+
+```text
+metro-lidar-processing/
+├── metro_perception_tools/       # ament_python: depth_image и тесты проекции
+│   └── metro_perception_tools/depth_image.py
+├── metro_perception_bringup/     # ament_cmake: launch и конфигурация RViz
+│   ├── launch/depth_image.launch.py
+│   └── rviz/depth_image.rviz
+├── scripts/                     # Сборка, тесты, проверка готового образа
+│   └── test/test_display_scale.py
+├── docker/
+├── .devcontainer/               # Universal (Server) и Desktop
+├── rosbags/                     # Записи rosbag2 → /data, только чтение
+├── results/                     # Видео и результаты → /results
+└── build/, install/, log/       # Создаются при сборке, исключены из Git
+```
+
+Пакеты находятся непосредственно в корне репозитория. Его также можно положить
+в `src/` обычного colcon workspace и собирать штатным `colcon build`.
+`metro_perception_core`, `metro_perception_interfaces` и `metro_perception_ros`
+будут добавлены вместе с рабочим алгоритмом и ROS-нодами. Пустых пакетов и
+launch-файлов для ещё не реализованного конвейера здесь нет.
+
+После переноса запуск выполняется через `metro_perception_bringup`, а отдельная
+нода — через `ros2 run metro_perception_tools depth_image`. Старого пакета
+`metro_lidar_processing` больше нет. После обновления пересоберите образ или
+выполните **Dev Containers: Rebuild Container**: рабочий каталог теперь `/ws`.
+
 ## Быстрый запуск на своём датасете
 
-Для запуска нужен Docker. ROS, Python-зависимости и собранный пакет находятся
+Для запуска нужен Docker. ROS, Python-зависимости и собранные пакеты находятся
 в образе; VS Code и ROS на хосте не нужны. Основной сценарий — Linux с Docker
 Engine. На Windows команды выполняются в WSL2 с интеграцией Docker Desktop;
 пути к данным должны быть доступны из WSL.
@@ -19,30 +50,33 @@ Engine. На Windows команды выполняются в WSL2 с интег
 docker build -f docker/Dockerfile.runtime --target runtime -t metro-lidar:local .
 ```
 
-Образ использует Ubuntu 22.04 / ROS 2 Humble. Зависимости устанавливаются и пакет
-собирается при `docker build`. При изменении кода образ нужно пересобрать.
+Образ использует Ubuntu 22.04 / ROS 2 Humble. Зависимости устанавливаются и пакеты
+собираются при `docker build`. При изменении кода образ нужно пересобрать.
 При запуске ничего скачивать или собирать не требуется. Данные в образ не входят.
 
 ### 2. Подключить свой датасет и открыть контейнер
 
-Замените `/absolute/path/to/dataset` на **существующий абсолютный путь** к своему
-каталогу с bag-файлами. Его расположение и имя на хосте произвольные:
+Поместите записи в `rosbags/` внутри проекта и выполняйте команды из корня
+репозитория. Папка подключается в контейнер как `/data`:
 
 ```bash
 docker run --rm -it --init --name metro-lidar \
-  --mount "type=bind,source=/absolute/path/to/dataset,target=/data,readonly" \
+  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
   metro-lidar:local
 ```
 
-Например, запись `/absolute/path/to/dataset/my_bag/metadata.yaml` будет доступна
+Например, запись `rosbags/my_bag/metadata.yaml` будет доступна
 как `/data/my_bag/metadata.yaml`. Подключайте каталог вместе с `metadata.yaml`
 и всеми файлами `.db3`, указанными в метаданных. Предоставленные записи имеют
 формат rosbag2 SQLite3. Входной каталог подключается только для чтения.
+Содержимое `rosbags/` исключено из Git и контекста Docker-сборки. Если датасет
+проверяющего уже лежит в другом месте, в `source` можно указать любой
+существующий абсолютный путь к нему; пересборка образа не требуется.
 
 ### 3. Запустить обработку в контейнере
 
 ```bash
-exec ros2 launch -n metro_lidar_processing depth_image.launch.py
+exec ros2 launch -n metro_perception_bringup depth_image.launch.py
 ```
 
 ### 4. Проиграть свою запись из второго терминала хоста
@@ -99,7 +133,7 @@ launch, а `-n` включает штатный noninteractive-режим ROS la
 Для `doubleT_obstacle`:
 
 ```bash
-exec ros2 launch -n metro_lidar_processing depth_image.launch.py \
+exec ros2 launch -n metro_perception_bringup depth_image.launch.py \
   input_topic:=/sensing/lidar/hesai128/pointcloud \
   min_azimuth_deg:=-180.0 max_azimuth_deg:=180.0 point_stride:=2
 ```
@@ -116,7 +150,7 @@ UID/GID пользователя хоста обеспечивают досту�
 mkdir -p results
 docker run --rm -it --init --name metro-lidar \
   --user "$(id -u):$(id -g)" \
-  --mount "type=bind,source=/absolute/path/to/dataset,target=/data,readonly" \
+  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
   --mount "type=bind,source=$PWD/results,target=/results" \
   metro-lidar:local
 ```
@@ -124,7 +158,7 @@ docker run --rm -it --init --name metro-lidar \
 В контейнере:
 
 ```bash
-exec ros2 launch -n metro_lidar_processing depth_image.launch.py \
+exec ros2 launch -n metro_perception_bringup depth_image.launch.py \
   video_path:=/results/depth.mp4
 ```
 
@@ -150,7 +184,7 @@ docker run --rm -it --init --name metro-lidar \
   --user "$(id -u):$(id -g)" \
   -e DISPLAY="$DISPLAY" \
   --mount "type=bind,source=$PWD/.devcontainer/.runtime/x11,target=/tmp/.X11-unix" \
-  --mount "type=bind,source=/absolute/path/to/dataset,target=/data,readonly" \
+  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
   metro-lidar:desktop
 ```
 
@@ -158,7 +192,7 @@ docker run --rm -it --init --name metro-lidar \
 и изображение; топики следуют аргументам `input_topic` и `output_topic`:
 
 ```bash
-exec ros2 launch -n metro_lidar_processing depth_image.launch.py rviz:=true
+exec ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true
 ```
 
 Для `doubleT_obstacle` добавьте к команде обработки выше
@@ -177,7 +211,7 @@ python3 .devcontainer/scripts/x11_proxy.py stop
 
 При старте X11-прокси масштаб определяется на **хосте** и передаётся в контейнер
 через файл в уже подключённом каталоге X11. Это работает и для готового
-Desktop-образа, и для обоих Desktop Dev Containers. На хосте не меняются настройки
+Desktop-образа, и для Desktop Dev Container. На хосте не меняются настройки
 монитора или рабочего стола.
 
 Приоритет: `start --scale` → `METRO_QT_SCALE_FACTOR` → `QT_SCALE_FACTOR` хоста →
@@ -232,7 +266,7 @@ QT_SCALE_FACTOR=1 QT_SCREEN_SCALE_FACTORS=1 QT_AUTO_SCREEN_SCALE_FACTOR=0 \
 mkdir -p results
 docker run --rm -i --init --network none \
   --user "$(id -u):$(id -g)" \
-  --mount "type=bind,source=/absolute/path/to/dataset,target=/data,readonly" \
+  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
   --mount "type=bind,source=$PWD/results,target=/results" \
   metro-lidar:local python3 - /data/my_bag \
   --video /results/smoke.mp4 < scripts/smoke_runtime.py
@@ -248,7 +282,7 @@ docker run --rm -i --init --network none \
 
 Далее описана среда разработки с монтированием исходников. Для запуска готового
 решения достаточно разделов выше. Образы `metro-lidar-dev:*` содержат инструменты
-разработки, а `metro-lidar:local` и `metro-lidar:desktop` — установленный пакет.
+разработки, а `metro-lidar:local` и `metro-lidar:desktop` — установленные пакеты.
 
 ## Установка и разработка в VS Code
 
@@ -279,7 +313,7 @@ code --install-extension ms-vscode-remote.remote-containers
 на диске `C:`. Открывайте проект из терминала WSL:
 
 ```bash
-cd ~/hahaton/metro-lidar-processing
+cd ~/metro-lidar-processing
 code .
 ```
 
@@ -289,21 +323,10 @@ code .
 падения. Чтобы убрать предупреждение и сохранить поддержку будущих версий
 Docker, установите Buildx-плагин из пакетов своего дистрибутива.
 
-Ожидаемое расположение данных:
-
-```text
-hahaton/
-├── metro-lidar-processing/   # Открывать эту папку в VS Code
-│   ├── .devcontainer/
-│   ├── docker/
-│   └── scripts/
-├── archive/for_hackathon/    # Распакованные bag-файлы
-└── videos/                   # Результаты и видео
-```
-
-Оба соседних каталога должны существовать до открытия контейнера. При другом
-расположении измените `mounts` в выбранном файле
-`.devcontainer/<profile>/devcontainer.json`.
+Папки `rosbags/` и `results/` уже есть в репозитории. Положите записи в
+`rosbags/`, сохранив каталоги с `metadata.yaml` и файлами данных. Соседние
+каталоги `archive/` и `videos/` больше не используются; ранее сохранённые
+записи и результаты при необходимости перенесите самостоятельно.
 
 ### 2. Выбрать и открыть профиль
 
@@ -311,7 +334,7 @@ hahaton/
    **Dev Containers: Reopen Folder Locally**.
 2. Откройте **`metro-lidar-processing`**.
 3. Выполните **Dev Containers: Reopen in Container**.
-4. Выберите один из трёх профилей. Для сервера без GUI выбирайте `Universal`,
+4. Выберите один из двух профилей. Для сервера без GUI выбирайте `Universal`,
    для обычного рабочего компьютера — `Desktop (Software Graphics)`.
 5. Дождитесь сборки образа и выполнения `postCreateCommand`. Первая сборка
    скачивает несколько гигабайт зависимостей.
@@ -320,21 +343,23 @@ hahaton/
 ```bash
 echo "$ROS_DISTRO"                 # humble
 python3 --version                  # Python 3.10.x
-ros2 pkg prefix metro_lidar_processing
+ros2 pkg prefix metro_perception_bringup
 ```
 
 ### 3. Где находятся файлы
 
 | В контейнере | Назначение |
 |---|---|
-| `~/metro_ws/src/metro-lidar-processing` | Исходники с хоста; изменения сразу видны в Git |
-| `/data` | `archive/for_hackathon`, подключён только для чтения |
-| `/results` | Каталог `videos` на хосте; результаты сохраняются после пересоздания |
-| `~/metro_ws/build`, `install`, `log` | Сборка Humble внутри контейнера |
+| `/ws` | Исходники с хоста; изменения сразу видны в Git |
+| `/data` | `rosbags/` проекта, подключён только для чтения |
+| `/results` | `results/` проекта; результаты сохраняются после пересоздания |
+| `/ws/build`, `/ws/install`, `/ws/log` | Сборка в корне проекта, исключена из Git |
 
-Сборочные каталоги внутри контейнера могут исчезнуть при **Rebuild Container**;
-они создаются повторно автоматически. Исходники, bag и `/results` сохраняются.
-Старые `build/install/log` в репозитории не используются и не удаляются.
+Сборка и тесты определяют корень проекта по расположению скрипта. Их можно
+вызвать из другого каталога; `build/install/log` появятся только внутри
+репозитория. Эти каталоги сохраняются при **Rebuild Container**. После смены
+ROS-дистрибутива или пути монтирования удалите только `build/`, `install/`,
+`log/` внутри проекта и выполните сборку заново.
 
 Процессы работают от пользователя `dev` с фиксированными UID/GID `1000:1000`.
 Для установки дополнительных инструментов есть `sudo`. Постоянные зависимости добавляйте в Dockerfile, затем выполняйте
@@ -347,16 +372,17 @@ UID/GID `1000:1000`, иначе у bind-mounted файлов могут отли
 
 ```bash
 bash scripts/build.sh
-source ~/metro_ws/install/local_setup.bash
+source install/local_setup.bash
 bash scripts/test.sh
 ```
 
-В новых интерактивных терминалах Humble и готовый workspace подключаются
-автоматически. Новые зависимости ROS устанавливайте внутри контейнера:
+В новых терминалах Dev Container Humble и готовый workspace подключаются
+автоматически. На хосте с установленным ROS 2 Humble эти же скрипты работают
+из любого пути к репозиторию. Новые зависимости ROS устанавливайте внутри контейнера:
 
 ```bash
 rosdep update --rosdistro humble
-rosdep install --from-paths ~/metro_ws/src --ignore-src --rosdistro humble -y
+rosdep install --from-paths metro_perception_tools metro_perception_bringup --ignore-src --rosdistro humble -y
 ```
 
 Для воспроизводимости отразите зависимости в `package.xml` и Dockerfile. Не
@@ -364,8 +390,8 @@ rosdep install --from-paths ~/metro_ws/src --ignore-src --rosdistro humble -y
 
 ### 5. RViz на Linux и Windows
 
-RViz установлен только в профилях `Desktop`. RViz из ROS 2 Humble использует
-OGRE с GLX, поэтому профили передают X11/XWayland-сокет и `DISPLAY`, даже если
+RViz установлен только в профиле `Desktop`. RViz из ROS 2 Humble использует
+OGRE с GLX, поэтому Desktop использует X11/XWayland-сокет и `DISPLAY`, даже если
 рабочий стол хоста использует Wayland. Профиль `Universal` не зависит от дисплея
 и не содержит RViz.
 
@@ -384,8 +410,9 @@ Desktop-профиль автоматически запускает на хос
 подключается к сокету в `.devcontainer/.runtime/x11`, поэтому один и тот же
 профиль работает с обычным Docker Engine, Snap Docker и Docker Desktop/WSLg.
 Runtime-каталог добавлен в `.gitignore` и не попадает в репозиторий. Если
-графическая сессия или XWayland недоступны, создание контейнера остановится с
-понятным сообщением `X11 proxy` вместо последующей ошибки Qt.
+графическая сессия или XWayland недоступны, выводится предупреждение
+`X11 proxy unavailable`; Dev Containers попробует своё перенаправление GUI.
+Без работающего X11-подключения RViz открыть не получится.
 
 Внутри Desktop-контейнера запустите:
 
@@ -427,13 +454,13 @@ docker build --target desktop -t metro-lidar-dev:desktop docker
 
 ```bash
 docker run -d --init --name metro-lidar-dev --shm-size 1g \
-  --mount "type=bind,source=$PWD,target=/home/dev/metro_ws/src/metro-lidar-processing" \
-  --mount "type=bind,source=$PWD/../archive/for_hackathon,target=/data,readonly" \
-  --mount "type=bind,source=$PWD/../videos,target=/results" \
+  --mount "type=bind,source=$PWD,target=/ws" \
+  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
+  --mount "type=bind,source=$PWD/results,target=/results" \
   metro-lidar-dev:universal
 docker exec -it metro-lidar-dev bash
 bash scripts/build.sh
-source ~/metro_ws/install/local_setup.bash
+source install/local_setup.bash
 ```
 
 При ручном запуске с другим UID/GID передайте при сборке
@@ -458,21 +485,21 @@ source ~/metro_ws/install/local_setup.bash
 ### Сборка
 
 ```bash
-cd ~/metro_ws/src/metro-lidar-processing
+cd /ws
 bash scripts/build.sh
-source ~/metro_ws/install/local_setup.bash
+source install/local_setup.bash
 ```
 
 ### Запуск для пяти bag-файлов с `/lidar_points`
 
 ```bash
-ros2 launch metro_lidar_processing depth_image.launch.py
+ros2 launch metro_perception_bringup depth_image.launch.py
 ```
 
 ### Запуск для `doubleT_obstacle`
 
 ```bash
-ros2 launch metro_lidar_processing depth_image.launch.py \
+ros2 launch metro_perception_bringup depth_image.launch.py \
   input_topic:=/sensing/lidar/hesai128/pointcloud \
   min_azimuth_deg:=-180.0 \
   max_azimuth_deg:=180.0 \
