@@ -1,31 +1,31 @@
 {
-  "name": "Desktop (Software Graphics)",
+  "name": "Desktop",
   "build": {
     "dockerfile": "../../docker/Dockerfile",
     "context": "../../docker",
     "target": "desktop"
   },
-  "workspaceMount": "source=${localWorkspaceFolder},target=/home/dev/metro_ws/src/metro-lidar-processing,type=bind",
-  "workspaceFolder": "/home/dev/metro_ws/src/metro-lidar-processing",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/ws,type=bind",
+  "workspaceFolder": "/ws",
   "remoteUser": "dev",
   "updateRemoteUserUID": false,
   "init": true,
-  "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start",
-  "runArgs": ["--shm-size=1g"],
+  "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start --devcontainer",
+  "runArgs": ["--shm-size=1g", "--device-cgroup-rule=c 226:* rmw", "--env-file", "${localWorkspaceFolder}/.devcontainer/.runtime/desktop.env"],
   "containerEnv": {
     "ROS_DOMAIN_ID": "42",
     "ROS_LOCALHOST_ONLY": "1",
     "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
-    "DISPLAY": "${localEnv:DISPLAY}",
     "QT_QPA_PLATFORM": "xcb",
     "QT_X11_NO_MITSHM": "1",
-    "LIBGL_ALWAYS_SOFTWARE": "1"
+    "LIBGL_ALWAYS_SOFTWARE": "0"
   },
   "mounts": [
-    "source=${localWorkspaceFolder}/../archive/for_hackathon,target=/data,type=bind,readonly",
-    "source=${localWorkspaceFolder}/../videos,target=/results,type=bind",
+    "source=${localWorkspaceFolder}/rosbags,target=/data,type=bind,readonly",
+    "source=${localWorkspaceFolder}/results,target=/results,type=bind",
     "source=${localWorkspaceFolder}/.devcontainer/.runtime/x11,target=/tmp/.X11-unix,type=bind"
   ],
+  "postStartCommand": "bash .devcontainer/scripts/setup_dri.sh",
   "postCreateCommand": "bash scripts/build.sh",
   "customizations": {
     "vscode": {

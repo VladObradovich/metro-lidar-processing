@@ -10,6 +10,7 @@ with classic Docker and WSLg, keeping the devcontainer files portable.
 from __future__ import annotations
 
 import argparse
+import array
 import getpass
 import os
 from pathlib import Path
@@ -20,6 +21,8 @@ import subprocess
 import sys
 import threading
 import time
+
+from display_scale import detect_scale
 
 
 SCRIPT_PATH = Path(__file__).resolve()
@@ -75,7 +78,13 @@ def allow_host_user(display: str) -> None:
         pass
 
 
-def start_proxy() -> int:
+def start_proxy(scale_override=None, output=None) -> int:
+    # The desktop devcontainer always bind-mounts PROXY_DIR. Create it before
+    # any X11 validation so fallback paths still have a valid mount source.
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    PROXY_DIR.mkdir(mode=0o777, parents=True, exist_ok=True)
+    os.chmod(PROXY_DIR, 0o777)
+
     display = os.environ.get("DISPLAY", "")
     if not display:
         print(
@@ -100,9 +109,14 @@ def start_proxy() -> int:
         )
         return 1
 
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    PROXY_DIR.mkdir(mode=0o777, parents=True, exist_ok=True)
-    os.chmod(PROXY_DIR, 0o777)
+    try:
+        scale, scale_source = detect_scale(scale_override, output)
+    except ValueError as error:
+        print(f"X11 proxy: {error}", file=sys.stderr)
+        return 1
+
+    (PROXY_DIR / "metro-scale").write_text(f"{scale:g}\n", encoding="utf-8")
+    print(f"X11 proxy: Qt scale {scale:g} ({scale_source})")
     stop_previous_proxy()
     destination.unlink(missing_ok=True)
     allow_host_user(display)
@@ -129,11 +143,42 @@ def start_proxy() -> int:
     return 1
 
 
+MAX_ANCILLARY_FDS = 16
+
+
+def close_received_fds(ancillary_data) -> None:
+    """Close SCM_RIGHTS descriptors after they have been forwarded."""
+    for level, kind, data in ancillary_data:
+        if level != socket.SOL_SOCKET or kind != socket.SCM_RIGHTS:
+            continue
+        descriptors = array.array("i")
+        descriptors.frombytes(data[: len(data) - (len(data) % descriptors.itemsize)])
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def pump(source: socket.socket, destination: socket.socket) -> None:
+    ancillary_size = socket.CMSG_SPACE(MAX_ANCILLARY_FDS * array.array("i").itemsize)
     try:
-        while chunk := source.recv(65536):
-            destination.sendall(chunk)
-    except (BrokenPipeError, ConnectionResetError, OSError):
+        while True:
+            chunk, ancillary_data, flags, _address = source.recvmsg(
+                65536, ancillary_size
+            )
+            if not chunk:
+                break
+            if flags & socket.MSG_CTRUNC:
+                close_received_fds(ancillary_data)
+                raise RuntimeError("X11 proxy received too many file descriptors")
+            try:
+                sent = destination.sendmsg([chunk], ancillary_data)
+                if sent < len(chunk):
+                    destination.sendall(chunk[sent:])
+            finally:
+                close_received_fds(ancillary_data)
+    except (BrokenPipeError, ConnectionResetError, OSError, RuntimeError):
         pass
     finally:
         try:
@@ -192,14 +237,38 @@ def serve(source_path: Path, destination_path: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("start")
+    start_parser = subparsers.add_parser("start")
+    start_parser.add_argument("--scale", help="Explicit Qt scale, e.g. 1, 1.5, 2")
+    start_parser.add_argument("--output", help="Host compositor output name")
+    start_parser.add_argument(
+        "--devcontainer", action="store_true",
+        help="Write desktop.env and allow Dev Containers forwarding on proxy failure",
+    )
+    subparsers.add_parser("stop")
     serve_parser = subparsers.add_parser("serve")
     serve_parser.add_argument("source", type=Path)
     serve_parser.add_argument("destination", type=Path)
     arguments = parser.parse_args()
 
     if arguments.command == "start":
-        return start_proxy()
+        if not arguments.devcontainer:
+            return start_proxy(arguments.scale, arguments.output)
+
+        # Docker reads this file at container creation. An absent DISPLAY lets
+        # Dev Containers forward X11; a host TCP DISPLAY would suppress that
+        # forwarding and point at the wrong localhost inside the container.
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        env_file = RUNTIME_DIR / "desktop.env"
+        env_file.write_text("# DISPLAY is provided by Dev Containers.\n", encoding="utf-8")
+        result = start_proxy(arguments.scale, arguments.output)
+        if result == 0:
+            env_file.write_text(f"DISPLAY={os.environ['DISPLAY']}\n", encoding="utf-8")
+        else:
+            print("X11 proxy unavailable; allowing Dev Containers GUI forwarding")
+        return 0
+    if arguments.command == "stop":
+        stop_previous_proxy()
+        return 0
     return serve(arguments.source, arguments.destination)
 
 

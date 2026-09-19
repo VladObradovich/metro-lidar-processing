@@ -9,6 +9,7 @@ if [[ ! -f install/local_setup.bash ]]; then
 fi
 source install/local_setup.bash
 test_status=0
+python3 -m pytest scripts/test || test_status=$?
 colcon test --base-paths "${workspace}"/metro_perception_* \
     --return-code-on-test-failure "$@" || test_status=$?
 colcon test-result --verbose || test_status=$?

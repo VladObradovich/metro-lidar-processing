@@ -50,6 +50,33 @@ def point_cloud_xyz_ring(
     return np.column_stack(coordinates), rings
 
 
+def distance_cloud(message: PointCloud2) -> PointCloud2:
+    """Build a full-resolution XYZ/distance cloud for RViz, in metres."""
+    fields = {field.name: field for field in message.fields}
+    points = np.empty((message.height, message.width, 4), dtype='<f4')
+    for axis, name in enumerate(('x', 'y', 'z')):
+        field = fields.get(name)
+        if field is None or field.datatype != PointField.FLOAT32 or field.count != 1:
+            raise ValueError('Distance visualization requires scalar FLOAT32 XYZ')
+        if message.width * message.height:
+            points[..., axis] = np.ndarray(
+                shape=(message.height, message.width),
+                dtype='>f4' if message.is_bigendian else '<f4',
+                buffer=message.data,
+                offset=field.offset,
+                strides=(message.row_step, message.point_step),
+            )
+    points[..., 3] = np.linalg.norm(points[..., :3], axis=-1)
+    return PointCloud2(
+        header=message.header, height=message.height, width=message.width,
+        fields=[PointField(name=name, offset=4 * index,
+                           datatype=PointField.FLOAT32, count=1)
+                for index, name in enumerate(('x', 'y', 'z', 'distance'))],
+        is_bigendian=False, point_step=16, row_step=16 * message.width,
+        is_dense=bool(np.isfinite(points).all()), data=points.tobytes(),
+    )
+
+
 def project_depth_panorama(
     xyz: np.ndarray,
     rings: np.ndarray,
@@ -158,6 +185,7 @@ class DepthImageNode(Node):
         super().__init__('lidar_depth_image')
         self.declare_parameter('input_topic', '/lidar_points')
         self.declare_parameter('output_topic', '/lidar/depth_image')
+        self.declare_parameter('distance_topic', '/lidar/distance_points')
         self.declare_parameter('image_width', 320)
         self.declare_parameter('image_height', 128)
         self.declare_parameter('min_depth', 1.0)
@@ -193,6 +221,10 @@ class DepthImageNode(Node):
         input_qos = QoSProfile(depth=4, reliability=ReliabilityPolicy.RELIABLE)
         image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
         self.publisher = self.create_publisher(Image, self.output_topic, image_qos)
+        self.distance_publisher = self.create_publisher(
+            PointCloud2, str(self.get_parameter('distance_topic').value),
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT),
+        )
         self.subscription = self.create_subscription(
             PointCloud2,
             self.input_topic,
@@ -260,6 +292,9 @@ class DepthImageNode(Node):
 
     def _point_cloud_callback(self, message: PointCloud2) -> None:
         try:
+            # Avoid copying the full cloud when RViz is not subscribed.
+            if self.distance_publisher.get_subscription_count():
+                self.distance_publisher.publish(distance_cloud(message))
             xyz, rings = point_cloud_xyz_ring(message, self.point_stride)
             depth = project_depth_panorama(
                 xyz,

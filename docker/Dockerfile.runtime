@@ -1,0 +1,58 @@
+FROM ros:humble-ros-base AS runtime
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-colcon-common-extensions python3-rosdep \
+    ros-humble-rosbag2 ros-humble-rosbag2-storage-default-plugins \
+    ros-humble-rmw-cyclonedds-cpp \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ws
+COPY metro_perception_tools/package.xml /ws/src/metro_perception_tools/package.xml
+COPY metro_perception_bringup/package.xml /ws/src/metro_perception_bringup/package.xml
+RUN rosdep update --rosdistro humble \
+    && apt-get update \
+    && rosdep install --from-paths src --ignore-src --rosdistro humble \
+       --dependency-types build --dependency-types buildtool --dependency-types exec -y \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY metro_perception_tools /ws/src/metro_perception_tools
+COPY metro_perception_bringup /ws/src/metro_perception_bringup
+RUN source /opt/ros/humble/setup.bash \
+    && colcon build --merge-install \
+    && rm -rf /ws/src /ws/build /ws/log
+
+COPY docker/gui-env.sh /etc/metro-gui-env.sh
+COPY docker/runtime-entrypoint.sh /usr/local/bin/metro-entrypoint
+RUN chmod 0755 /usr/local/bin/metro-entrypoint \
+    && groupadd --gid 1000 dev \
+    && useradd --uid 1000 --gid 1000 --no-create-home --home-dir /tmp --shell /bin/bash dev \
+    && mkdir -p /data /results \
+    && chmod 1777 /results
+
+ENV ROS_DOMAIN_ID=42 \
+    ROS_LOCALHOST_ONLY=1 \
+    RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+    HOME=/tmp \
+    ROS_LOG_DIR=/tmp/metro-ros-logs
+USER 1000:1000
+STOPSIGNAL SIGINT
+ENTRYPOINT ["/usr/local/bin/metro-entrypoint"]
+CMD ["bash"]
+
+FROM runtime AS runtime-desktop
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository -y ppa:kisak/turtle \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-rviz2 libgl1-mesa-dri libglx-mesa0 \
+    && rm -rf /var/lib/apt/lists/*
+ENV QT_QPA_PLATFORM=xcb \
+    QT_X11_NO_MITSHM=1 \
+    LIBGL_ALWAYS_SOFTWARE=0
+USER 1000:1000
+
+FROM runtime AS default
