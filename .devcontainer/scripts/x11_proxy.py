@@ -240,6 +240,10 @@ def main() -> int:
     start_parser = subparsers.add_parser("start")
     start_parser.add_argument("--scale", help="Explicit Qt scale, e.g. 1, 1.5, 2")
     start_parser.add_argument("--output", help="Host compositor output name")
+    start_parser.add_argument(
+        "--devcontainer", action="store_true",
+        help="Write desktop.env and allow Dev Containers forwarding on proxy failure",
+    )
     subparsers.add_parser("stop")
     serve_parser = subparsers.add_parser("serve")
     serve_parser.add_argument("source", type=Path)
@@ -247,7 +251,21 @@ def main() -> int:
     arguments = parser.parse_args()
 
     if arguments.command == "start":
-        return start_proxy(arguments.scale, arguments.output)
+        if not arguments.devcontainer:
+            return start_proxy(arguments.scale, arguments.output)
+
+        # Docker reads this file at container creation. An absent DISPLAY lets
+        # Dev Containers forward X11; a host TCP DISPLAY would suppress that
+        # forwarding and point at the wrong localhost inside the container.
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        env_file = RUNTIME_DIR / "desktop.env"
+        env_file.write_text("# DISPLAY is provided by Dev Containers.\n", encoding="utf-8")
+        result = start_proxy(arguments.scale, arguments.output)
+        if result == 0:
+            env_file.write_text(f"DISPLAY={os.environ['DISPLAY']}\n", encoding="utf-8")
+        else:
+            print("X11 proxy unavailable; allowing Dev Containers GUI forwarding")
+        return 0
     if arguments.command == "stop":
         stop_previous_proxy()
         return 0

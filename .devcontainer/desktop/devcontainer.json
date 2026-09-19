@@ -10,13 +10,12 @@
   "remoteUser": "dev",
   "updateRemoteUserUID": false,
   "init": true,
-  "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start || echo \"X11 proxy unavailable; using Dev Containers GUI forwarding\"",
-  "runArgs": ["--shm-size=1g", "--device-cgroup-rule=c 226:* rmw"],
+  "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start --devcontainer",
+  "runArgs": ["--shm-size=1g", "--device-cgroup-rule=c 226:* rmw", "--env-file", "${localWorkspaceFolder}/.devcontainer/.runtime/desktop.env"],
   "containerEnv": {
     "ROS_DOMAIN_ID": "42",
     "ROS_LOCALHOST_ONLY": "1",
     "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
-    "DISPLAY": "${localEnv:DISPLAY}",
     "QT_QPA_PLATFORM": "xcb",
     "QT_X11_NO_MITSHM": "1",
     "LIBGL_ALWAYS_SOFTWARE": "0"
