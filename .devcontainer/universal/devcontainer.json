@@ -8,7 +8,7 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/ws,type=bind",
   "workspaceFolder": "/ws",
   "remoteUser": "dev",
-  "updateRemoteUserUID": false,
+  "updateRemoteUserUID": true,
   "init": true,
   "runArgs": ["--shm-size=1g"],
   "containerEnv": {
