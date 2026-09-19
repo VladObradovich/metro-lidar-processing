@@ -120,6 +120,7 @@ launch, а `-n` включает штатный noninteractive-режим ROS la
 |---|---|---|
 | `input_topic` | `/lidar_points` | Входной топик из `ros2 bag info` |
 | `output_topic` | `/lidar/depth_image` | Изображение глубины |
+| `distance_topic` | `/lidar/distance_points` | Облако XYZ с полем `distance` для окраски RViz |
 | `min_azimuth_deg`, `max_azimuth_deg` | `-140.0`, `-40.0` | Сектор проекции в градусах |
 | `min_depth`, `max_depth` | `1.0`, `300.0` | Диапазон расстояний в метрах |
 | `image_width`, `image_height` | `320`, `128` | Размер изображения |
@@ -192,6 +193,12 @@ docker run --rm -it --init --name metro-lidar \
 
 В контейнере запустите обработку с `rviz:=true`. Готовый конфиг показывает облако
 и изображение; топики следуют аргументам `input_topic` и `output_topic`:
+
+Цвет точек определяется дальностью `sqrt(x² + y² + z²)` от начала координат
+входного облака (для этих записей — от лидара), в метрах. Нода публикует отдельное
+облако XYZ + `distance` в `distance_topic` только при наличии подписчика;
+исходные данные не изменяются, точки не прореживаются. RViz использует
+`Intensity → distance` с автоматическим диапазоном цветов.
 
 ```bash
 exec ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true
