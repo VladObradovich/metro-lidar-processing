@@ -1,0 +1,7 @@
+services:
+  desktop:
+    working_dir: /ws
+    volumes:
+      - type: bind
+        source: ${METRO_PROJECT_DIR}
+        target: /ws

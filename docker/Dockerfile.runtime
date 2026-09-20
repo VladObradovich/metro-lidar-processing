@@ -44,10 +44,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ws
-COPY --from=builder /ws/install /ws/install
+COPY --from=builder /ws/install /opt/metro/install
 COPY docker/gui-env.sh /etc/metro-gui-env.sh
 COPY docker/runtime-entrypoint.sh /usr/local/bin/metro-entrypoint
-RUN chmod 0755 /usr/local/bin/metro-entrypoint \
+RUN ln -s /opt/metro/install /ws/install \
+    && chmod 0755 /usr/local/bin/metro-entrypoint \
     && groupadd --gid 1000 dev \
     && useradd --uid 1000 --gid 1000 --no-create-home --home-dir /tmp --shell /bin/bash dev \
     && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev \
