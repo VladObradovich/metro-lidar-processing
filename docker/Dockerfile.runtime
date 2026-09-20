@@ -1,6 +1,5 @@
 FROM ros:humble-ros-base AS runtime
 
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,9 +19,9 @@ RUN rosdep update --rosdistro humble \
 
 COPY metro_perception_tools /ws/src/metro_perception_tools
 COPY metro_perception_bringup /ws/src/metro_perception_bringup
-RUN source /opt/ros/humble/setup.bash \
+RUN /bin/bash -o pipefail -c 'source /opt/ros/humble/setup.bash \
     && colcon build --merge-install \
-    && rm -rf /ws/src /ws/build /ws/log
+    && rm -rf /ws/src /ws/build /ws/log'
 
 COPY docker/gui-env.sh /etc/metro-gui-env.sh
 COPY docker/runtime-entrypoint.sh /usr/local/bin/metro-entrypoint
