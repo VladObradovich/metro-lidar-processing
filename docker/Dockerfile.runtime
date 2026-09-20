@@ -1,11 +1,9 @@
-FROM ros:humble-ros-base AS runtime
+FROM ros:humble-ros-base AS builder
 
-ENV DEBIAN_FRONTEND=noninteractive
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-colcon-common-extensions python3-rosdep \
-    ros-humble-rosbag2 ros-humble-rosbag2-storage-default-plugins \
-    ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ws
@@ -23,6 +21,21 @@ RUN /bin/bash -o pipefail -c 'source /opt/ros/humble/setup.bash \
     && colcon build --merge-install \
     && rm -rf /ws/src /ws/build /ws/log'
 
+FROM ros:humble-ros-base AS runtime
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-numpy python3-opencv \
+    ros-humble-rclpy ros-humble-sensor-msgs \
+    ros-humble-launch ros-humble-launch-ros \
+    ros-humble-rosbag2 ros-humble-rosbag2-storage-default-plugins \
+    ros-humble-rmw-cyclonedds-cpp \
+    && apt-get purge -y python3-colcon-core python3-rosdep \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ws
+COPY --from=builder /ws/install /ws/install
 COPY docker/gui-env.sh /etc/metro-gui-env.sh
 COPY docker/runtime-entrypoint.sh /usr/local/bin/metro-entrypoint
 RUN chmod 0755 /usr/local/bin/metro-entrypoint \
