@@ -32,6 +32,7 @@ FROM ros:humble-ros-base AS runtime
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    sudo \
     python3-numpy python3-opencv python3-yaml \
     ros-humble-rclpy ros-humble-sensor-msgs \
     ros-humble-rclcpp ros-humble-vision-msgs ros-humble-visualization-msgs \
@@ -49,6 +50,8 @@ COPY docker/runtime-entrypoint.sh /usr/local/bin/metro-entrypoint
 RUN chmod 0755 /usr/local/bin/metro-entrypoint \
     && groupadd --gid 1000 dev \
     && useradd --uid 1000 --gid 1000 --no-create-home --home-dir /tmp --shell /bin/bash dev \
+    && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev \
+    && chmod 0440 /etc/sudoers.d/dev \
     && mkdir -p /data /results \
     && chmod 1777 /results
 
