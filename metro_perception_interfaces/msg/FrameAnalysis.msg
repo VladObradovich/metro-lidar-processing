@@ -18,3 +18,14 @@ uint64 received_frames
 uint64 processed_frames
 uint64 rejected_frames
 uint64 overwritten_frames
+
+# A02 diagnostics; valid crop does not mean valid corridor/free space.
+bool transform_applied
+bool calibration_verified
+uint64 geometry_point_count
+uint64 detection_point_count
+uint64 invalid_point_count
+uint64 blind_point_count
+uint64 outside_roi_point_count
+# Explicit operating assumption; does not imply measured extrinsics.
+bool calibration_assumed

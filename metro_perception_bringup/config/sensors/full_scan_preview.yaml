@@ -1,0 +1,16 @@
+# Visualization hypothesis only. Origin remains at lidar, NOT vehicle base.
+# Rz(+pi/2): source -Y -> target +X; source +X -> target +Y.
+input_topic: /sensing/lidar/hesai128/pointcloud
+source_frame: lidar_livox
+target_frame: lidar_preview
+calibration_verified: false
+translation_m: [0.0, 0.0, 0.0]
+rotation_rpy_rad: [0.0, 0.0, 1.5707963267948966]
+calibration_source: 'Sector direction hypothesis; mounting translation/roll/pitch unknown'
+blind_radius_m: 0.5
+geometry_roi:
+  min: [-10.0, -20.0, -10.0]
+  max: [150.0, 20.0, 15.0]
+detection_roi:
+  min: [0.0, -5.0, -3.0]
+  max: [120.0, 5.0, 5.0]

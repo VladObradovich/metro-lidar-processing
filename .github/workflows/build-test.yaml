@@ -26,6 +26,8 @@ jobs:
           source /opt/ros/humble/setup.bash
           source install/local_setup.bash
           python3 scripts/smoke_perception.py
+          python3 scripts/smoke_a02.py
+          python3 scripts/smoke_a02.py --default
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -39,3 +41,7 @@ jobs:
         run: docker build -f docker/Dockerfile.runtime --target runtime -t metro-scaffold:test .
       - name: Smoke without source mount or dataset
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_perception.py
+      - name: A02 online offline parity in installed runtime
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_a02.py
+      - name: Default lidar only profile in installed runtime
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - --default < scripts/smoke_a02.py

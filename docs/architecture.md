@@ -1,5 +1,8 @@
 # Архитектура
 
+**Актуальный режим по умолчанию:** [lidar-only-default.md](lidar-only-default.md).
+Для проверки приватных bag измеренная калибровка не требуется.
+
 ```text
 PointCloud2 → perception_node → FrameAnalysis → obstacle_monitor → PathAssessment
                    │                                      │
@@ -12,9 +15,13 @@ PointCloud2 → perception_node → FrameAnalysis → obstacle_monitor → PathA
 `ros` — адаптеры/ноды, `bringup` — launch/config, `tools` — Python-инструменты.
 Depth image — отдельный существующий путь визуализации.
 
-В каркасе доступны только decode, UNKNOWN и heartbeat. Нода не меняет frame_id
-на base_link без transform. Тяжёлый worker, TF, diagnostics, reset service,
-геометрия, стандартный Detection3DArray и подтверждение ещё не реализованы.
+Доступны decode, A02 (очистка/TF/ROI/raw indices), UNKNOWN и heartbeat.
+Нода меняет frame_id только после применённого transform, сохраняя stamp.
+Статический профиль публикуется в /tf_static и используется общим TF resolver
+онлайн/offline. Внешний TF онлайн читается строго на header.stamp без ожидания
+и без подмены последним transform. Счётчики A02 публикуются в FrameAnalysis.
+Тяжёлый worker, reset service, ground/corridor, Detection3DArray и подтверждение
+ещё не реализованы. Межкадрового накопления облаков нет.
 
 FrameAnalysis хранит единый результат кадра. Header — время наблюдения;
 heartbeat PathAssessment сохраняет исходный stamp/sequence. result_age_ms —

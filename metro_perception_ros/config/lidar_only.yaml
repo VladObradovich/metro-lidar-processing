@@ -1,0 +1,16 @@
+# Default for lidar-only evaluation. Assumed mounting, not a measured calibration.
+# '*' binds to the first nonempty cloud frame for this process/bag.
+source_frame: '*'
+target_frame: base_link
+calibration_verified: false
+allow_unverified_calibration: true
+translation_m: [0.0, 0.0, 0.0]
+rotation_rpy_rad: [0.0, 0.0, 1.5707963267948966]
+calibration_source: 'Assumed: forward=-sensor Y, left=+sensor X, up=+sensor Z; base origin at lidar'
+blind_radius_m: 0.5
+geometry_roi:
+  min: [-10.0, -20.0, -10.0]
+  max: [150.0, 20.0, 15.0]
+detection_roi:
+  min: [0.0, -5.0, -3.0]
+  max: [120.0, 5.0, 5.0]

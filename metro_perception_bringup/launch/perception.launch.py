@@ -1,4 +1,4 @@
-"""Launch the scaffold. No calibrated geometry or obstacle detection yet."""
+"""Launch A02 and monitor. Default lidar-only profile allows assumed mounting."""
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -10,8 +10,10 @@ def generate_launch_description():
     share = FindPackageShare('metro_perception_bringup')
     namespace = LaunchConfiguration('namespace')
     params = [LaunchConfiguration('algorithm_config'), LaunchConfiguration('runtime_config'),
-              {'use_sim_time': LaunchConfiguration('use_sim_time')}]
+              {'use_sim_time': LaunchConfiguration('use_sim_time'),
+               'sensor_profile': LaunchConfiguration('sensor_profile')}]
     return LaunchDescription([
+        DeclareLaunchArgument('sensor_profile', default_value=''),
         DeclareLaunchArgument('namespace', default_value='metro'),
         DeclareLaunchArgument('input_topic', default_value='/lidar_points'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),

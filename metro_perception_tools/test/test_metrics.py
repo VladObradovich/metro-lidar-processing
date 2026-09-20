@@ -17,3 +17,9 @@ def test_invalid_or_empty_results_fail_instead_of_reporting_success():
         summarize([])
     with pytest.raises(ValueError):
         summarize([{'state': 'UNKNOWN', 'processing_ms': float('nan')}])
+
+
+def test_a02_is_not_a_completed_detector():
+    result = summarize([{'state': 'UNKNOWN', 'processing_ms': 1, 'mode': 'a02'}])
+    assert result['scaffold']
+    assert result['quality_metrics'] is None

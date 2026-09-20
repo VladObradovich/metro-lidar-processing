@@ -3,6 +3,8 @@
 `dataset.yaml` содержит пути относительно внешнего корня данных и сведения из
 metadata.yaml. Counts имеют статус declared: пересчитать фактически прочитанные
 сообщения при полном аудите, поскольку metadata бывает несогласованной.
+Фактический A02-прогон записан в processed_frame_count и [отчёте](../docs/a02-validation.md).
+Это не разметка сцен и не полное завершение D02/D03.
 `input_topic` выбирает источник, а не пороги алгоритма.
 
 В `splits.yaml` пока нет назначения: просмотренный bag нельзя автоматически
@@ -20,6 +22,10 @@ PointCloud2, а расстояние измеряется до принятой 
 
 JSONL schema v1 каркаса: bag_id, session_id, frame_sequence, measurement_stamp_ns,
 bag_stamp_ns, state, reason, distance_m (null при отсутствии), candidate_count,
-evaluation_region_valid, processing_ms, mode=scaffold. Идентификаторы и времена
+evaluation_region_valid, processing_ms, mode=a02. Добавлены processing_status,
+transform_applied, calibration_verified и счётчики geometry/detection/invalid/blind/outside_roi.
+Обычный прогон использует metro_perception_ros/config/lidar_only.yaml.
+Поле sensor_profile в dataset.yaml выбирает отдельный строгий preview при --preview.
+ Идентификаторы и времена
 — целые числа; NaN/Infinity запрещены. Полный формат кандидатов и сопоставление
 с разметкой предстоит добавить в E01/E02 до заявления метрик качества.

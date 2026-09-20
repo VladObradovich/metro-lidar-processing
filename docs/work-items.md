@@ -1,17 +1,21 @@
 # Очередь работ
 
+**Актуальный режим по умолчанию:** [lidar-only-default.md](lidar-only-default.md).
+Для проверки приватных bag измеренная калибровка не требуется.
+
 | Пункт | Следующий результат | Файлы / место | Проверка |
 |---|---|---|---|
 | D02, T1 | Полный аудит всех кадров, а не первых samples | tools/inspect_bag.py | timestamps, смена схемы, числа точек |
-| D03, A/T1 | Проверенные оси, sensor origin и габарит | bringup/config/sensors, vehicle.yaml | несколько сцен обоих входов |
+| D03, A/T1 | Опциональное уточнение осей/монтажа; lidar-only default уже доступен | bringup/config/sensors, vehicle.yaml | несколько сцен обоих входов |
 | I01, A/B/C | Утвердить черновой API | core/include, interfaces/msg | сборка всех потребителей |
-| A02/R01, B | TF на время измерения, очистка, очередь 1+1 | ros/pointcloud_adapter, perception_node | нули до transform, reset, overload |
+| A02 | Реализовано: очистка/TF/два ROI/raw indices; реальные extrinsics не подтверждены | core/pipeline, ros/preprocessing | core/TF tests, smoke_a02, все 7 bag; см. calibration.md |
+| R01, B | Очередь 1+1 и полноценный lifecycle | ros/perception_node | reset, overload |
 | A03, A | Ground с ограничением нормали/высоты | core/ground_estimator.hpp/.cpp | стена, платформа, низкий блок |
 | A04, A | Прямой corridor и границы пригодной области | core/corridor_estimator.hpp/.cpp | край объекта пересекает габарит |
 | A05–A07, A | Кандидаты, clustering, raw validation, distance | core/clusterer, object_validator, pipeline | реальный positive, sensor origin |
 | R02, B | Переходы состояний, retirement source, reset | core/temporal_monitor, ros/monitor | late result, stop/restart, history |
 | R04, C | Bbox/corridor/nearest point и удаление markers | ros/visualizer_node | stale UI и namespace |
-| E01, B | Общий TF/config/time path online/offline | ros/evaluate_bag | одинаковая входная последовательность |
+| E01, B | Статический profile/A02 общий; остаются dynamic bag TF и остальные runtime overrides | ros/evaluate_bag | synthetic online/offline parity реализована |
 | D04/E02, T1 | Разметка, matching, TP/FP/FN и distance error | evaluation, tools/metrics.py | UNKNOWN не скрывает FN |
 | P01/P02, C/T2 | Runtime и CI с новыми зависимостями | docker, .github | чистая сборка + smoke |
 | X01–X03 | Только измеренные улучшения | core, evaluation/experiments.yaml | сравнение с сохранённым B0 |

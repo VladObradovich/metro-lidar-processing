@@ -23,7 +23,7 @@ def summarize(rows):
                                  np.percentile(timings, [50, 95, 99]).tolist())),
         'quality_metrics': None,
         'quality_note': 'TP/FP/FN and distance error require reviewed annotations and matching.',
-        'scaffold': any(row.get('mode') == 'scaffold' for row in rows),
+        'scaffold': any(row.get('mode') in {'scaffold', 'a02'} for row in rows),
     }
 
 

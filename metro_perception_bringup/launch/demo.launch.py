@@ -12,13 +12,15 @@ def generate_launch_description():
     share = FindPackageShare('metro_perception_bringup')
     namespace = LaunchConfiguration('namespace')
     return LaunchDescription([
+        DeclareLaunchArgument('sensor_profile', default_value=''),
         DeclareLaunchArgument('namespace', default_value='metro'),
         DeclareLaunchArgument('input_topic', default_value='/lidar_points'),
-        DeclareLaunchArgument('fixed_frame', default_value='hesai_lidar'),
+        DeclareLaunchArgument('fixed_frame', default_value='base_link'),
         DeclareLaunchArgument('rviz', default_value='true'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         IncludeLaunchDescription(PythonLaunchDescriptionSource(PathJoinSubstitution(
             [share, 'launch', 'perception.launch.py'])), launch_arguments={
+                'sensor_profile': LaunchConfiguration('sensor_profile'),
                 'namespace': namespace, 'input_topic': LaunchConfiguration('input_topic'),
                 'use_sim_time': LaunchConfiguration('use_sim_time')}.items()),
         Node(package='metro_perception_ros', executable='visualizer_node',

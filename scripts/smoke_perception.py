@@ -47,7 +47,7 @@ def main():
         cloud.fields = [PointField(name=name, offset=index * 4,
                                    datatype=PointField.FLOAT32, count=1)
                         for index, name in enumerate(('x', 'y', 'z'))]
-        cloud.data = struct.pack('<fff', 10., 0., 0.)
+        cloud.data = struct.pack('<fff', 0., -10., 0.)
         deadline = time.monotonic() + 10
         while not any(row.reason == 'NOT_IMPLEMENTED' and not row.stale for row in received):
             if time.monotonic() > deadline:
@@ -61,12 +61,12 @@ def main():
         assert all(row.state == PathAssessment.UNKNOWN for row in received)
         assert all(not row.distance_valid and not row.evaluation_region_valid for row in received)
         assert stale.header.stamp == fresh.header.stamp
-        assert stale.header.frame_id == 'test_lidar'
+        assert stale.header.frame_id == 'base_link'
         assert stale.source_instance_id == fresh.source_instance_id
         assert stale.result_age_ms >= 500
         spin_until(lambda: any('INPUT_PAUSED_OR_STOPPED' in marker.text
                                for array in markers for marker in array.markers), seconds=3)
-        print('PASS: decoded no-ring cloud -> UNKNOWN -> steady-clock timeout; stamp preserved')
+        print('PASS: default lidar-only no-ring cloud -> NOT_IMPLEMENTED/UNKNOWN -> steady-clock timeout; stamp preserved')
     finally:
         if launch.poll() is None:
             launch.send_signal(signal.SIGINT)

@@ -1,9 +1,15 @@
-# Input hints from existing commands; validate against inspect_bag output.
+# Mounting calibration template. Null transform: use externally supplied TF.
 input_topic: /sensing/lidar/hesai128/pointcloud
 source_frame: lidar_livox
 target_frame: base_link
 calibration_verified: false
-# Fill after D03. Scaffold publishes in the original frame and never applies this template.
 translation_m: null
 rotation_rpy_rad: null
 calibration_source: null
+blind_radius_m: 0.5
+geometry_roi:
+  min: [-10.0, -20.0, -10.0]
+  max: [150.0, 20.0, 15.0]
+detection_roi:
+  min: [0.0, -5.0, -3.0]
+  max: [120.0, 5.0, 5.0]

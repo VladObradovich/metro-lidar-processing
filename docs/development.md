@@ -1,5 +1,8 @@
 # Работа над Metro Perception
 
+**Актуальный режим по умолчанию:** [lidar-only-default.md](lidar-only-default.md).
+Для проверки приватных bag измеренная калибровка не требуется.
+
 [Полный обновлённый план](../PLAN.md) · [Архитектура](architecture.md) ·
 [Форматы данных](../evaluation/README.md) · [Задачи](work-items.md)
 
@@ -13,8 +16,11 @@ Sequential evaluate_bag использует тот же адаптер и core 
 inspect_bag выводит метаданные и первые N схем облаков; metrics/report —
 счётчики состояний и время, без выдуманных TP/FP/FN.
 
-**Детектора ещё нет.** Pipeline возвращает NOT_IMPLEMENTED для декодированного
-кадра; нет TF, ground, corridor, clustering, bbox, временного подтверждения.
+**Детектора ещё нет.** Реализован A02: очистка, TF на stamp, два ROI и raw indices.
+В строгом режиме без TF получается TF_UNAVAILABLE, с неподтверждённой калибровкой —
+CALIBRATION_UNVERIFIED; после валидного A02 — NOT_IMPLEMENTED.
+Ground, corridor, clustering, bbox и временное подтверждение ещё не реализованы.
+[Профили калибровки и запуск без TF в bag](calibration.md).
 Оценки габарита/монтажа в YAML оставлены null. Декодер пока работает в callback:
 worker с очередью 1+1 — задача R01 перед подключением тяжёлой геометрии.
 Каркас не доказывает реальное время, дальность или точность.
@@ -42,6 +48,7 @@ bash scripts/build.sh
 source install/local_setup.bash
 bash scripts/test.sh
 python3 scripts/smoke_perception.py
+python3 scripts/smoke_a02.py
 ```
 
 Зависимости берутся из package.xml:
@@ -75,8 +82,11 @@ ros2 run metro_perception_tools report /results/run-001/summary.json --output /r
 
 Инструменты отказываются перезаписывать результат. Код 0 evaluator означает
 успешный экспорт, а не реализованный детектор: каждая строка содержит
-`mode=scaffold`, UNKNOWN и невалидную область. Статические профили калибровки
-пока не загружаются. TF/config parity — обязательная следующая задача E01/R01.
+`mode=a02`, UNKNOWN и невалидную область. Пятый аргумент evaluate_bag — путь
+к sensor profile YAML. Статический профиль, TF resolver и A02 общие с нодой;
+динамический TF из bag evaluator пока не воспроизводит. При изменении ROS-параметра
+max_points относительно стандартных 2 000 000 этот override не переносится в evaluator.
+Полная runtime/config parity и worker остаются в E01/R01.
 
 Для всех bag из паспорта набора:
 
@@ -97,7 +107,8 @@ ROS executables и параметры устанавливаются в /ws/inst
 - WSL2, composition и NVIDIA не блокируют Ubuntu/headless P0.
 - CI включён как рабочая заготовка. Внешний GitHub run считается проверенным
   только после фактического запуска workflow.
-- День 1 должен закончиться подтверждёнными осями/монтажом, а не только YAML.
+- Для lidar-only сдачи измеренный монтаж не обязателен: используется единый default
+  с явно записанными допущениями. Уточнение монтажа остаётся опциональным.
 
 Полный исходный PLAN.md сохранён как основание. Этот раздел уточняет порядок
 реализации; проценты/галочки готовности нельзя переносить из наличия файлов.

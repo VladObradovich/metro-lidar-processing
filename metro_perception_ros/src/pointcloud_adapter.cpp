@@ -71,9 +71,14 @@ metro_perception_core::FrameInput decode_cloud(const sensor_msgs::msg::PointClou
 }
 metro_perception_core::FrameResult process_cloud(
     const sensor_msgs::msg::PointCloud2& message,
-    const metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points) {
+    const metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
+    const metro_perception_core::FrameContext& context) {
   try {
-    return pipeline.process(decode_cloud(message, max_points));
+    auto frame = decode_cloud(message, max_points);
+    frame.context = context;
+    frame.context.measurement_time_ns =
+        std::int64_t(message.header.stamp.sec) * 1000000000LL + message.header.stamp.nanosec;
+    return pipeline.process(frame);
   } catch (const std::invalid_argument& e) {
     metro_perception_core::FrameResult result;
     result.status = metro_perception_core::AnalysisStatus::BAD_INPUT;
