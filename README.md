@@ -42,7 +42,110 @@ launch-файлов для ещё не реализованного конвей
 Engine. На Windows команды выполняются в WSL2 с интеграцией Docker Desktop;
 пути к данным должны быть доступны из WSL.
 
-### 1. Собрать образ один раз
+### С RViz: скрипт `scripts/desktop.sh`
+
+Из корня проекта в графической Linux/WSLg-сессии:
+
+```bash
+# Подготовить X11/GPU, собрать образ и запустить контейнер.
+bash scripts/desktop.sh up
+bash scripts/desktop.sh shell
+ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true
+```
+
+Команда `up` собирает Desktop-образ и запускает контейнер в фоне. Скрипт
+подготавливает X11-прокси, передаёт UID/GID пользователя и подключает GPU,
+если доступен `/dev/dri/renderD*`. Без DRM-устройства используется программный
+рендеринг. Нужны Docker с Compose v2, Python 3 и на Linux `xhost`.
+Каталоги `rosbags/` и `results/` подключаются автоматически; команды можно
+вызывать и из другого каталога, указав путь к скрипту.
+
+Во втором терминале:
+
+```bash
+bash scripts/desktop.sh exec ros2 bag play /data/my_bag
+```
+
+Открыть оболочку или завершить работу:
+
+```bash
+bash scripts/desktop.sh shell
+# После остановки launch и проигрывания через Ctrl+C:
+bash scripts/desktop.sh down
+```
+
+Настройки контейнера находятся в `compose.yaml`; дополнительный файл
+`docker/compose.gpu.yaml` подключается скриптом при наличии GPU. Подготовка
+X11 выполняется на хосте, поэтому для запуска используй `desktop.sh up`.
+Повторный `up` обновляет образ с использованием кеша Docker; после изменения
+кода повтори эту команду и перезапусти launch. Если нужно только собрать образ
+без запуска контейнера, используй `bash scripts/desktop.sh build`. Команда `down`
+удаляет контейнер и останавливает отдельный Compose-прокси, сохраняя образ,
+записи и результаты.
+
+### Без графики: Docker Compose
+
+Из корня репозитория, без графической сессии и X11:
+
+Для разового интерактивного запуска с автоматическим удалением контейнера:
+
+```bash
+docker compose -f compose.local.yaml run --rm --build --name metro-lidar local bash
+```
+
+Во втором терминале войди в тот же контейнер или проиграй bag:
+
+```bash
+docker exec -it metro-lidar /usr/local/bin/metro-entrypoint bash
+docker exec -it metro-lidar /usr/local/bin/metro-entrypoint \
+  ros2 bag play /data/my_bag
+```
+
+В первом терминале запускай обработку. После `exit` контейнер автоматически
+удаляется:
+
+```bash
+ros2 launch -n metro_perception_bringup depth_image.launch.py
+```
+
+Для длительного запуска в фоне используй Compose-сервис:
+
+```bash
+docker compose -f compose.local.yaml up -d --build
+docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint \
+  ros2 launch -n metro_perception_bringup depth_image.launch.py
+```
+
+Во втором терминале проиграй запись:
+
+```bash
+docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint \
+  ros2 bag play /data/my_bag
+```
+
+Открыть оболочку:
+
+```bash
+docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint bash
+```
+
+После остановки launch и проигрывания через Ctrl+C:
+
+```bash
+docker compose -f compose.local.yaml down
+```
+
+`rosbags/` автоматически подключается как `/data` только для чтения, а
+`results/` — как `/results` для записи. Например, добавь к launch
+`video_path:=/results/depth.mp4`, чтобы сохранить видео на хосте. После изменения
+кода повтори `up -d --build`. Чтобы только собрать образ без запуска контейнера,
+используй `docker compose -f compose.local.yaml build`. Без явных `METRO_UID`/
+`METRO_GID` используются значения `1000:1000`. Compose не требует установки ROS
+на хосте.
+
+### Ручная сборка и запуск через Docker
+
+#### 1. Собрать образ один раз
 
 Из корня этого репозитория:
 
@@ -50,11 +153,12 @@ Engine. На Windows команды выполняются в WSL2 с интег
 docker build -f docker/Dockerfile.runtime --target runtime -t metro-lidar:local .
 ```
 
-Образ использует Ubuntu 22.04 / ROS 2 Humble. Зависимости устанавливаются и пакеты
-собираются при `docker build`. При изменении кода образ нужно пересобрать.
+Образ использует Ubuntu 22.04 / ROS 2 Humble. В builder-стадии `colcon`
+собирает пакеты, а в финальную runtime-стадию копируются `/ws/install` и
+устанавливаются только зависимости запуска. При изменении кода образ нужно пересобрать.
 При запуске ничего скачивать или собирать не требуется. Данные в образ не входят.
 
-### 2. Подключить свой датасет и открыть контейнер
+#### 2. Подключить свой датасет и открыть контейнер
 
 Поместите записи в `rosbags/` внутри проекта и выполняйте команды из корня
 репозитория. Папка подключается в контейнер как `/data`:
@@ -73,13 +177,13 @@ docker run --rm -it --init --name metro-lidar \
 проверяющего уже лежит в другом месте, в `source` можно указать любой
 существующий абсолютный путь к нему; пересборка образа не требуется.
 
-### 3. Запустить обработку в контейнере
+#### 3. Запустить обработку в контейнере
 
 ```bash
 exec ros2 launch -n metro_perception_bringup depth_image.launch.py
 ```
 
-### 4. Проиграть свою запись из второго терминала хоста
+#### 4. Проиграть свою запись из второго терминала хоста
 
 Замените `my_bag` на имя записи в своём датасете:
 
@@ -120,7 +224,6 @@ launch, а `-n` включает штатный noninteractive-режим ROS la
 |---|---|---|
 | `input_topic` | `/lidar_points` | Входной топик из `ros2 bag info` |
 | `output_topic` | `/lidar/depth_image` | Изображение глубины |
-| `distance_topic` | `/lidar/distance_points` | Облако XYZ с полем `distance` для окраски RViz |
 | `min_azimuth_deg`, `max_azimuth_deg` | `-140.0`, `-40.0` | Сектор проекции в градусах |
 | `min_depth`, `max_depth` | `1.0`, `300.0` | Диапазон расстояний в метрах |
 | `image_width`, `image_height` | `320`, `128` | Размер изображения |
@@ -167,7 +270,7 @@ exec ros2 launch -n metro_perception_bringup depth_image.launch.py \
 через Ctrl+C, чтобы закрыть видеофайл. Результат останется в `results/depth.mp4`
 после удаления контейнера. Это видео панорамы глубины, не результат детекции.
 
-## Необязательная визуализация в RViz
+## RViz при ручном запуске Docker
 
 Headless-образ не требует дисплея и GPU. Для RViz соберите отдельный вариант:
 
@@ -194,11 +297,9 @@ docker run --rm -it --init --name metro-lidar \
 В контейнере запустите обработку с `rviz:=true`. Готовый конфиг показывает облако
 и изображение; топики следуют аргументам `input_topic` и `output_topic`:
 
-Цвет точек определяется дальностью `sqrt(x² + y² + z²)` от начала координат
-входного облака (для этих записей — от лидара), в метрах. Нода публикует отдельное
-облако XYZ + `distance` в `distance_topic` только при наличии подписчика;
-исходные данные не изменяются, точки не прореживаются. RViz использует
-`Intensity → distance` с автоматическим диапазоном цветов.
+Цвет точек определяется координатой Y во входном облаке: RViz использует
+`AxisColor → Y` с автоматическим диапазоном цветов. Окраска выполняется
+в RViz, без дополнительного топика и повторной публикации облака.
 
 ```bash
 exec ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true

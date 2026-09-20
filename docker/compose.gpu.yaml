@@ -1,0 +1,7 @@
+# Added by scripts/desktop.sh when a local DRM render device exists.
+services:
+  desktop:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${METRO_RENDER_GID:-0}"

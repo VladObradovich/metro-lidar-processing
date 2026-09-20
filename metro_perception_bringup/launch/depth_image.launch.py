@@ -13,7 +13,6 @@ def generate_launch_description():
         DeclareLaunchArgument('fixed_frame', default_value='hesai_lidar'),
         DeclareLaunchArgument('input_topic', default_value='/lidar_points'),
         DeclareLaunchArgument('output_topic', default_value='/lidar/depth_image'),
-        DeclareLaunchArgument('distance_topic', default_value='/lidar/distance_points'),
         DeclareLaunchArgument('image_width', default_value='320'),
         DeclareLaunchArgument('image_height', default_value='128'),
         DeclareLaunchArgument('min_depth', default_value='1.0'),
@@ -34,7 +33,6 @@ def generate_launch_description():
             {
                 'input_topic': LaunchConfiguration('input_topic'),
                 'output_topic': LaunchConfiguration('output_topic'),
-                'distance_topic': LaunchConfiguration('distance_topic'),
                 'image_width': ParameterValue(
                     LaunchConfiguration('image_width'), value_type=int
                 ),
@@ -77,7 +75,7 @@ def generate_launch_description():
             '-f', LaunchConfiguration('fixed_frame'),
         ],
         remappings=[
-            ('/metro_rviz/input', LaunchConfiguration('distance_topic')),
+            ('/metro_rviz/input', LaunchConfiguration('input_topic')),
             ('/metro_rviz/image', LaunchConfiguration('output_topic')),
         ],
         output='screen',

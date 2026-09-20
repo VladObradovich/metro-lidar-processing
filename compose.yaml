@@ -1,0 +1,25 @@
+services:
+  desktop:
+    image: metro-lidar:desktop
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runtime
+      target: runtime-desktop
+    init: true
+    shm_size: 1gb
+    user: "${METRO_UID:-1000}:${METRO_GID:-1000}"
+    environment:
+      DISPLAY: "${DISPLAY:-}"
+    volumes:
+      - type: bind
+        source: ./.devcontainer/.runtime/compose/x11
+        target: /tmp/.X11-unix
+      - type: bind
+        source: ./rosbags
+        target: /data
+        read_only: true
+      - type: bind
+        source: ./results
+        target: /results
+    command: ["sleep", "infinity"]
+    stop_grace_period: 20s
