@@ -8,7 +8,7 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/ws,type=bind",
   "workspaceFolder": "/ws",
   "remoteUser": "dev",
-  "updateRemoteUserUID": false,
+  "updateRemoteUserUID": true,
   "init": true,
   "initializeCommand": "python3 \"${localWorkspaceFolder}/.devcontainer/scripts/x11_proxy.py\" start --devcontainer",
   "runArgs": ["--shm-size=1g", "--device-cgroup-rule=c 226:* rmw", "--env-file", "${localWorkspaceFolder}/.devcontainer/.runtime/desktop.env"],
