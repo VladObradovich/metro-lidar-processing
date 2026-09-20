@@ -2,21 +2,39 @@
 
 ROS 2-проект обработки лидарных записей для хакатона. Текущая нода преобразует
 `PointCloud2` в панорамное изображение глубины и при необходимости сохраняет видео.
-Обнаружение препятствий пока не реализовано.
+Обнаружение препятствий пока не реализовано. Добавлен собираемый каркас C++/ROS:
+чтение PointCloud2, сообщения, UNKNOWN/watchdog и последовательный экспорт bag.
+Каркас не выдаёт обнаружения или подтверждение свободного пути.
+
+**Для разработки:** [обновлённый план](PLAN.md), [порядок работы и команды](docs/development.md),
+[задачи по участникам](docs/work-items.md), [данные и разметка](evaluation/README.md).
 
 ## Структура проекта
 
-Существующая функциональность распределена по пакетам из плана:
+Пять пакетов и рабочие материалы по обновлённому плану:
 
 ```text
 metro-lidar-processing/
-├── metro_perception_tools/       # ament_python: depth_image и тесты проекции
-│   └── metro_perception_tools/depth_image.py
-├── metro_perception_bringup/     # ament_cmake: launch и конфигурация RViz
-│   ├── launch/depth_image.launch.py
-│   └── rviz/depth_image.rviz
-├── scripts/                     # Сборка, тесты, проверка готового образа
-│   └── test/test_display_scale.py
+├── PLAN.md                      # Обновлённый пятидневный план
+├── metro_perception_core/        # C++17 API и каркас pipeline/monitor без ROS
+│   ├── include/metro_perception_core/
+│   ├── src/
+│   └── test/
+├── metro_perception_interfaces/  # Черновые ROS-сообщения результата
+│   └── msg/
+├── metro_perception_ros/         # Адаптер, ноды, visualizer, evaluate_bag
+│   ├── include/metro_perception_ros/
+│   ├── src/
+│   └── test/
+├── metro_perception_bringup/     # Launch, шаблоны параметров/калибровки, RViz
+│   ├── launch/
+│   ├── config/sensors/
+│   └── rviz/
+├── metro_perception_tools/       # Depth image, инспекция, сводка и отчёт
+├── evaluation/                  # Паспорт набора, splits, шаблон разметки
+├── docs/                        # Архитектура, алгоритм, задачи и демонстрация
+├── scripts/                     # Сборка, тесты, smoke, evaluate_all.py
+├── .github/workflows/           # Humble build/test и runtime smoke
 ├── docker/
 ├── .devcontainer/               # Universal (Server) и Desktop
 ├── rosbags/                     # Записи rosbag2 → /data, только чтение
@@ -26,9 +44,9 @@ metro-lidar-processing/
 
 Пакеты находятся непосредственно в корне репозитория. Его также можно положить
 в `src/` обычного colcon workspace и собирать штатным `colcon build`.
-`metro_perception_core`, `metro_perception_interfaces` и `metro_perception_ros`
-будут добавлены вместе с рабочим алгоритмом и ROS-нодами. Пустых пакетов и
-launch-файлов для ещё не реализованного конвейера здесь нет.
+Новые пакеты — рабочая основа для разработки, а не готовый детектор.
+Геометрия, TF и временное подтверждение перечислены в [очереди работ](docs/work-items.md).
+Их классы добавляются вместе с реализацией; калибровки в YAML пока не проверены.
 
 После переноса запуск выполняется через `metro_perception_bringup`, а отдельная
 нода — через `ros2 run metro_perception_tools depth_image`. Старого пакета
@@ -497,7 +515,7 @@ bash scripts/test.sh
 
 ```bash
 rosdep update --rosdistro humble
-rosdep install --from-paths metro_perception_tools metro_perception_bringup --ignore-src --rosdistro humble -y
+rosdep install --from-paths metro_perception_* --ignore-src --rosdistro humble -y
 ```
 
 Для воспроизводимости отразите зависимости в `package.xml` и Dockerfile. Не

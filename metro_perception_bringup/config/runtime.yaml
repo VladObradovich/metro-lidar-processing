@@ -1,0 +1,4 @@
+/**:
+  ros__parameters:
+    input_reliability: best_effort
+    timeout_s: 0.5

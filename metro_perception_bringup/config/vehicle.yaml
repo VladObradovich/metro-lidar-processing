@@ -1,0 +1,6 @@
+# TEMPLATE: no fabricated train dimensions. Not loaded by scaffold.
+calibration_verified: false
+width_m: null
+height_m: null
+lidar_to_front_m: null
+source: null

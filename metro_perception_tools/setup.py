@@ -22,6 +22,9 @@ setup(
     entry_points={
         'console_scripts': [
             'depth_image = metro_perception_tools.depth_image:main',
+            'inspect_bag = metro_perception_tools.inspect_bag:main',
+            'metrics = metro_perception_tools.metrics:main',
+            'report = metro_perception_tools.report:main',
         ],
     },
 )

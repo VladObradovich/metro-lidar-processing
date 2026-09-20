@@ -1,0 +1,35 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Fixed Frame: hesai_lidar
+    Frame Rate: 20
+  Displays:
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Input cloud
+      Enabled: true
+      Topic:
+        Value: /metro_rviz/input
+        Reliability Policy: Best Effort
+        History Policy: Keep Last
+        Depth: 1
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: AxisColor
+      Axis: Y
+      Position Transformer: XYZ
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Assessment (scaffold UNKNOWN)
+      Enabled: true
+      Marker Topic:
+        Value: /metro_rviz/markers
+        Reliability Policy: Reliable
+        Depth: 1
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 25
+      Pitch: 0.5
+      Yaw: 0.8

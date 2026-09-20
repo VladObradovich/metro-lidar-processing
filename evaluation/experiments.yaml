@@ -1,0 +1,25 @@
+schema_version: 1
+experiments:
+  - id: B0
+    status: planned
+    description: Fixed-radius clustering and straight corridor
+    config: null
+    results: null
+  - id: B1
+    priority: P1
+    status: planned
+    description: Local ground model
+    config: null
+    results: null
+  - id: B2
+    priority: P1
+    status: planned
+    description: Range-adaptive clustering
+    config: null
+    results: null
+  - id: B3
+    priority: P1
+    status: planned
+    description: Temporal confirmation
+    config: null
+    results: null

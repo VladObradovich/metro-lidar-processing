@@ -1,0 +1,4 @@
+# Parameters shared by node and decoder. Geometry parameters belong here when implemented.
+/**:
+  ros__parameters:
+    max_points: 2000000

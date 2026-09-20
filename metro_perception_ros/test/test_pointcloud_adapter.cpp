@@ -1,0 +1,70 @@
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cstring>
+
+#include "metro_perception_ros/pointcloud_adapter.hpp"
+using metro_perception_ros::decode_cloud;
+using sensor_msgs::msg::PointCloud2;
+using sensor_msgs::msg::PointField;
+PointCloud2 fixture(bool big, bool wide) {
+  PointCloud2 msg;
+  msg.width = 1;
+  msg.height = 2;
+  msg.is_bigendian = big;
+  const std::size_t size = wide ? 8 : 4;
+  msg.point_step = 1 + 3 * size;  // Unaligned fields.
+  msg.row_step = msg.point_step + 5;
+  msg.data.resize(msg.row_step * msg.height, 0xee);
+  const std::uint16_t one = 1;
+  const bool host_big = *reinterpret_cast<const std::uint8_t*>(&one) == 0;
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    PointField field;
+    field.name = std::string(1, "xyz"[axis]);
+    field.offset = 1 + axis * size;
+    field.datatype = wide ? PointField::FLOAT64 : PointField::FLOAT32;
+    field.count = 1;
+    msg.fields.push_back(field);
+    for (std::size_t row = 0; row < 2; ++row) {
+      const double value = 1 + row * 3 + axis;
+      const float narrow = static_cast<float>(value);
+      auto* target = msg.data.data() + row * msg.row_step + field.offset;
+      if (wide) {
+        std::memcpy(target, &value, size);
+      } else {
+        std::memcpy(target, &narrow, size);
+      }
+      if (big != host_big) {
+        std::reverse(target, target + size);
+      }
+    }
+  }
+  std::reverse(msg.fields.begin(), msg.fields.end());
+  return msg;
+}
+TEST(Adapter, SupportsPaddingUnalignedEndianFloat64AndMissingRing) {
+  for (bool big : {false, true}) {
+    for (bool wide : {false, true}) {
+      auto frame = decode_cloud(fixture(big, wide));
+      ASSERT_EQ(frame.points.size(), 2u);
+      EXPECT_DOUBLE_EQ(frame.points[0].x, 1);
+      EXPECT_DOUBLE_EQ(frame.points[1].x, 4);
+      EXPECT_DOUBLE_EQ(frame.points[1].z, 6);
+    }
+  }
+}
+TEST(Adapter, RejectsMalformedLayoutsBeforeReadingOrAllocating) {
+  auto msg = fixture(false, false);
+  msg.data.pop_back();
+  EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
+  msg = fixture(false, false);
+  msg.fields[0].offset = msg.point_step;
+  EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
+  msg = fixture(false, false);
+  msg.fields[0].count = 2;
+  EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
+  msg = fixture(false, false);
+  msg.width = 0xffffffff;
+  msg.height = 0xffffffff;
+  EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
+}

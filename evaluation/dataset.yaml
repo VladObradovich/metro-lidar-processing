@@ -1,0 +1,45 @@
+schema_version: 1
+data_root: 'EXTERNAL: pass --dataset-root'
+bags:
+- id: doubleT_obstacle
+  path: doubleT_obstacle
+  input_topic: /sensing/lidar/hesai128/pointcloud
+  storage_id: sqlite3
+  declared_message_count: 201
+  annotations: null
+  audit_status: metadata_only
+- id: doubleT_platform
+  path: doubleT_platform
+  input_topic: /lidar_points
+  storage_id: sqlite3
+  declared_message_count: 345
+  annotations: null
+  audit_status: metadata_only
+- id: roundT_doubleT
+  path: roundT_doubleT
+  input_topic: /lidar_points
+  storage_id: sqlite3
+  declared_message_count: 252
+  annotations: null
+  audit_status: metadata_only
+- id: roundT_pressureGate_roundT
+  path: roundT_pressureGate_roundT
+  input_topic: /lidar_points
+  storage_id: sqlite3
+  declared_message_count: 268
+  annotations: null
+  audit_status: metadata_only
+- id: roundT_squareT_pressureGate_squareT
+  path: roundT_squareT_pressureGate_squareT
+  input_topic: /lidar_points
+  storage_id: sqlite3
+  declared_message_count: 545
+  annotations: null
+  audit_status: metadata_only
+- id: squareT_platform_squareT_switch
+  path: squareT_platform_squareT_switch
+  input_topic: /lidar_points
+  storage_id: sqlite3
+  declared_message_count: 877
+  annotations: null
+  audit_status: metadata_only

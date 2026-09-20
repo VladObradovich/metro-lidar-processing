@@ -1,0 +1,9 @@
+# Input hints from existing commands; validate against inspect_bag output.
+input_topic: /sensing/lidar/hesai128/pointcloud
+source_frame: lidar_livox
+target_frame: base_link
+calibration_verified: false
+# Fill after D03. Scaffold publishes in the original frame and never applies this template.
+translation_m: null
+rotation_rpy_rad: null
+calibration_source: null

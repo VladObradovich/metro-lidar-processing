@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /ws
 COPY metro_perception_tools/package.xml /ws/src/metro_perception_tools/package.xml
 COPY metro_perception_bringup/package.xml /ws/src/metro_perception_bringup/package.xml
+COPY metro_perception_core/package.xml /ws/src/metro_perception_core/package.xml
+COPY metro_perception_interfaces/package.xml /ws/src/metro_perception_interfaces/package.xml
+COPY metro_perception_ros/package.xml /ws/src/metro_perception_ros/package.xml
 RUN rosdep update --rosdistro humble \
     && apt-get update \
     && rosdep install --from-paths src --ignore-src --rosdistro humble \
@@ -17,8 +20,11 @@ RUN rosdep update --rosdistro humble \
 
 COPY metro_perception_tools /ws/src/metro_perception_tools
 COPY metro_perception_bringup /ws/src/metro_perception_bringup
+COPY metro_perception_core /ws/src/metro_perception_core
+COPY metro_perception_interfaces /ws/src/metro_perception_interfaces
+COPY metro_perception_ros /ws/src/metro_perception_ros
 RUN /bin/bash -o pipefail -c 'source /opt/ros/humble/setup.bash \
-    && colcon build --merge-install \
+    && colcon build --merge-install --cmake-args -DBUILD_TESTING=OFF \
     && rm -rf /ws/src /ws/build /ws/log'
 
 FROM ros:humble-ros-base AS runtime
@@ -26,8 +32,10 @@ FROM ros:humble-ros-base AS runtime
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-numpy python3-opencv \
+    python3-numpy python3-opencv python3-yaml \
     ros-humble-rclpy ros-humble-sensor-msgs \
+    ros-humble-rclcpp ros-humble-vision-msgs ros-humble-visualization-msgs \
+    ros-humble-rosidl-default-runtime ros-humble-rosbag2-cpp ros-humble-rosbag2-py \
     ros-humble-launch ros-humble-launch-ros \
     ros-humble-rosbag2 ros-humble-rosbag2-storage-default-plugins \
     ros-humble-rmw-cyclonedds-cpp \

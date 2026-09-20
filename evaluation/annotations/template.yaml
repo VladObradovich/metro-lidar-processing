@@ -1,0 +1,9 @@
+schema_version: 1
+bag_id: REPLACE_ME
+reviewed: false
+time_basis: bag_stamp_ns
+reviewed_intervals: []  # [{start_ns: ..., end_ns: ..., label: negative|positive|uncertain}]
+events: []
+# Event fields: id, start_ns, end_ns, label, evidence, reference_frames.
+# Reference frame: bag_stamp_ns, distance_m, uncertainty_m, method.
+# Leave unmeasured values null; do not infer labels from filenames.

@@ -1,0 +1,41 @@
+name: Humble build and scaffold smoke
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  packages:
+    runs-on: ubuntu-22.04
+    container: ros:humble-ros-base
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y python3-colcon-common-extensions python3-rosdep python3-pytest
+          rosdep update --rosdistro humble
+          rosdep install --from-paths metro_perception_* --ignore-src --rosdistro humble -y
+      - run: bash scripts/build.sh
+      - run: bash scripts/test.sh
+      - name: Scaffold integration smoke
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/local_setup.bash
+          python3 scripts/smoke_perception.py
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: colcon-logs
+          path: log/
+  runtime:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build installed runtime
+        run: docker build -f docker/Dockerfile.runtime --target runtime -t metro-scaffold:test .
+      - name: Smoke without source mount or dataset
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_perception.py
