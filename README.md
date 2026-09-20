@@ -193,6 +193,10 @@ docker run --rm -it --init --name metro-lidar \
 В контейнере запустите обработку с `rviz:=true`. Готовый конфиг показывает облако
 и изображение; топики следуют аргументам `input_topic` и `output_topic`:
 
+Цвет точек определяется координатой Y во входном облаке: RViz использует
+`AxisColor → Y` с автоматическим диапазоном цветов. Окраска выполняется
+в RViz, без дополнительного топика и повторной публикации облака.
+
 ```bash
 exec ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true
 ```
