@@ -1,0 +1,21 @@
+name: metro-lidar-local
+
+services:
+  local:
+    image: metro-lidar:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runtime
+      target: runtime
+    init: true
+    user: "${METRO_UID:-1000}:${METRO_GID:-1000}"
+    volumes:
+      - type: bind
+        source: ./rosbags
+        target: /data
+        read_only: true
+      - type: bind
+        source: ./results
+        target: /results
+    command: ["sleep", "infinity"]
+    stop_grace_period: 20s

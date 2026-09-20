@@ -235,7 +235,10 @@ def serve(source_path: Path, destination_path: Path) -> int:
 
 
 def main() -> int:
+    global RUNTIME_DIR, PROXY_DIR, PID_FILE, LOG_FILE
     parser = argparse.ArgumentParser()
+    parser.add_argument('--runtime-dir', type=Path,
+                        help='Separate proxy state directory for CLI Compose')
     subparsers = parser.add_subparsers(dest="command", required=True)
     start_parser = subparsers.add_parser("start")
     start_parser.add_argument("--scale", help="Explicit Qt scale, e.g. 1, 1.5, 2")
@@ -249,6 +252,11 @@ def main() -> int:
     serve_parser.add_argument("source", type=Path)
     serve_parser.add_argument("destination", type=Path)
     arguments = parser.parse_args()
+    if arguments.runtime_dir is not None:
+        RUNTIME_DIR = arguments.runtime_dir.resolve()
+        PROXY_DIR = RUNTIME_DIR / 'x11'
+        PID_FILE = RUNTIME_DIR / 'x11-proxy.pid'
+        LOG_FILE = RUNTIME_DIR / 'x11-proxy.log'
 
     if arguments.command == "start":
         if not arguments.devcontainer:

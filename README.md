@@ -42,6 +42,70 @@ launch-файлов для ещё не реализованного конвей
 Engine. На Windows команды выполняются в WSL2 с интеграцией Docker Desktop;
 пути к данным должны быть доступны из WSL.
 
+### Серверный вариант `:local` через Compose
+
+Из корня репозитория, без графической сессии и X11:
+
+Для разового интерактивного запуска с автоматическим удалением контейнера:
+
+```bash
+docker compose -f compose.local.yaml run --rm --build --name metro-lidar local bash
+```
+
+Во втором терминале войди в тот же контейнер или проиграй bag:
+
+```bash
+docker exec -it metro-lidar /usr/local/bin/metro-entrypoint bash
+docker exec -it metro-lidar /usr/local/bin/metro-entrypoint \
+  ros2 bag play /data/my_bag
+```
+
+В первом терминале запускай обработку. После `exit` контейнер автоматически
+удаляется:
+
+```bash
+ros2 launch -n metro_perception_bringup depth_image.launch.py
+```
+
+Для длительного запуска в фоне используй Compose-сервис:
+
+```bash
+docker compose -f compose.local.yaml build
+docker compose -f compose.local.yaml up -d
+docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint \
+  ros2 launch -n metro_perception_bringup depth_image.launch.py
+```
+
+Во втором терминале проиграй запись:
+
+```bash
+docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint \
+  ros2 bag play /data/my_bag
+```
+
+Открыть оболочку:
+
+```bash
+docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint bash
+```
+
+После остановки launch и проигрывания через Ctrl+C:
+
+```bash
+docker compose -f compose.local.yaml down
+```
+
+`rosbags/` автоматически подключается как `/data` только для чтения, а
+`results/` — как `/results` для записи. Например, добавь к launch
+`video_path:=/results/depth.mp4`, чтобы сохранить видео на хосте. После изменения
+кода повтори `build` и `up -d`. Без явных `METRO_UID`/`METRO_GID` используются
+значения `1000:1000`. Compose не требует установки ROS на хосте.
+
+Для Desktop с RViz используй `compose.yaml` и команды из раздела
+[«Запуск через Compose»](#запуск-через-compose) ниже. Конфигурации разделены,
+поэтому серверный запуск не поднимает Desktop. Далее приведён альтернативный
+ручной запуск через `docker build` и `docker run`.
+
 ### 1. Собрать образ один раз
 
 Из корня этого репозитория:
@@ -167,6 +231,48 @@ exec ros2 launch -n metro_perception_bringup depth_image.launch.py \
 после удаления контейнера. Это видео панорамы глубины, не результат детекции.
 
 ## Необязательная визуализация в RViz
+
+### Запуск через Compose
+
+Из корня проекта в графической Linux/WSLg-сессии:
+
+```bash
+# Собрать отдельно (необязательно: up также выполняет сборку).
+bash scripts/desktop.sh build
+# Подготовить X11/GPU и запустить контейнер в фоне.
+bash scripts/desktop.sh up
+bash scripts/desktop.sh exec ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true
+```
+
+Команда `up` собирает Desktop-образ и запускает контейнер в фоне. Скрипт
+подготавливает X11-прокси, передаёт UID/GID пользователя и подключает GPU,
+если доступен `/dev/dri/renderD*`. Без DRM-устройства используется программный
+рендеринг. Нужны Docker с Compose v2, Python 3 и на Linux `xhost`.
+Каталоги `rosbags/` и `results/` подключаются автоматически; команды можно
+вызывать и из другого каталога, указав путь к скрипту.
+
+Во втором терминале:
+
+```bash
+bash scripts/desktop.sh exec ros2 bag play /data/my_bag
+```
+
+Открыть оболочку или завершить работу:
+
+```bash
+bash scripts/desktop.sh shell
+# После остановки launch и проигрывания через Ctrl+C:
+bash scripts/desktop.sh down
+```
+
+Настройки контейнера находятся в `compose.yaml`; дополнительный файл
+`docker/compose.gpu.yaml` подключается скриптом при наличии GPU. Подготовка
+X11 выполняется на хосте, поэтому для запуска используй `desktop.sh up`.
+Повторный `up` обновляет образ с использованием кеша Docker; после изменения
+кода повтори эту команду и перезапусти launch. Команда `down` удаляет контейнер
+и останавливает отдельный Compose-прокси, сохраняя образ, записи и результаты.
+
+### Запуск вручную через Docker
 
 Headless-образ не требует дисплея и GPU. Для RViz соберите отдельный вариант:
 
