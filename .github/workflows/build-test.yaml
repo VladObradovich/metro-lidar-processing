@@ -5,6 +5,43 @@ on:
 permissions:
   contents: read
 jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    container: ros:humble-ros-base
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install lint tools
+        run: |
+          apt-get update
+          apt-get install -y clang-format ros-humble-ament-lint-common
+      - name: C++ clang-format
+        run: |
+          mapfile -d '' files < <(
+            find metro_perception_core metro_perception_ros \
+              -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) \
+              -print0
+          )
+          if ((${#files[@]})); then
+            clang-format --dry-run --Werror "${files[@]}"
+          fi
+      - name: Python flake8
+        run: |
+          source /opt/ros/humble/setup.bash
+          ament_flake8 \
+            metro_perception_tools/metro_perception_tools \
+            metro_perception_bringup/launch \
+            scripts
+      - name: Python pep257
+        run: |
+          source /opt/ros/humble/setup.bash
+          ament_pep257 \
+            metro_perception_tools/metro_perception_tools \
+            metro_perception_bringup/launch \
+            scripts
+
   packages:
     runs-on: ubuntu-22.04
     container: ros:humble-ros-base
@@ -33,6 +70,7 @@ jobs:
         with:
           name: colcon-logs
           path: log/
+
   runtime:
     runs-on: ubuntu-22.04
     steps:
@@ -45,3 +83,14 @@ jobs:
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_a02.py
       - name: Default lidar only profile in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - --default < scripts/smoke_a02.py
+
+  runtime-desktop:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build installed desktop runtime
+        run: docker build -f docker/Dockerfile.runtime --target runtime-desktop -t metro-desktop:test .
+      - name: Verify RViz is installed
+        run: |
+          docker run --rm --network none metro-desktop:test \
+            bash -lc 'command -v rviz2 >/dev/null && ros2 pkg prefix metro_perception_bringup >/dev/null'
