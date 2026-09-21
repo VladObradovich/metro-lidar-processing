@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--dataset', type=Path, default=root / 'evaluation/dataset.yaml')
     parser.add_argument('--image-id', default='not_recorded')
     parser.add_argument('--max-points', type=int, default=2000000)
+    parser.add_argument('--max-cloud-bytes', type=int, default=256 * 1024 * 1024)
     parser.add_argument(
         '--preview',
         action='store_true',
@@ -33,6 +34,8 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.max_points <= 10000000:
         parser.error('--max-points must be in [1, 10000000]')
+    if not 1 <= args.max_cloud_bytes <= 1024 * 1024 * 1024:
+        parser.error('--max-cloud-bytes must be in [1, 1073741824]')
     dataset = yaml.safe_load(args.dataset.read_text())
     args.output_dir.mkdir(parents=True, exist_ok=False)
 
@@ -45,6 +48,7 @@ def main():
                 'commit': git('rev-parse', 'HEAD'), 'dirty': bool(git('status', '--porcelain')),
                 'dataset_sha256': sha256(args.dataset), 'config_sha256': {}, 'bags': [],
                 'preview': args.preview, 'max_points': args.max_points,
+                'max_cloud_bytes': args.max_cloud_bytes,
                 'note': (
                     'Profiles are selected by sensor_profile metadata; '
                     'full-scan orientation remains unresolved, no detector/deskew.'
@@ -82,7 +86,7 @@ def main():
                     [
                         'ros2', 'run', 'metro_perception_ros', 'evaluate_bag', str(bag),
                         entry['input_topic'], str(result_dir / 'frames.jsonl'), str(profile),
-                        str(args.max_points),
+                        str(args.max_points), str(args.max_cloud_bytes),
                     ],
                     check=True,
                 )

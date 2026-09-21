@@ -30,6 +30,8 @@ def main():
     args = parser.parse_args()
     reason = "NOT_IMPLEMENTED" if args.default else "CALIBRATION_UNVERIFIED"
     target = "lidar_assumed" if args.default else "test_preview"
+    max_points = 2000000
+    max_cloud_bytes = 256 * 1024 * 1024
     rclpy.init(args=[])
     node = rclpy.create_node('a02_smoke_client')
     analyses, assessments = [], []
@@ -62,7 +64,11 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                 rclpy.spin_once(node, timeout_sec=0.05)
 
         try:
-            until(lambda: publisher.get_subscription_count() > 0 and bool(assessments))
+            until(
+                lambda: publisher.get_subscription_count() > 0
+                and node.count_subscribers('/a02_smoke/analysis') >= 2
+                and bool(assessments)
+            )
             cloud = PointCloud2()
             cloud.header.frame_id = 'private_pandar' if args.default else 'test_lidar'
             cloud.header.stamp.sec = 123
@@ -117,8 +123,9 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             subprocess.run(
                 [
                     'ros2', 'run', 'metro_perception_ros', 'evaluate_bag', str(bag),
-                    '/points', str(result),
-                ] + ([] if args.default else [str(profile)]),
+                    '/points', str(result), '' if args.default else str(profile),
+                    str(max_points), str(max_cloud_bytes),
+                ],
                 check=True,
             )
             offline = json.loads(result.read_text())

@@ -53,6 +53,22 @@ fail-closed как `BAD_INPUT / INVALID_TIMESTAMP`. TF выбирается то
   предыдущий. Unit и integration/load smoke проверяют overwrite, newest-frame-wins,
   reset isolation и bounded shutdown.
 
+### Контракт параметров online/offline
+
+Аудит перед PR разделяет параметры на две группы:
+
+- Общие для результата preprocessing: sensor profile, `max_points` и
+  `max_cloud_bytes`. Online получает лимиты из ROS parameters, offline evaluator — из
+  одноимённых positional overrides; `evaluate_all.py` пробрасывает оба значения и
+  записывает их в manifest. Значения по умолчанию одинаковы: 2 000 000 точек и 256 MiB.
+- Timestamp, source-frame binding, TF lookup, decode и причины fail-closed проходят через
+  общие helpers. Invalid measurement stamp в online monitor и offline monitor нормализуется
+  в `0`, а сам frame остаётся `BAD_INPUT / INVALID_TIMESTAMP`.
+- `input_reliability`, `max_processing_age_s`, `tf_wait_timeout_s` и `timeout_s` —
+  realtime-only параметры транспорта, очереди, ожидания TF и watchdog. Offline exporter
+  намеренно не имитирует wall-clock scheduling/heartbeat. Поэтому они не являются частью
+  алгоритмического online/offline контракта.
+
 ## Автоматические проверки
 
 Текущий CI не фиксирует в этом документе хрупкие абсолютные количества тестов; актуальным

@@ -2,3 +2,4 @@
 /**:
   ros__parameters:
     max_points: 2000000
+    max_cloud_bytes: 268435456

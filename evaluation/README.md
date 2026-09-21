@@ -20,6 +20,9 @@ PointCloud2, а расстояние измеряется до принятой 
 Данные и generated frames/CSV/видео хранятся в rosbags/results и не попадают
 в образ или Git. В Git остаются разметка, выбранные параметры и методика.
 
+Batch manifest фиксирует `max_points` и `max_cloud_bytes`, которые передаются в
+`evaluate_bag`, чтобы resource limits совпадали с online запуском.
+
 JSONL schema v1 каркаса: bag_id, session_id, frame_sequence, measurement_stamp_ns,
 bag_stamp_ns, state, reason, distance_m (null при отсутствии), candidate_count,
 evaluation_region_valid, processing_ms, mode=a02. Добавлены processing_status,

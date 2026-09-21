@@ -4,6 +4,7 @@
 #include "metro_perception_core/temporal_monitor.hpp"
 #include "metro_perception_interfaces/msg/frame_analysis.hpp"
 #include "metro_perception_interfaces/msg/path_assessment.hpp"
+#include "metro_perception_ros/measurement_time.hpp"
 #include "metro_perception_ros/wire_enum_decode.hpp"
 #include "rclcpp/rclcpp.hpp"
 using metro_perception_interfaces::msg::FrameAnalysis;
@@ -42,7 +43,7 @@ class ObstacleMonitor : public rclcpp::Node {
           result.calibration_trust =
               metro_perception_ros::decode_calibration_trust(frame->calibration_trust);
           const auto stamp =
-              std::int64_t(frame->header.stamp.sec) * 1000000000LL + frame->header.stamp.nanosec;
+              metro_perception_ros::decode_measurement_time_ns(frame->header.stamp).value_or(0);
           const auto assessment = monitor_.update(result, stamp);
           output_.header = frame->header;
           output_.source_instance_id = frame->source_instance_id;
