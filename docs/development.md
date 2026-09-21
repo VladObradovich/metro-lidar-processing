@@ -21,9 +21,12 @@ inspect_bag выводит метаданные и первые N схем об�
 CALIBRATION_UNVERIFIED; после валидного A02 — NOT_IMPLEMENTED.
 Ground, corridor, clustering, bbox и временное подтверждение ещё не реализованы.
 [Профили калибровки и запуск без TF в bag](calibration.md).
-Оценки габарита/монтажа в YAML оставлены null. Декодер пока работает в callback:
-worker с очередью 1+1 — задача R01 перед подключением тяжёлой геометрии.
-Каркас не доказывает реальное время, дальность или точность.
+Оценки габарита/монтажа в YAML оставлены null. PointCloud callback теперь только
+принимает сообщение и заменяет latest pending slot; decode/A02 выполняет один worker.
+В памяти не накапливается backlog: максимум один processing + один pending кадр.
+overwritten_frames считает вытесненные pending кадры, max_processing_age_s не даёт
+публиковать устаревший результат. Каркас не доказывает реальное время, дальность
+или точность.
 
 ## Зоны работы
 
@@ -86,7 +89,7 @@ ros2 run metro_perception_tools report /results/run-001/summary.json --output /r
 к sensor profile YAML. Статический профиль, TF resolver и A02 общие с нодой;
 динамический TF из bag evaluator пока не воспроизводит. При изменении ROS-параметра
 max_points относительно стандартных 2 000 000 этот override не переносится в evaluator.
-Полная runtime/config parity и worker остаются в E01/R01.
+Полная runtime/config parity остаётся в E01; worker 1+1 реализован в R01.
 
 Для всех bag из паспорта набора:
 

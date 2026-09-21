@@ -26,8 +26,13 @@ tf2_ros/static_transform_publisher. Внешний TF онлайн читает�
 через FrameAnalysis, monitor и PathAssessment. `ASSUMED` не эквивалентен
 `VERIFIED`: пустой результат при assumed-калибровке не может подтверждать
 свободный путь.
-Тяжёлый worker, reset service, ground/corridor, Detection3DArray и подтверждение
-ещё не реализованы. Межкадрового накопления облаков нет.
+PointCloud callback больше не выполняет тяжёлый A02: он кладёт ConstSharedPtr в
+latest-only слот. Один worker обрабатывает максимум один кадр, ещё один может
+ожидать; новый кадр вытесняет старый pending и увеличивает overwritten_frames.
+Перед публикацией проверяются session и max_processing_age_s, поэтому результат
+старой сессии или слишком старый результат не становится свежим наблюдением.
+Reset service, ground/corridor, Detection3DArray и подтверждение ещё не реализованы.
+Межкадрового накопления облаков нет.
 
 FrameAnalysis хранит единый результат кадра. Header — время наблюдения;
 heartbeat PathAssessment сохраняет исходный stamp/sequence. result_age_ms —

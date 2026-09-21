@@ -9,7 +9,7 @@
 | D03, A/T1 | Опциональное уточнение осей/монтажа; lidar-only default уже доступен | bringup/config/sensors, vehicle.yaml | несколько сцен обоих входов |
 | I01, A/B/C | Утвердить черновой API | core/include, interfaces/msg | сборка всех потребителей |
 | A02 | Реализовано: очистка/TF/два ROI/raw indices; реальные extrinsics не подтверждены | core/pipeline, ros/preprocessing | core/TF tests, smoke_a02, все 7 bag; см. calibration.md |
-| R01, B | Очередь 1+1 и полноценный lifecycle | ros/perception_node | reset, overload |
+| R01, B | Реализовано: latest-only worker 1+1, QoS, overwrite/max-age/session guards; lifecycle оставлен P1 | ros/perception_node, ros/test | overwrite, reset, overload |
 | A03, A | Ground с ограничением нормали/высоты | core/ground_estimator.hpp/.cpp | стена, платформа, низкий блок |
 | A04, A | Прямой corridor и границы пригодной области | core/corridor_estimator.hpp/.cpp | край объекта пересекает габарит |
 | A05–A07, A | Кандидаты, clustering, raw validation, distance | core/clusterer, object_validator, pipeline | реальный positive, sensor origin |
