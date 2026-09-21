@@ -25,7 +25,9 @@
 | squareT_platform_squareT_switch | 877 | 156046–189993 | 126359–189788 | 1 |
 | new_data | 11271 | 152356–191094 | 75550–190374 | 1 |
 
-Число сессий увеличивается при скачке header.stamp назад. TF выбирается на времени
+Число сессий увеличивается при скачке валидного `header.stamp` назад. Нулевые,
+отрицательные и некорректные stamp не меняют session/source binding и обрабатываются
+fail-closed как `BAD_INPUT / INVALID_TIMESTAMP`. TF выбирается только на валидном времени
 измерения; bag record time отдельно сохраняется в каждой строке JSONL.
 
 ## Текущее состояние A02
@@ -38,9 +40,15 @@
 - `forward_sector_preview.yaml` по-прежнему является только визуальной гипотезой
   `hesai_lidar -> lidar_preview`, Rz(+π/2), translation=0 и `calibration_verified=false`.
   Таким образом, два preview-профиля намеренно больше не имеют одинаковый TF.
-- Online и offline пути используют stamp измерения; offline evaluator воспроизводит из bag
-  `/tf` и `/tf_static`, а не ограничивается только статическим TF из sensor profile.
-- Offline `max_points` является явным override и проверяется на паритет с online pipeline.
+- Online и offline пути используют только валидный положительный stamp измерения; zero-time
+  никогда не превращается в latest-TF fallback. Offline evaluator воспроизводит из bag `/tf`
+  и `/tf_static`, а не ограничивается только статическим TF из sensor profile.
+- PointCloud2 decoder до чтения XYZ проверяет layout/strides, уникальность и непересечение
+  scalar FLOAT32/FLOAT64 полей x/y/z. NaN/Inf не проходят в геометрию: они учитываются как
+  invalid points, а кадр без валидной геометрии остаётся fail-closed.
+- Помимо `max_points` действует независимый `max_cloud_bytes` (по умолчанию 256 MiB,
+  допустимый максимум 1 GiB). Оба лимита одинаково применяются online и offline; evaluator
+  поддерживает явные overrides `MAX_POINTS` и `MAX_CLOUD_BYTES`.
 - Latest-only worker имеет модель 1 processing + 1 pending: новый pending кадр заменяет
   предыдущий. Unit и integration/load smoke проверяют overwrite, newest-frame-wins,
   reset isolation и bounded shutdown.

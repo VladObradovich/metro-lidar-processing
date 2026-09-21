@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -47,6 +48,16 @@ const char* state_name(metro_perception_core::State state) {
   return "UNKNOWN";
 }
 
+std::size_t parse_limit(const char* text, const char* name) {
+  const std::string value(text);
+  std::size_t consumed = 0;
+  const auto parsed = std::stoull(value, &consumed);
+  if (consumed != value.size() || parsed > std::numeric_limits<std::size_t>::max()) {
+    throw std::invalid_argument(std::string(name) + " is not a valid size");
+  }
+  return static_cast<std::size_t>(parsed);
+}
+
 void restore_static_transforms(
     tf2_ros::Buffer& buffer,
     const std::vector<geometry_msgs::msg::TransformStamped>& bag_static_transforms,
@@ -64,8 +75,9 @@ void restore_static_transforms(
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc < 4 || argc > 6) {
-    std::cerr << "Usage: evaluate_bag BAG TOPIC OUTPUT.jsonl [SENSOR_PROFILE.yaml] [MAX_POINTS]\n";
+  if (argc < 4 || argc > 7) {
+    std::cerr << "Usage: evaluate_bag BAG TOPIC OUTPUT.jsonl [SENSOR_PROFILE.yaml] [MAX_POINTS] "
+                 "[MAX_CLOUD_BYTES]\n";
     return argc == 2 && std::string(argv[1]) == "--help" ? 0 : 2;
   }
 
@@ -104,16 +116,11 @@ int main(int argc, char** argv) {
     }
 
     auto config = metro_perception_ros::load_preprocessing(argc >= 5 ? argv[4] : "");
-    if (argc == 6) {
-      const std::string value(argv[5]);
-      std::size_t consumed = 0;
-      const auto max_points = std::stoull(value, &consumed);
-      if (consumed != value.size() || max_points == 0 || max_points > 10000000) {
-        throw std::invalid_argument("MAX_POINTS must be in [1, 10000000]");
-      }
-      config.algorithm.max_points = static_cast<std::size_t>(max_points);
-      config.algorithm.validate();
-    }
+    std::size_t max_cloud_bytes = metro_perception_ros::kDefaultMaxCloudBytes;
+    if (argc >= 6) config.algorithm.max_points = parse_limit(argv[5], "MAX_POINTS");
+    if (argc == 7) max_cloud_bytes = parse_limit(argv[6], "MAX_CLOUD_BYTES");
+    metro_perception_ros::validate_pointcloud_limits(config.algorithm.max_points, max_cloud_bytes);
+    config.algorithm.validate();
 
     rclcpp::Serialization<sensor_msgs::msg::PointCloud2> point_serializer;
     rclcpp::Serialization<tf2_msgs::msg::TFMessage> tf_serializer;
@@ -174,12 +181,12 @@ int main(int argc, char** argv) {
                   metro_perception_ros::resolved_static_transform(config, source_binding)) {
             buffer.setTransform(*transform, "sensor_profile", true);
           }
-          context = metro_perception_ros::resolve_context(cloud.header, config, source_binding,
-                                                          buffer);
+          context =
+              metro_perception_ros::resolve_context(cloud.header, config, source_binding, buffer);
         }
 
         result = metro_perception_ros::process_cloud(cloud, pipeline, config.algorithm.max_points,
-                                                     context);
+                                                     context, max_cloud_bytes);
       } catch (const std::exception&) {
         result.status = metro_perception_core::AnalysisStatus::BAD_INPUT;
         result.reason = "DESERIALIZATION_ERROR";

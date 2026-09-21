@@ -79,7 +79,7 @@ TEST(Adapter, RejectsMalformedLayoutsBeforeReadingOrAllocating) {
 
   msg = fixture(false, false);
   msg.fields.push_back(*std::find_if(msg.fields.begin(), msg.fields.end(),
-                                    [](const PointField& field) { return field.name == "x"; }));
+                                     [](const PointField& field) { return field.name == "x"; }));
   EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
 
   msg = fixture(false, false);
@@ -147,4 +147,25 @@ TEST(Adapter, NonFiniteCoordinatesAreFilteredWithoutPropagation) {
   EXPECT_EQ(result.reason, "EMPTY_GEOMETRY_ROI");
   EXPECT_EQ(result.preprocessed.invalid_points, 2u);
   EXPECT_TRUE(result.preprocessed.geometry_points.empty());
+}
+
+TEST(Adapter, EnforcesIndependentPointAndByteLimits) {
+  const auto msg = fixture(false, false);
+  EXPECT_THROW(decode_cloud(msg, 0), std::invalid_argument);
+  EXPECT_THROW(decode_cloud(msg, metro_perception_ros::kMaxPointLimit + 1), std::invalid_argument);
+  EXPECT_THROW(decode_cloud(msg, 10, 0), std::invalid_argument);
+  EXPECT_THROW(decode_cloud(msg, 10, metro_perception_ros::kMaxCloudByteLimit + 1),
+               std::invalid_argument);
+  EXPECT_THROW(decode_cloud(msg, 1), std::invalid_argument);
+  ASSERT_GT(msg.data.size(), 1u);
+  EXPECT_THROW(decode_cloud(msg, 10, msg.data.size() - 1), std::invalid_argument);
+
+  metro_perception_core::FrameContext context;
+  context.transform_available = true;
+  context.calibration_verified = true;
+  const metro_perception_core::PerceptionPipeline pipeline;
+  const auto result =
+      metro_perception_ros::process_cloud(msg, pipeline, 10, context, msg.data.size() - 1);
+  EXPECT_EQ(result.status, metro_perception_core::AnalysisStatus::BAD_INPUT);
+  EXPECT_EQ(result.reason, "POINTCLOUD_BYTE_LIMIT_EXCEEDED");
 }

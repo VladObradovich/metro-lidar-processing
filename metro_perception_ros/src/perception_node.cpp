@@ -1,6 +1,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <iomanip>
 #include <optional>
 #include <random>
@@ -22,11 +23,21 @@ class PerceptionNode : public rclcpp::Node {
  public:
   explicit PerceptionNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
       : Node("perception", options) {
-    const auto limit = declare_parameter<int>("max_points", 2000000);
-    if (limit <= 0 || limit > 10000000) {
+    const auto point_limit = declare_parameter<std::int64_t>(
+        "max_points", static_cast<std::int64_t>(metro_perception_ros::kDefaultMaxPoints));
+    const auto byte_limit = declare_parameter<std::int64_t>(
+        "max_cloud_bytes", static_cast<std::int64_t>(metro_perception_ros::kDefaultMaxCloudBytes));
+    if (point_limit <= 0 ||
+        point_limit > static_cast<std::int64_t>(metro_perception_ros::kMaxPointLimit)) {
       throw std::invalid_argument("Invalid max_points");
     }
-    max_points_ = static_cast<std::size_t>(limit);
+    if (byte_limit <= 0 ||
+        byte_limit > static_cast<std::int64_t>(metro_perception_ros::kMaxCloudByteLimit)) {
+      throw std::invalid_argument("Invalid max_cloud_bytes");
+    }
+    max_points_ = static_cast<std::size_t>(point_limit);
+    max_cloud_bytes_ = static_cast<std::size_t>(byte_limit);
+    metro_perception_ros::validate_pointcloud_limits(max_points_, max_cloud_bytes_);
 
     const auto max_age_s = declare_parameter<double>("max_processing_age_s", 0.30);
     if (!std::isfinite(max_age_s) || max_age_s <= 0.0 || max_age_s > 10.0) {
@@ -158,8 +169,8 @@ class PerceptionNode : public rclcpp::Node {
       const auto tf_wait_elapsed = std::chrono::steady_clock::now() - tf_wait_started;
       tf_wait_ms = std::chrono::duration<double, std::milli>(tf_wait_elapsed).count();
     }
-    const auto frame =
-        metro_perception_ros::process_cloud(*work.message, *pipeline_, max_points_, context);
+    const auto frame = metro_perception_ros::process_cloud(*work.message, *pipeline_, max_points_,
+                                                           context, max_cloud_bytes_);
     processed_.fetch_add(1);
 
     // A reset may happen while an old frame is being processed. Never publish it into the new
@@ -208,6 +219,7 @@ class PerceptionNode : public rclcpp::Node {
   std::unique_ptr<tf2_ros::Buffer> buffer_;
   std::unique_ptr<tf2_ros::TransformListener> listener_;
   std::size_t max_points_{0};
+  std::size_t max_cloud_bytes_{0};
   std::chrono::duration<double> max_processing_age_{0.30};
   std::chrono::nanoseconds tf_wait_timeout_{std::chrono::milliseconds(50)};
   std::unique_ptr<metro_perception_core::PerceptionPipeline> pipeline_;
