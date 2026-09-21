@@ -1,14 +1,17 @@
 # Проверка A02 на текущем наборе
 
-Исторический прогон строгого preview. Текущий default разрешает допущенную калибровку:
-[lidar-only-default.md](lidar-only-default.md).
+Ниже сохранён **исторический** прогон строгого preview от 21.09.2026. Текущий default
+уже использует отдельную допущенную геометрию для известного forward-sector входа:
+[lidar-only-default.md](lidar-only-default.md). Числа исторического прогона ниже не
+пересчитывались после последующих изменений pipeline.
 
-Дата: 21.09.2026. ROS 2 Humble, отдельный контейнер, исходные bag смонтированы read-only.
+Дата прогона: 21.09.2026. ROS 2 Humble, отдельный контейнер, исходные bag смонтированы read-only.
 
 Прочитаны и обработаны **13 759 кадров из всех 7 bag**. Числа совпали с metadata.
-На каждом кадре применён static TF preview, выполнены очистка и ROI. Все результаты:
-`INVALID_GEOMETRY / CALIBRATION_UNVERIFIED`, `UNKNOWN`, `distance_m=null`,
-`evaluation_region_valid=false`. Ошибок декодирования и TF lookup в этом прогоне нет.
+На каждом кадре исторического preview применялась тогдашняя preview-геометрия, выполнены
+очистка и ROI. Все результаты: `INVALID_GEOMETRY / CALIBRATION_UNVERIFIED`, `UNKNOWN`,
+`distance_m=null`, `evaluation_region_valid=false`. Ошибок декодирования и TF lookup в
+этом прогоне нет.
 
 Это проверка обработки входа и защитных условий; монтаж и качество детектора не подтверждены.
 
@@ -23,32 +26,46 @@
 | new_data | 11271 | 152356–191094 | 75550–190374 | 1 |
 
 Число сессий увеличивается при скачке header.stamp назад. TF выбирается на времени
-измерения; bag record time отдельно сохранён в каждой строке JSONL.
+измерения; bag record time отдельно сохраняется в каждой строке JSONL.
 
-Профили: `forward_sector_preview.yaml` для /lidar_points и
-`full_scan_preview.yaml` для /sensing/lidar/hesai128/pointcloud.
-В обоих случаях target=lidar_preview, Rz(+π/2), translation=0,
-calibration_verified=false. Направление полного скана не подтверждено.
+## Текущее состояние A02
+
+- `forward_sector_assumed.yaml` использует `source_frame_mode: bind_first`: имя source frame
+  привязывается к первому кадру каждой session, а явная гипотеза Rz(+π/2) и нулевая
+  translation остаётся `ASSUMED`, а не измеренной калибровкой.
+- `full_scan_unresolved.yaml` и `full_scan_preview.yaml` оставляют 360° облако в нативном
+  `lidar_livox` frame без выдуманного направления движения поезда и fail-closed до D03.
+- `forward_sector_preview.yaml` по-прежнему является только визуальной гипотезой
+  `hesai_lidar -> lidar_preview`, Rz(+π/2), translation=0 и `calibration_verified=false`.
+  Таким образом, два preview-профиля намеренно больше не имеют одинаковый TF.
+- Online и offline пути используют stamp измерения; offline evaluator воспроизводит из bag
+  `/tf` и `/tf_static`, а не ограничивается только статическим TF из sensor profile.
+- Offline `max_points` является явным override и проверяется на паритет с online pipeline.
+- Latest-only worker имеет модель 1 processing + 1 pending: новый pending кадр заменяет
+  предыдущий. Unit и integration/load smoke проверяют overwrite, newest-frame-wins,
+  reset isolation и bounded shutdown.
 
 ## Автоматические проверки
 
-- Сборка всех пяти пакетов Humble прошла.
-- colcon: 19 тестов, 0 ошибок; после изменения метрик отдельно повторены Python-тесты tools: 7 passed.
-- scripts/test: 13 passed.
-- Core: invalid/zero до translation, blind mask, rotation, два ROI, raw indices,
-  invalid transform/config, отсутствие накопления.
-- TF: интерполяция на header.stamp, отказ при missing/extrapolation/zero stamp.
-- smoke_perception: missing TF → UNKNOWN, steady watchdog без /clock.
-- smoke_a02: одинаковые online/offline счётчики и статусы, поздний подписчик /tf_static,
-  новая session при скачке stamp назад, UNKNOWN и clean shutdown.
-- Собран отдельный runtime metro-lidar:a02-check; оба smoke прошли
-  без исходников, датасета, сети и GUI. Текущий desktop-контейнер не изменялся.
+Текущий CI не фиксирует в этом документе хрупкие абсолютные количества тестов; актуальным
+источником является зелёный workflow для HEAD. Он проверяет:
 
-Сырые JSONL и summary.json с hash исходников/результатов сохранены локально в
-`results/a02-20260921/` (исключены из Git). Там же логи сборки и smoke.
+- сборку и пакетные тесты ROS 2 Humble, clang-format, flake8 и pep257;
+- core/preprocessing, TF на `header.stamp`, invalid/missing/extrapolated TF и конфигурацию;
+- `smoke_perception`, online/offline A02 parity, default lidar-only profile, namespace
+  isolation и latest-only worker under load;
+- установленный `runtime` image без source mount, dataset и сети: базовый smoke, A02 parity
+  и default lidar-only profile;
+- `runtime-desktop`: сборку установленного desktop target и наличие `rviz2` и bringup package.
+
+GUI/RViz интерактивно CI не проверяет.
+
+Сырые JSONL и summary.json именно исторического прогона сохранены локально в
+`results/a02-20260921/` (исключены из Git). Там же логи того прогона.
 Команды воспроизведения: [calibration.md](calibration.md).
 
-A03–A07, worker 1+1 и временное подтверждение кандидатов не входят в этот результат.
+A03–A07 и временное подтверждение кандидатов ещё не входят в результат A02.
 D03 остаётся открытым: нет измеренной установки лидара относительно поезда.
-Динамический TF из bag и кастомные ROS overrides в offline пока не поддержаны.
-GUI/RViz интерактивно не проверялся. Timings A02 не являются оценкой будущего детектора.
+Кастомные ROS parameter overrides offline сверх поддерживаемых evaluator overrides не
+считаются полностью эквивалентными произвольному online launch. Timings A02 не являются
+оценкой будущего детектора.
