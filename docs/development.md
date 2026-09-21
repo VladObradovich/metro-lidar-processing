@@ -21,9 +21,14 @@ inspect_bag выводит метаданные и первые N схем об�
 CALIBRATION_UNVERIFIED; после валидного A02 — NOT_IMPLEMENTED.
 Ground, corridor, clustering, bbox и временное подтверждение ещё не реализованы.
 [Профили калибровки и запуск без TF в bag](calibration.md).
-Оценки габарита/монтажа в YAML оставлены null. Декодер пока работает в callback:
-worker с очередью 1+1 — задача R01 перед подключением тяжёлой геометрии.
-Каркас не доказывает реальное время, дальность или точность.
+Оценки габарита/монтажа в YAML оставлены null. PointCloud callback теперь только
+принимает сообщение и заменяет latest pending slot; decode/A02 выполняет один worker.
+В памяти не накапливается backlog: максимум один processing + один pending кадр.
+overwritten_frames считает вытесненные pending кадры, max_processing_age_s не даёт
+публиковать устаревший результат. Динамический TF ожидается ограниченно параметром
+tf_wait_timeout_s строго на header.stamp; latest transform не подставляется.
+queue_age_ms и tf_wait_ms позволяют разделить причины задержки. Каркас не доказывает
+реальное время, дальность или точность.
 
 ## Зоны работы
 
@@ -83,10 +88,11 @@ ros2 run metro_perception_tools report /results/run-001/summary.json --output /r
 Инструменты отказываются перезаписывать результат. Код 0 evaluator означает
 успешный экспорт, а не реализованный детектор: каждая строка содержит
 `mode=a02`, UNKNOWN и невалидную область. Пятый аргумент evaluate_bag — путь
-к sensor profile YAML. Статический профиль, TF resolver и A02 общие с нодой;
-динамический TF из bag evaluator пока не воспроизводит. При изменении ROS-параметра
-max_points относительно стандартных 2 000 000 этот override не переносится в evaluator.
-Полная runtime/config parity и worker остаются в E01/R01.
+к sensor profile YAML. Статический профиль, TF resolver и A02 общие с нодой. Evaluator воспроизводит
+`/tf` и `/tf_static` из bag и использует точный measurement stamp. Общие resource limits
+`max_points` и `max_cloud_bytes` можно явно передать evaluator; `evaluate_all.py`
+пробрасывает их и сохраняет в manifest. Realtime-only параметры очереди, bounded TF wait
+и watchdog намеренно не эмулируются offline. Worker 1+1 реализован в R01.
 
 Для всех bag из паспорта набора:
 
@@ -107,8 +113,9 @@ ROS executables и параметры устанавливаются в /ws/inst
 - WSL2, composition и NVIDIA не блокируют Ubuntu/headless P0.
 - CI включён как рабочая заготовка. Внешний GitHub run считается проверенным
   только после фактического запуска workflow.
-- Для lidar-only сдачи измеренный монтаж не обязателен: используется единый default
-  с явно записанными допущениями. Уточнение монтажа остаётся опциональным.
+- Для lidar-only сдачи измеренный монтаж не обязателен для forward-sector:
+  используется explicit ASSUMED-профиль. Full-scan без установленной оси движения
+  остаётся UNKNOWN; универсального поворота для всех лидаров нет.
 
 Полный исходный PLAN.md сохранён как основание. Этот раздел уточняет порядок
 реализации; проценты/галочки готовности нельзя переносить из наличия файлов.

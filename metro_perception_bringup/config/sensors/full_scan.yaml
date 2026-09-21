@@ -1,5 +1,4 @@
 # Mounting calibration template. Null transform: use externally supplied TF.
-input_topic: /sensing/lidar/hesai128/pointcloud
 source_frame: lidar_livox
 target_frame: base_link
 calibration_verified: false

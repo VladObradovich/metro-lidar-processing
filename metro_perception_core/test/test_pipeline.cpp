@@ -45,6 +45,7 @@ TEST(Preprocessing, FiltersBeforeTranslationAndPreservesRawIndices) {
   EXPECT_EQ(p.detection_indices, std::vector<std::size_t>{0});
   EXPECT_DOUBLE_EQ(p.sensor_origin.z, 3);
   EXPECT_EQ(result.status, AnalysisStatus::NOT_IMPLEMENTED);
+  EXPECT_EQ(result.calibration_trust, CalibrationTrust::VERIFIED);
   EXPECT_FALSE(result.evaluation_region_valid);
 }
 TEST(Preprocessing, FailsClosedAndDoesNotAccumulate) {
@@ -77,4 +78,40 @@ TEST(Preprocessing, ValidatesRoiAndBlindMask) {
   config = {};
   config.blind_radius_m = -1;
   EXPECT_THROW(PerceptionPipeline pipeline(config), std::invalid_argument);
+}
+
+TEST(CalibrationTrust, AssumedCalibrationIsCarriedAndCannotConfirmClearPath) {
+  FrameInput input;
+  input.points = {{10, 0, 0}};
+  input.context.transform_available = true;
+  input.context.allow_unverified_calibration = true;
+
+  const auto preprocessed = PerceptionPipeline().process(input);
+  EXPECT_EQ(preprocessed.status, AnalysisStatus::NOT_IMPLEMENTED);
+  EXPECT_EQ(preprocessed.calibration_trust, CalibrationTrust::ASSUMED);
+
+  FrameResult future_detector_result;
+  future_detector_result.status = AnalysisStatus::OK;
+  future_detector_result.reason = "OK";
+  future_detector_result.evaluation_region_valid = true;
+  future_detector_result.calibration_trust = CalibrationTrust::ASSUMED;
+
+  const auto assessment = TemporalMonitor().update(future_detector_result, 1);
+  EXPECT_EQ(assessment.state, State::UNKNOWN);
+  EXPECT_EQ(assessment.reason, "ASSUMED_CALIBRATION_CANNOT_CONFIRM_CLEAR");
+  EXPECT_EQ(assessment.calibration_trust, CalibrationTrust::ASSUMED);
+  EXPECT_FALSE(assessment.distance_valid);
+}
+
+TEST(CalibrationTrust, VerifiedGeometryStillWaitsForMonitorImplementation) {
+  FrameResult frame;
+  frame.status = AnalysisStatus::OK;
+  frame.reason = "OK";
+  frame.evaluation_region_valid = true;
+  frame.calibration_trust = CalibrationTrust::VERIFIED;
+
+  const auto assessment = TemporalMonitor().update(frame, 1);
+  EXPECT_EQ(assessment.state, State::UNKNOWN);
+  EXPECT_EQ(assessment.reason, "MONITOR_NOT_IMPLEMENTED");
+  EXPECT_EQ(assessment.calibration_trust, CalibrationTrust::VERIFIED);
 }

@@ -43,6 +43,11 @@ FrameResult PerceptionPipeline::process(const FrameInput& frame) const {
     return fail(AnalysisStatus::TF_UNAVAILABLE, "TF_UNAVAILABLE");
   const auto& t = frame.context.sensor_to_target;
   if (!valid(t)) return fail(AnalysisStatus::INVALID_GEOMETRY, "INVALID_TRANSFORM");
+  if (frame.context.calibration_verified) {
+    result.calibration_trust = CalibrationTrust::VERIFIED;
+  } else if (frame.context.allow_unverified_calibration) {
+    result.calibration_trust = CalibrationTrust::ASSUMED;
+  }
   auto& out = result.preprocessed;
   out.sensor_origin = t.translation;
   out.transform_applied = true;

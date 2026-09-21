@@ -25,8 +25,9 @@
 (у `new_data`: −134.5° и −44.2°). Это основание для **гипотезы** направления
 вперёд вдоль −Y. Это не проверка roll/pitch, высоты над рельсом или переднего
 габарита. Полный скан `doubleT_obstacle` содержит 921600 точек; его направление
-движения из полного круга не определяется. Такой же поворот в full_scan_preview
-дан только как удобная визуальная гипотеза, а не как подтверждение общего монтажа.
+движения из полного круга не определяется. Поэтому full_scan_preview и
+full_scan_unresolved больше не задают фиктивный поворот: облако остаётся в
+native frame до появления отдельной оценки направления.
 
 ### Что дают приложенные файлы
 
@@ -68,12 +69,28 @@ firetime: 3179c91824f48723afa50e0d63dcfc79cd704b9cce93dd327dd7d55c737746f1
 для будущей оценки поверхности/коридора. Геометрия последующих стадий ещё не реализована.
 
 ROS-адаптер запрашивает `target <- source` строго на `header.stamp`.
-Нет подстановки latest/identity при ошибке. Нулевой/отрицательный stamp,
-неожиданный source frame, отсутствующий, устаревший или будущий TF дают
-`TF_UNAVAILABLE`. Lookup неблокирующий; онлайн TF listener работает в своём потоке.
-Статический профиль валиден для любого положительного stamp, не требует `/clock`,
-публикуется в `/tf_static` и восстанавливается в локальном буфере после reset часов.
-Нельзя одновременно публиковать другой TF для той же пары из другого источника.
+Нет подстановки latest/identity при ошибке. Для exact-профиля неожиданный source
+frame отвергается. Default forward-sector использует bind-first: первый валидный
+`header.frame_id` фиксируется на session, смена frame внутри той же session
+отвергается, а после скачка stamp назад binding сбрасывается. Имя frame не
+определяет модель лидара и не выбирает геометрический профиль. Нулевой/отрицательный
+stamp, отсутствующий, устаревший или будущий TF дают `TF_UNAVAILABLE`.
+Онлайн lookup ждёт transform ограниченно `tf_wait_timeout_s` по steady clock.
+Offline evaluator читает `/tf` и `/tf_static` отдельным reader с просмотром вперёд
+на 0.05 с по времени записи bag. Это позволяет использовать TF, записанный после
+облака, сохраняя lookup строго на measurement timestamp. Последний необязательный аргумент
+`TF_LOOKAHEAD_S` задаёт окно в пределах `[0, 1]` с; в `evaluate_all.py` ему
+соответствует `--tf-lookahead-s` (значение сохраняется в manifest).
+При скачке stamp назад evaluator очищает старый динамический TF и повторно
+применяет TF из интервала после предыдущего облака, включая уже прочитанные
+преобразования перед первым облаком новой сессии. Статические TF сохраняются
+по последнему значению для каждого child frame. История повторного применения
+ограничена 100 000 преобразований; превышение завершает экспорт с ошибкой.
+Статический профиль валиден для любого положительного stamp, не требует `/clock`
+и восстанавливается в приватном TF buffer perception после reset часов.
+Публикация в глобальный `/tf_static` вынесена в bringup: обычный headless launch
+её не включает, а demo включает отдельный `tf2_ros/static_transform_publisher`
+для RViz. Нельзя одновременно публиковать другой TF для той же пары.
 
 Если transform применён, FrameAnalysis получает target frame и исходный stamp.
 Если нет — сохраняется исходный frame. Счётчики показывают число geometry,
@@ -97,7 +114,7 @@ detection, invalid, blind и outside-ROI точек. Они не означаю�
 ```bash
 profile="$(ros2 pkg prefix metro_perception_bringup)/share/metro_perception_bringup/config/sensors/forward_sector_preview.yaml"
 ros2 launch metro_perception_bringup demo.launch.py \
-  sensor_profile:="$profile" fixed_frame:=lidar_preview \
+  sensor_profile:="$profile" fixed_frame:=lidar_preview publish_sensor_tf:=true \
   input_topic:=/lidar_points use_sim_time:=true
 # Во втором терминале с тем же ROS_DOMAIN_ID:
 ros2 bag play /data/new_data --clock
@@ -110,13 +127,16 @@ ros2 topic echo /metro/analysis
 на путь к записи, например `rosbags/new_data`.
 
 Для `doubleT_obstacle` выбрать `full_scan_preview.yaml` и
-`input_topic:=/sensing/lidar/hesai128/pointcloud`.
+`input_topic:=/sensing/lidar/hesai128/pointcloud`. Поле `input_topic` намеренно
+не хранится в sensor YAML: profile описывает геометрию/TF policy, а routing
+остаётся ответственностью launch или dataset metadata.
 
-Preview явно использует frame **lidar_preview**, начало в оптическом центре и
-`Rz(+π/2)` (−Y → +X, +X → +Y, +Z → +Z). Он публикует static TF для просмотра,
-но **не выдаёт его за base_link поезда**: `calibration_verified: false`,
-ожидается `CALIBRATION_UNVERIFIED`, state=UNKNOWN.
-Без `sensor_profile` теперь используется рабочий lidar-only default; см. ссылку выше.
+Forward-sector preview использует frame **lidar_preview**, начало в оптическом
+центре и `Rz(+π/2)` (−Y → +X, +X → +Y, +Z → +Z). Он не выдаётся за
+`base_link`. Full-scan preview остаётся в `lidar_livox` без придуманной оси
+движения. Без `sensor_profile` runtime использует explicit forward-sector
+default с bind-first source frame; это привязывает только ROS-имя первого облака
+на session, но не угадывает модель или ориентацию.
 
 ## Когда появится монтажная калибровка
 
@@ -145,10 +165,13 @@ python3 scripts/smoke_a02.py
 ```
 
 Evaluator и нода используют один loader статического профиля, resolver и core.
-Без профиля evaluator использует lidar-only default. Динамические `/tf` из будущих
-bag пока не воспроизводятся: этот путь ограничен текущим набором без TF.
-Offline лимит точек — 2 000 000; кастомный ROS override `max_points` автоматически
-не переносится (оставшаяся часть E01). Прогон проверяет A02, а не качество детекции.
+Без профиля evaluator использует только forward-sector assumed default.
+`evaluate_all.py` выбирает forward_sector/full_scan профиль по dataset metadata.
+Динамические `/tf` из будущих bag пока не воспроизводятся.
+Offline defaults совпадают с online: `max_points=2 000 000` и
+`max_cloud_bytes=268 435 456`. Для нестандартного запуска оба лимита передаются
+`evaluate_bag` явными overrides; `evaluate_all.py` делает это автоматически и
+фиксирует значения в manifest. Прогон проверяет A02, а не качество детекции.
 
 `smoke_a02.py` создаёт свой маленький bag и сравнивает онлайн/offline причины,
 статусы и все счётчики. Отдельно проверяет missing TF, UNKNOWN и watchdog

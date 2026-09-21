@@ -1,0 +1,17 @@
+# Default for the known forward-sector LiDAR input.
+# The geometry hypothesis is explicit; only the ROS source-frame name is discovered at runtime.
+source_frame_mode: bind_first
+source_frame: null
+target_frame: lidar_assumed
+calibration_verified: false
+allow_unverified_calibration: true
+translation_m: [0.0, 0.0, 0.0]
+rotation_rpy_rad: [0.0, 0.0, 1.5707963267948966]
+calibration_source: 'Assumed from observed sector: forward=-sensor Y, left=+sensor X, up=+sensor Z; origin at lidar; source frame name binds per session'
+blind_radius_m: 0.5
+geometry_roi:
+  min: [-10.0, -20.0, -10.0]
+  max: [150.0, 20.0, 15.0]
+detection_roi:
+  min: [0.0, -5.0, -3.0]
+  max: [120.0, 5.0, 5.0]

@@ -1,16 +1,26 @@
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <sstream>
+#include <string>
+#include <vector>
 
 #include "metro_perception_core/temporal_monitor.hpp"
+#include "metro_perception_ros/bag_tf_replay.hpp"
+#include "metro_perception_ros/measurement_time.hpp"
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 #include "metro_perception_ros/preprocessing.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rosbag2_cpp/reader.hpp"
+#include "tf2_msgs/msg/tf_message.hpp"
+
 namespace {
+
 std::string json_string(const std::string& value) {
   std::ostringstream out;
   out << '"';
@@ -26,83 +36,174 @@ std::string json_string(const std::string& value) {
   out << '"';
   return out.str();
 }
+
+const char* state_name(metro_perception_core::State state) {
+  switch (state) {
+    case metro_perception_core::State::UNKNOWN:
+      return "UNKNOWN";
+    case metro_perception_core::State::OBSTACLE:
+      return "OBSTACLE";
+    case metro_perception_core::State::NO_OBSTACLE_DETECTED:
+      return "NO_OBSTACLE_DETECTED";
+  }
+  return "UNKNOWN";
+}
+
+std::size_t parse_limit(const char* text, const char* name) {
+  const std::string value(text);
+  std::size_t consumed = 0;
+  const auto parsed = std::stoull(value, &consumed);
+  if (consumed != value.size() || parsed > std::numeric_limits<std::size_t>::max()) {
+    throw std::invalid_argument(std::string(name) + " is not a valid size");
+  }
+  return static_cast<std::size_t>(parsed);
+}
+
 }  // namespace
+
 int main(int argc, char** argv) {
-  if (argc != 4 && argc != 5) {
-    std::cerr << "Usage: evaluate_bag BAG TOPIC OUTPUT.jsonl [SENSOR_PROFILE.yaml]\n"
-              << "A02: static profile only offline; all results remain UNKNOWN until detector is "
-                 "implemented.\n";
+  if (argc < 4 || argc > 8) {
+    std::cerr << "Usage: evaluate_bag BAG TOPIC OUTPUT.jsonl [SENSOR_PROFILE.yaml] [MAX_POINTS] "
+                 "[MAX_CLOUD_BYTES] [TF_LOOKAHEAD_S]\n";
     return argc == 2 && std::string(argv[1]) == "--help" ? 0 : 2;
   }
+
   try {
     if (std::filesystem::exists(argv[3])) {
       throw std::runtime_error("Output already exists");
     }
+
     rosbag2_cpp::Reader reader;
     reader.open(argv[1]);
-    bool found = false;
+    bool found_points = false;
+    bool has_tf = false;
+    bool has_tf_static = false;
     for (const auto& topic : reader.get_all_topics_and_types()) {
       if (topic.name == argv[2] && topic.type == "sensor_msgs/msg/PointCloud2") {
-        found = true;
+        found_points = true;
+      } else if (topic.name == "/tf" && topic.type == "tf2_msgs/msg/TFMessage") {
+        has_tf = true;
+      } else if (topic.name == "/tf_static" && topic.type == "tf2_msgs/msg/TFMessage") {
+        has_tf_static = true;
       }
     }
-    if (!found) {
+    if (!found_points) {
       throw std::runtime_error("Requested PointCloud2 topic not found");
     }
+
     rosbag2_storage::StorageFilter filter;
     filter.topics = {argv[2]};
     reader.set_filter(filter);
+
     std::ofstream output(argv[3]);
     if (!output) {
       throw std::runtime_error("Cannot create output");
     }
-    rclcpp::Serialization<sensor_msgs::msg::PointCloud2> serializer;
-    auto config = metro_perception_ros::load_preprocessing(argc == 5 ? argv[4] : "");
+
+    auto config = metro_perception_ros::load_preprocessing(argc >= 5 ? argv[4] : "");
+    std::size_t max_cloud_bytes = metro_perception_ros::kDefaultMaxCloudBytes;
+    if (argc >= 6) config.algorithm.max_points = parse_limit(argv[5], "MAX_POINTS");
+    if (argc >= 7) max_cloud_bytes = parse_limit(argv[6], "MAX_CLOUD_BYTES");
+    metro_perception_ros::validate_pointcloud_limits(config.algorithm.max_points, max_cloud_bytes);
+    config.algorithm.validate();
+
+    double lookahead_s = 0.05;
+    if (argc == 8) {
+      std::size_t consumed = 0;
+      const std::string text(argv[7]);
+      lookahead_s = std::stod(text, &consumed);
+      if (consumed != text.size() || !std::isfinite(lookahead_s) || lookahead_s < 0.0 ||
+          lookahead_s > 1.0) {
+        throw std::invalid_argument("TF_LOOKAHEAD_S must be in [0, 1]");
+      }
+    }
+    rclcpp::Serialization<sensor_msgs::msg::PointCloud2> point_serializer;
     auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
     tf2_ros::Buffer buffer(clock);
-    if (config.has_static_transform && config.source_frame != "*")
-      buffer.setTransform(config.static_transform, "sensor_profile", true);
+    metro_perception_ros::SourceFrameBinding source_binding;
+    std::vector<std::string> tf_topics;
+    if (has_tf) tf_topics.push_back("/tf");
+    if (has_tf_static) tf_topics.push_back("/tf_static");
+    metro_perception_ros::BagTfReplay tf_replay(argv[1], tf_topics, buffer,
+                                                static_cast<std::int64_t>(lookahead_s * 1e9));
+
     metro_perception_core::PerceptionPipeline pipeline(config.algorithm);
     metro_perception_core::TemporalMonitor monitor;
-    std::uint64_t sequence = 0, session = 0;
-    std::int64_t previous_stamp = 0;
+    std::uint64_t sequence = 0;
+    std::uint64_t session = 0;
+    std::optional<std::int64_t> previous_stamp;
+
     while (reader.has_next()) {
       const auto bag_message = reader.read_next();
+
       const auto start = std::chrono::steady_clock::now();
       std::int64_t stamp = 0;
       metro_perception_core::FrameResult result;
       try {
         sensor_msgs::msg::PointCloud2 cloud;
         rclcpp::SerializedMessage serialized(*bag_message->serialized_data);
-        serializer.deserialize_message(&serialized, &cloud);
-        stamp = std::int64_t(cloud.header.stamp.sec) * 1000000000LL + cloud.header.stamp.nanosec;
-        if (sequence > 0 && stamp < previous_stamp) {
-          ++session;
-          pipeline.reset();
-          monitor.reset();
+        point_serializer.deserialize_message(&serialized, &cloud);
+        const auto measurement_time =
+            metro_perception_ros::decode_measurement_time_ns(cloud.header.stamp);
+        stamp = measurement_time.value_or(0);
+
+        if (measurement_time) {
+          const bool new_session = previous_stamp && stamp < *previous_stamp;
+          tf_replay.advance(bag_message->time_stamp, new_session);
+          if (new_session) {
+            ++session;
+            pipeline.reset();
+            monitor.reset();
+            source_binding.reset();
+          }
+          previous_stamp = stamp;
         }
-        previous_stamp = stamp;
-        metro_perception_ros::bind_source_frame(config, cloud.header.frame_id);
-        if (config.has_static_transform && config.source_frame != "*")
-          buffer.setTransform(config.static_transform, "sensor_profile", true);
-        result = metro_perception_ros::process_cloud(
+
+        result = metro_perception_ros::process_cloud_with_context(
             cloud, pipeline, config.algorithm.max_points,
-            metro_perception_ros::resolve_context(cloud.header, config, buffer));
+            [&] {
+              metro_perception_ros::bind_source_frame(config, source_binding,
+                                                      cloud.header.frame_id);
+              if (const auto transform =
+                      metro_perception_ros::resolved_static_transform(config, source_binding)) {
+                buffer.setTransform(*transform, "sensor_profile", true);
+              }
+              return metro_perception_ros::resolve_context(cloud.header, config, source_binding,
+                                                           buffer);
+            },
+            max_cloud_bytes);
+      } catch (const metro_perception_ros::TfReplayError&) {
+        throw;  // Incomplete TF history must fail the export, not produce a success manifest.
       } catch (const std::exception&) {
         result.status = metro_perception_core::AnalysisStatus::BAD_INPUT;
         result.reason = "DESERIALIZATION_ERROR";
       }
+
       const auto assessment = monitor.update(result, stamp);
       const double elapsed =
           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
               .count();
-      output << "{\"schema_version\":1,\"mode\":\"a02\",\"bag_id\":" << json_string(argv[1])
-             << ",\"session_id\":" << session << ",\"frame_sequence\":" << ++sequence
-             << ",\"measurement_stamp_ns\":" << stamp
-             << ",\"bag_stamp_ns\":" << bag_message->time_stamp
-             << ",\"state\":\"UNKNOWN\",\"reason\":" << json_string(assessment.reason)
-             << ",\"distance_m\":null,\"candidate_count\":0,\"evaluation_region_valid\":false"
+
+      output << "{\"schema_version\":1,\"mode\":\"a02\",\"bag_id\":";
+      output << json_string(argv[1]);
+      output << ",\"session_id\":" << session;
+      output << ",\"frame_sequence\":" << ++sequence;
+      output << ",\"measurement_stamp_ns\":" << stamp;
+      output << ",\"bag_stamp_ns\":" << bag_message->time_stamp;
+      output << ",\"state\":" << json_string(state_name(assessment.state));
+      output << ",\"reason\":" << json_string(assessment.reason);
+      output << ",\"distance_m\":";
+      if (assessment.distance_valid && std::isfinite(assessment.distance_m)) {
+        output << std::setprecision(17) << assessment.distance_m;
+      } else {
+        output << "null";
+      }
+      output << ",\"distance_valid\":" << (assessment.distance_valid ? "true" : "false")
+             << ",\"candidate_count\":" << result.candidates.size()
+             << ",\"evaluation_region_valid\":"
+             << (result.evaluation_region_valid ? "true" : "false")
              << ",\"processing_status\":" << static_cast<unsigned>(result.status)
+             << ",\"calibration_trust\":" << static_cast<unsigned>(result.calibration_trust)
              << ",\"transform_applied\":"
              << (result.preprocessed.transform_applied ? "true" : "false")
              << ",\"calibration_verified\":" << (config.calibration_verified ? "true" : "false")
@@ -119,6 +220,7 @@ int main(int argc, char** argv) {
         throw std::runtime_error("Failed to write results");
       }
     }
+
     output.close();
     if (!output) {
       throw std::runtime_error("Failed to close results");
@@ -126,7 +228,8 @@ int main(int argc, char** argv) {
     if (sequence == 0) {
       throw std::runtime_error("No frames processed");
     }
-    std::cout << "A02 exported " << sequence << " UNKNOWN frames\n";
+
+    std::cout << "A02 exported " << sequence << " frames\n";
     return 0;
   } catch (const std::exception& e) {
     std::cerr << e.what() << '\n';

@@ -1,5 +1,11 @@
 # Набор данных и разметка — T1
 
+TF replay по умолчанию читает на 0.05 с вперёд по bag record time. Опция
+`--tf-lookahead-s` задаёт окно `[0, 1]` с и сохраняется в manifest. При сравнении
+с online учитывать `tf_wait_timeout_s`; measurement timestamp не заменяется
+временем записи или latest TF. Проверки порядка TF и сбросов запускаются через
+`python3 scripts/smoke_tf_replay.py` в собранном ROS workspace.
+
 `dataset.yaml` содержит пути относительно внешнего корня данных и сведения из
 metadata.yaml. Counts имеют статус declared: пересчитать фактически прочитанные
 сообщения при полном аудите, поскольку metadata бывает несогласованной.
@@ -20,12 +26,17 @@ PointCloud2, а расстояние измеряется до принятой 
 Данные и generated frames/CSV/видео хранятся в rosbags/results и не попадают
 в образ или Git. В Git остаются разметка, выбранные параметры и методика.
 
+Batch manifest фиксирует `max_points` и `max_cloud_bytes`, которые передаются в
+`evaluate_bag`, чтобы resource limits совпадали с online запуском.
+
 JSONL schema v1 каркаса: bag_id, session_id, frame_sequence, measurement_stamp_ns,
 bag_stamp_ns, state, reason, distance_m (null при отсутствии), candidate_count,
 evaluation_region_valid, processing_ms, mode=a02. Добавлены processing_status,
 transform_applied, calibration_verified и счётчики geometry/detection/invalid/blind/outside_roi.
-Обычный прогон использует metro_perception_ros/config/lidar_only.yaml.
-Поле sensor_profile в dataset.yaml выбирает отдельный строгий preview при --preview.
+Обычный прогон выбирает профиль по полю sensor_profile в dataset.yaml:
+forward_sector использует forward_sector_assumed.yaml, а full_scan —
+full_scan_unresolved.yaml и остаётся UNKNOWN до определения направления движения.
+При --preview используются соответствующие *_preview.yaml.
  Идентификаторы и времена
 — целые числа; NaN/Infinity запрещены. Полный формат кандидатов и сопоставление
 с разметкой предстоит добавить в E01/E02 до заявления метрик качества.

@@ -3,6 +3,9 @@ uint8 NOT_IMPLEMENTED=1
 uint8 BAD_INPUT=2
 uint8 TF_UNAVAILABLE=3
 uint8 INVALID_GEOMETRY=4
+uint8 CALIBRATION_TRUST_UNKNOWN=0
+uint8 CALIBRATION_TRUST_ASSUMED=1
+uint8 CALIBRATION_TRUST_VERIFIED=2
 std_msgs/Header header
 string source_instance_id
 uint64 session_id
@@ -14,10 +17,17 @@ CorridorSegment[] corridor
 bool evaluation_region_valid
 float64 evaluated_range_m
 float64 processing_age_ms
+# Time spent waiting for the latest-only worker before processing starts.
+float64 queue_age_ms
+# Time spent waiting for an exact-stamp TF before preprocessing.
+float64 tf_wait_ms
 uint64 received_frames
 uint64 processed_frames
 uint64 rejected_frames
 uint64 overwritten_frames
+
+# Per-frame trust after TF/preprocessing. Authoritative for safety decisions.
+uint8 calibration_trust
 
 # A02 diagnostics; valid crop does not mean valid corridor/free space.
 bool transform_applied
