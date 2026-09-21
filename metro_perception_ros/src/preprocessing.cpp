@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "ament_index_cpp/get_package_share_directory.hpp"
+#include "metro_perception_ros/measurement_time.hpp"
 #include "tf2/LinearMath/Matrix3x3.h"
 #include "tf2/LinearMath/Quaternion.h"
 #include "yaml-cpp/yaml.h"
@@ -137,7 +138,8 @@ metro_perception_core::FrameContext resolve_context(const std_msgs::msg::Header&
                                                     tf2_ros::Buffer& buffer,
                                                     std::chrono::nanoseconds tf_wait_timeout) {
   metro_perception_core::FrameContext context;
-  context.measurement_time_ns = std::int64_t(h.stamp.sec) * 1000000000LL + h.stamp.nanosec;
+  const auto measurement_time = decode_measurement_time_ns(h.stamp);
+  if (measurement_time) context.measurement_time_ns = *measurement_time;
   context.calibration_verified = c.calibration_verified;
   context.allow_unverified_calibration = c.allow_unverified_calibration;
 
@@ -145,8 +147,8 @@ metro_perception_core::FrameContext resolve_context(const std_msgs::msg::Header&
       c.source_frame_mode == SourceFrameMode::EXACT ? c.source_frame : binding.frame_id;
 
   // ROS zero time requests latest TF. Never silently use it for a measurement.
-  if (context.measurement_time_ns <= 0 || h.stamp.nanosec >= 1000000000u ||
-      !valid_frame_name(h.frame_id) || expected_source.empty() || h.frame_id != expected_source)
+  if (!measurement_time || !valid_frame_name(h.frame_id) || expected_source.empty() ||
+      h.frame_id != expected_source)
     return context;
 
   if (h.frame_id == c.target_frame) {
@@ -158,7 +160,7 @@ metro_perception_core::FrameContext resolve_context(const std_msgs::msg::Header&
 
   try {
     auto& core = static_cast<tf2::BufferCore&>(buffer);
-    const auto lookup_time = tf2::TimePoint(std::chrono::nanoseconds(context.measurement_time_ns));
+    const auto lookup_time = tf2::TimePoint(std::chrono::nanoseconds(*measurement_time));
     if (tf_wait_timeout > std::chrono::nanoseconds::zero()) {
       const auto deadline = std::chrono::steady_clock::now() + tf_wait_timeout;
       while (!core.canTransform(c.target_frame, h.frame_id, lookup_time) &&

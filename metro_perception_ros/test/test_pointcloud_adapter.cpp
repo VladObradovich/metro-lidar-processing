@@ -9,6 +9,7 @@ using sensor_msgs::msg::PointCloud2;
 using sensor_msgs::msg::PointField;
 PointCloud2 fixture(bool big, bool wide) {
   PointCloud2 msg;
+  msg.header.stamp.sec = 1;
   msg.width = 1;
   msg.height = 2;
   msg.is_bigendian = big;
@@ -67,4 +68,27 @@ TEST(Adapter, RejectsMalformedLayoutsBeforeReadingOrAllocating) {
   msg.width = 0xffffffff;
   msg.height = 0xffffffff;
   EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
+}
+
+TEST(Adapter, RejectsInvalidMeasurementTimestamps) {
+  auto msg = fixture(false, false);
+  msg.header.stamp.sec = 0;
+  msg.header.stamp.nanosec = 0;
+  EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
+
+  msg = fixture(false, false);
+  msg.header.stamp.sec = -1;
+  EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
+
+  msg = fixture(false, false);
+  msg.header.stamp.nanosec = 1000000000u;
+  EXPECT_THROW(decode_cloud(msg), std::invalid_argument);
+
+  metro_perception_core::FrameContext context;
+  context.transform_available = true;
+  context.calibration_verified = true;
+  const metro_perception_core::PerceptionPipeline pipeline;
+  const auto result = metro_perception_ros::process_cloud(msg, pipeline, 10, context);
+  EXPECT_EQ(result.status, metro_perception_core::AnalysisStatus::BAD_INPUT);
+  EXPECT_EQ(result.reason, "INVALID_TIMESTAMP");
 }

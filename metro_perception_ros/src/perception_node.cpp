@@ -2,12 +2,14 @@
 #include <chrono>
 #include <cmath>
 #include <iomanip>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <thread>
 
 #include "metro_perception_interfaces/msg/frame_analysis.hpp"
 #include "metro_perception_ros/latest_frame_slot.hpp"
+#include "metro_perception_ros/measurement_time.hpp"
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 #include "metro_perception_ros/preprocessing.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -93,20 +95,16 @@ class PerceptionNode : public rclcpp::Node {
     std::chrono::steady_clock::time_point received_at;
   };
 
-  static std::int64_t stamp_ns(const builtin_interfaces::msg::Time& stamp) {
-    return std::int64_t(stamp.sec) * 1000000000LL + stamp.nanosec;
-  }
-
   void on_cloud(sensor_msgs::msg::PointCloud2::ConstSharedPtr message) {
     const auto received_at = std::chrono::steady_clock::now();
-    const auto stamp = stamp_ns(message->header.stamp);
+    const auto stamp = metro_perception_ros::decode_measurement_time_ns(message->header.stamp);
     const auto sequence = received_.fetch_add(1) + 1;
 
-    if (sequence > 1 && stamp < previous_stamp_) {
+    if (stamp && previous_stamp_ && *stamp < *previous_stamp_) {
       session_.fetch_add(1);
       if (pending_.clear()) overwritten_.fetch_add(1);
     }
-    previous_stamp_ = stamp;
+    if (stamp) previous_stamp_ = *stamp;
 
     PendingFrame next{std::move(message), sequence, session_.load(), received_at};
     const auto submit = pending_.submit(std::move(next));
@@ -143,20 +141,23 @@ class PerceptionNode : public rclcpp::Node {
       return;
     }
 
-    metro_perception_ros::bind_source_frame(config_, source_binding_,
-                                            work.message->header.frame_id);
-    // A simulation-clock reset may clear the private TF buffer, including static entries.
-    if (const auto transform =
-            metro_perception_ros::resolved_static_transform(config_, source_binding_)) {
-      buffer_->setTransform(*transform, "sensor_profile", true);
-    }
+    metro_perception_core::FrameContext context;
+    double tf_wait_ms = 0.0;
+    if (metro_perception_ros::decode_measurement_time_ns(work.message->header.stamp)) {
+      metro_perception_ros::bind_source_frame(config_, source_binding_,
+                                              work.message->header.frame_id);
+      // A simulation-clock reset may clear the private TF buffer, including static entries.
+      if (const auto transform =
+              metro_perception_ros::resolved_static_transform(config_, source_binding_)) {
+        buffer_->setTransform(*transform, "sensor_profile", true);
+      }
 
-    const auto tf_wait_started = std::chrono::steady_clock::now();
-    const auto& header = work.message->header;
-    const auto context =
-        resolve_context(header, config_, source_binding_, *buffer_, tf_wait_timeout_);
-    const auto tf_wait_elapsed = std::chrono::steady_clock::now() - tf_wait_started;
-    const double tf_wait_ms = std::chrono::duration<double, std::milli>(tf_wait_elapsed).count();
+      const auto tf_wait_started = std::chrono::steady_clock::now();
+      context = resolve_context(work.message->header, config_, source_binding_, *buffer_,
+                                tf_wait_timeout_);
+      const auto tf_wait_elapsed = std::chrono::steady_clock::now() - tf_wait_started;
+      tf_wait_ms = std::chrono::duration<double, std::milli>(tf_wait_elapsed).count();
+    }
     const auto frame =
         metro_perception_ros::process_cloud(*work.message, *pipeline_, max_points_, context);
     processed_.fetch_add(1);
@@ -218,7 +219,7 @@ class PerceptionNode : public rclcpp::Node {
   std::atomic<std::uint64_t> processed_{0};
   std::atomic<std::uint64_t> rejected_{0};
   std::atomic<std::uint64_t> overwritten_{0};
-  std::int64_t previous_stamp_{0};
+  std::optional<std::int64_t> previous_stamp_;
 
   metro_perception_ros::LatestFrameSlot<PendingFrame> pending_;
   std::thread worker_;

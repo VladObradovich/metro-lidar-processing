@@ -4,11 +4,13 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "metro_perception_core/temporal_monitor.hpp"
+#include "metro_perception_ros/measurement_time.hpp"
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 #include "metro_perception_ros/preprocessing.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -125,7 +127,7 @@ int main(int argc, char** argv) {
     metro_perception_core::TemporalMonitor monitor;
     std::uint64_t sequence = 0;
     std::uint64_t session = 0;
-    std::int64_t previous_stamp = 0;
+    std::optional<std::int64_t> previous_stamp;
 
     while (reader.has_next()) {
       const auto bag_message = reader.read_next();
@@ -151,27 +153,33 @@ int main(int argc, char** argv) {
         sensor_msgs::msg::PointCloud2 cloud;
         rclcpp::SerializedMessage serialized(*bag_message->serialized_data);
         point_serializer.deserialize_message(&serialized, &cloud);
-        stamp = std::int64_t(cloud.header.stamp.sec) * 1000000000LL + cloud.header.stamp.nanosec;
+        const auto measurement_time =
+            metro_perception_ros::decode_measurement_time_ns(cloud.header.stamp);
+        stamp = measurement_time.value_or(0);
 
-        if (sequence > 0 && stamp < previous_stamp) {
-          ++session;
-          pipeline.reset();
-          monitor.reset();
-          source_binding.reset();
-          buffer.clear();
-          restore_static_transforms(buffer, bag_static_transforms, config, source_binding);
+        metro_perception_core::FrameContext context;
+        if (measurement_time) {
+          if (previous_stamp && stamp < *previous_stamp) {
+            ++session;
+            pipeline.reset();
+            monitor.reset();
+            source_binding.reset();
+            buffer.clear();
+            restore_static_transforms(buffer, bag_static_transforms, config, source_binding);
+          }
+          previous_stamp = stamp;
+
+          metro_perception_ros::bind_source_frame(config, source_binding, cloud.header.frame_id);
+          if (const auto transform =
+                  metro_perception_ros::resolved_static_transform(config, source_binding)) {
+            buffer.setTransform(*transform, "sensor_profile", true);
+          }
+          context = metro_perception_ros::resolve_context(cloud.header, config, source_binding,
+                                                          buffer);
         }
-        previous_stamp = stamp;
 
-        metro_perception_ros::bind_source_frame(config, source_binding, cloud.header.frame_id);
-        if (const auto transform =
-                metro_perception_ros::resolved_static_transform(config, source_binding)) {
-          buffer.setTransform(*transform, "sensor_profile", true);
-        }
-
-        result = metro_perception_ros::process_cloud(
-            cloud, pipeline, config.algorithm.max_points,
-            metro_perception_ros::resolve_context(cloud.header, config, source_binding, buffer));
+        result = metro_perception_ros::process_cloud(cloud, pipeline, config.algorithm.max_points,
+                                                     context);
       } catch (const std::exception&) {
         result.status = metro_perception_core::AnalysisStatus::BAD_INPUT;
         result.reason = "DESERIALIZATION_ERROR";

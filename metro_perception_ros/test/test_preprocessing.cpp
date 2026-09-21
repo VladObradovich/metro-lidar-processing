@@ -39,6 +39,10 @@ TEST(Transform, UsesMeasurementTimeNotLatestAndRejectsExtrapolation) {
   ASSERT_TRUE(context.transform_available);
   EXPECT_DOUBLE_EQ(context.sensor_to_target.translation.x, 6);
   EXPECT_FALSE(resolve_context(header(0), c, binding, buffer).transform_available);
+  EXPECT_FALSE(resolve_context(header(-1), c, binding, buffer).transform_available);
+  auto invalid_nanosec = header(15);
+  invalid_nanosec.stamp.nanosec = 1000000000u;
+  EXPECT_FALSE(resolve_context(invalid_nanosec, c, binding, buffer).transform_available);
   EXPECT_FALSE(resolve_context(header(9), c, binding, buffer).transform_available);
   EXPECT_FALSE(resolve_context(header(21), c, binding, buffer).transform_available);
   auto h = header(15);

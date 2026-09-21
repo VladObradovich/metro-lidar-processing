@@ -1,5 +1,7 @@
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 
+#include "metro_perception_ros/measurement_time.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -37,8 +39,9 @@ double read_number(const std::uint8_t* ptr, bool big_endian) {
 metro_perception_core::FrameInput decode_cloud(const sensor_msgs::msg::PointCloud2& msg,
                                                std::size_t max_points) {
   metro_perception_core::FrameInput frame;
-  frame.context.measurement_time_ns =
-      std::int64_t(msg.header.stamp.sec) * 1000000000LL + msg.header.stamp.nanosec;
+  const auto measurement_time = decode_measurement_time_ns(msg.header.stamp);
+  if (!measurement_time) throw std::invalid_argument("INVALID_TIMESTAMP");
+  frame.context.measurement_time_ns = *measurement_time;
   const std::uint64_t count = std::uint64_t(msg.width) * msg.height;
   if (count > max_points) {
     throw std::invalid_argument("POINT_LIMIT_EXCEEDED");
@@ -75,9 +78,9 @@ metro_perception_core::FrameResult process_cloud(
     const metro_perception_core::FrameContext& context) {
   try {
     auto frame = decode_cloud(message, max_points);
+    const auto measurement_time_ns = frame.context.measurement_time_ns;
     frame.context = context;
-    frame.context.measurement_time_ns =
-        std::int64_t(message.header.stamp.sec) * 1000000000LL + message.header.stamp.nanosec;
+    frame.context.measurement_time_ns = measurement_time_ns;
     return pipeline.process(frame);
   } catch (const std::invalid_argument& e) {
     metro_perception_core::FrameResult result;
