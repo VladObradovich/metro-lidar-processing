@@ -44,6 +44,11 @@ if(BUILD_TESTING)
   target_compile_features(test_latest_frame_slot PRIVATE cxx_std_17)
   target_include_directories(test_latest_frame_slot PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  ament_add_gtest(test_wire_enum_decode test/test_wire_enum_decode.cpp)
+  target_compile_features(test_wire_enum_decode PRIVATE cxx_std_17)
+  target_include_directories(test_wire_enum_decode PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  ament_target_dependencies(test_wire_enum_decode metro_perception_core)
 endif()
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_export_dependencies(ament_index_cpp rclcpp tf2 tf2_ros geometry_msgs sensor_msgs metro_perception_core yaml-cpp)

@@ -4,6 +4,7 @@
 #include "metro_perception_core/temporal_monitor.hpp"
 #include "metro_perception_interfaces/msg/frame_analysis.hpp"
 #include "metro_perception_interfaces/msg/path_assessment.hpp"
+#include "metro_perception_ros/wire_enum_decode.hpp"
 #include "rclcpp/rclcpp.hpp"
 using metro_perception_interfaces::msg::FrameAnalysis;
 using metro_perception_interfaces::msg::PathAssessment;
@@ -32,11 +33,14 @@ class ObstacleMonitor : public rclcpp::Node {
             monitor_.reset();
           }
           metro_perception_core::FrameResult result;
-          result.status =
-              static_cast<metro_perception_core::AnalysisStatus>(frame->processing_status);
+          result.status = metro_perception_ros::decode_analysis_status(frame->processing_status);
           result.reason = frame->reason;
+          if (result.status == metro_perception_core::AnalysisStatus::BAD_INPUT &&
+              frame->processing_status != FrameAnalysis::BAD_INPUT) {
+            result.reason = "INVALID_PROCESSING_STATUS";
+          }
           result.calibration_trust =
-              static_cast<metro_perception_core::CalibrationTrust>(frame->calibration_trust);
+              metro_perception_ros::decode_calibration_trust(frame->calibration_trust);
           const auto stamp =
               std::int64_t(frame->header.stamp.sec) * 1000000000LL + frame->header.stamp.nanosec;
           const auto assessment = monitor_.update(result, stamp);
