@@ -44,7 +44,8 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
         launch = subprocess.Popen([
             'ros2', 'launch', 'metro_perception_bringup', 'perception.launch.py',
             'namespace:=a02_smoke', 'input_topic:=/a02_smoke/points',
-            'use_sim_time:=true'] + ([] if args.default else [f'sensor_profile:={profile}']),
+            'publish_sensor_tf:=true', 'use_sim_time:=true'
+        ] + ([] if args.default else [f'sensor_profile:={profile}']),
             start_new_session=True)
 
         def until(predicate, seconds=15):
@@ -86,10 +87,11 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             transforms = []
             node.create_subscription(TFMessage, '/tf_static', transforms.append,
                                      QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
-            until(lambda: any(t.child_frame_id == 'test_lidar'
+            expected_child = 'hesai_lidar' if args.default else 'test_lidar'
+            until(lambda: any(t.child_frame_id == expected_child
                               for msg in transforms for t in msg.transforms))
             tf = next(t for msg in transforms for t in msg.transforms
-                      if t.child_frame_id == 'test_lidar')
+                      if t.child_frame_id == expected_child)
             assert tf.header.frame_id == target
             assert (tf.transform.translation.x, tf.transform.translation.y,
                     tf.transform.translation.z) == ((0, 0, 0) if args.default else (1, 2, 3))

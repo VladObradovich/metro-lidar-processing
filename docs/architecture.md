@@ -17,8 +17,10 @@ Depth image — отдельный существующий путь визуа�
 
 Доступны decode, A02 (очистка/TF/ROI/raw indices), UNKNOWN и heartbeat.
 Нода меняет frame_id только после применённого transform, сохраняя stamp.
-Статический профиль публикуется в /tf_static и используется общим TF resolver
-онлайн/offline. Внешний TF онлайн читается строго на header.stamp без ожидания
+Статический transform из sensor profile используется perception/evaluator локально.
+Глобальная публикация в /tf_static принадлежит bringup и выключена в обычном
+perception.launch.py; demo.launch.py включает её для RViz через штатный
+tf2_ros/static_transform_publisher. Внешний TF онлайн читается строго на header.stamp без ожидания
 и без подмены последним transform. Счётчики A02 публикуются в FrameAnalysis.
 `calibration_trust` формируется в core после успешного TF/transform и проходит
 через FrameAnalysis, monitor и PathAssessment. `ASSUMED` не эквивалентен

@@ -55,6 +55,10 @@ ros2 launch metro_perception_bringup perception.launch.py \
 ros2 bag play /data/private_bag --clock
 ```
 
+Обычный headless launch не публикует assumed transform в глобальный TF graph.
+Для RViz `demo.launch.py` включает публикацию profile TF отдельным
+`tf2_ros/static_transform_publisher`; perception-нода не владеет `/tf_static`.
+
 Offline forward-sector без пятого аргумента использует тот же default:
 
 ```bash

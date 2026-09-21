@@ -7,7 +7,6 @@
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 #include "metro_perception_ros/preprocessing.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
 using metro_perception_interfaces::msg::FrameAnalysis;
 class PerceptionNode : public rclcpp::Node {
@@ -25,12 +24,9 @@ class PerceptionNode : public rclcpp::Node {
     pipeline_ = std::make_unique<metro_perception_core::PerceptionPipeline>(config_.algorithm);
     buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     listener_ = std::make_unique<tf2_ros::TransformListener>(*buffer_);
-    if (config_.has_static_transform) {
-      broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(this);
-    }
     if (config_.has_static_transform && config_.source_frame != "*") {
+      // Keep profile TF private to perception. Bringup owns optional publication to /tf_static.
       buffer_->setTransform(config_.static_transform, "sensor_profile", true);
-      broadcaster_->sendTransform(config_.static_transform);
     }
     std::random_device random;
     std::ostringstream id;
@@ -60,9 +56,8 @@ class PerceptionNode : public rclcpp::Node {
           ++received_;
           const bool unbound = config_.source_frame == "*";
           metro_perception_ros::bind_source_frame(config_, message->header.frame_id);
-          if (unbound && config_.source_frame != "*")
-            broadcaster_->sendTransform(config_.static_transform);
-          // A simulation-clock reset may clear the TF buffer, including static entries.
+          (void)unbound;
+          // A simulation-clock reset may clear the private TF buffer, including static entries.
           if (config_.has_static_transform && config_.source_frame != "*")
             buffer_->setTransform(config_.static_transform, "sensor_profile", true);
           const auto context =
@@ -108,7 +103,6 @@ class PerceptionNode : public rclcpp::Node {
   metro_perception_ros::PreprocessingConfig config_;
   std::unique_ptr<tf2_ros::Buffer> buffer_;
   std::unique_ptr<tf2_ros::TransformListener> listener_;
-  std::unique_ptr<tf2_ros::StaticTransformBroadcaster> broadcaster_;
   std::size_t max_points_;
   std::unique_ptr<metro_perception_core::PerceptionPipeline> pipeline_;
   std::string source_;
