@@ -66,7 +66,10 @@ def main():
         assert stale.result_age_ms >= 500
         spin_until(lambda: any('INPUT_PAUSED_OR_STOPPED' in marker.text
                                for array in markers for marker in array.markers), seconds=3)
-        print('PASS: default lidar-only no-ring cloud -> NOT_IMPLEMENTED/UNKNOWN -> steady-clock timeout; stamp preserved')
+        print(
+            'PASS: default lidar-only no-ring cloud -> NOT_IMPLEMENTED/UNKNOWN '
+            '-> steady-clock timeout; stamp preserved'
+        )
     finally:
         if launch.poll() is None:
             launch.send_signal(signal.SIGINT)

@@ -34,7 +34,9 @@ def _sensor_tf(context):
     if translation is None or rotation is None:
         raise RuntimeError('sensor profile must define both translation_m and rotation_rpy_rad')
     if not source or not target or source == '*' or source == target:
-        raise RuntimeError('publish_sensor_tf requires distinct explicit source_frame/target_frame')
+        raise RuntimeError(
+            'publish_sensor_tf requires distinct explicit source_frame/target_frame'
+        )
 
     return [Node(
         package='tf2_ros',

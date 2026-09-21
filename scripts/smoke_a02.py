@@ -21,7 +21,11 @@ from metro_perception_interfaces.msg import FrameAnalysis, PathAssessment
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--default", action="store_true", help="Check automatic lidar-only profile")
+    parser.add_argument(
+        "--default",
+        action="store_true",
+        help="Check automatic lidar-only profile",
+    )
     args = parser.parse_args()
     reason = "NOT_IMPLEMENTED" if args.default else "CALIBRATION_UNVERIFIED"
     target = "lidar_assumed" if args.default else "test_preview"
@@ -85,8 +89,12 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                     online.outside_roi_point_count) == (2, 1, 2, 1, 1)
             # A late subscriber (e.g. RViz) must receive the published static TF.
             transforms = []
-            node.create_subscription(TFMessage, '/tf_static', transforms.append,
-                                     QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+            node.create_subscription(
+                TFMessage,
+                '/tf_static',
+                transforms.append,
+                QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL),
+            )
             expected_child = 'hesai_lidar' if args.default else 'test_lidar'
             until(lambda: any(t.child_frame_id == expected_child
                               for msg in transforms for t in msg.transforms))
@@ -104,8 +112,13 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             writer.write('/points', serialize_message(cloud), 124000000000)
             del writer
             result = root / 'frames.jsonl'
-            subprocess.run(['ros2', 'run', 'metro_perception_ros', 'evaluate_bag', str(bag),
-                            '/points', str(result)] + ([] if args.default else [str(profile)]), check=True)
+            subprocess.run(
+                [
+                    'ros2', 'run', 'metro_perception_ros', 'evaluate_bag', str(bag),
+                    '/points', str(result),
+                ] + ([] if args.default else [str(profile)]),
+                check=True,
+            )
             offline = json.loads(result.read_text())
             for field in ('reason', 'processing_status', 'transform_applied',
                           'calibration_verified', 'calibration_assumed', 'calibration_trust',
@@ -134,7 +147,10 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             until(lambda: any(a.stale and a.frame_sequence > 0 for a in assessments))
             assert all(a.state == PathAssessment.UNKNOWN and not a.distance_valid
                        and not a.evaluation_region_valid for a in assessments)
-            print(f'PASS: A02 default={args.default}, online/offline parity, late static TF, reset, missing TF, UNKNOWN/watchdog')
+            print(
+                f'PASS: A02 default={args.default}, online/offline parity, '
+                'late static TF, reset, missing TF, UNKNOWN/watchdog'
+            )
         finally:
             if launch.poll() is None:
                 launch.send_signal(signal.SIGINT)

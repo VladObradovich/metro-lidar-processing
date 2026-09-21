@@ -40,6 +40,8 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_pointcloud_adapter sensor_msgs metro_perception_core)
   ament_add_gtest(test_latest_frame_slot test/test_latest_frame_slot.cpp)
   target_compile_features(test_latest_frame_slot PRIVATE cxx_std_17)
+  target_include_directories(test_latest_frame_slot PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_export_dependencies(ament_index_cpp rclcpp tf2 tf2_ros geometry_msgs sensor_msgs metro_perception_core yaml-cpp)

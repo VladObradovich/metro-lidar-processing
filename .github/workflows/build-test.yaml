@@ -4,9 +4,15 @@ on:
   pull_request:
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     container: ros:humble-ros-base
     defaults:
       run:
@@ -44,6 +50,7 @@ jobs:
 
   packages:
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
     container: ros:humble-ros-base
     defaults:
       run:
@@ -65,6 +72,7 @@ jobs:
           python3 scripts/smoke_perception.py
           python3 scripts/smoke_a02.py
           python3 scripts/smoke_a02.py --default
+          python3 scripts/smoke_namespace_isolation.py
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -73,6 +81,7 @@ jobs:
 
   runtime:
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build installed runtime
@@ -86,6 +95,7 @@ jobs:
 
   runtime-desktop:
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build installed desktop runtime

@@ -82,9 +82,10 @@ void bind_source_frame(PreprocessingConfig& c, const std::string& frame) {
   c.source_frame = frame;
   c.static_transform.child_frame_id = frame;
 }
-metro_perception_core::FrameContext resolve_context(
-    const std_msgs::msg::Header& h, const PreprocessingConfig& c, tf2_ros::Buffer& buffer,
-    std::chrono::nanoseconds tf_wait_timeout) {
+metro_perception_core::FrameContext resolve_context(const std_msgs::msg::Header& h,
+                                                    const PreprocessingConfig& c,
+                                                    tf2_ros::Buffer& buffer,
+                                                    std::chrono::nanoseconds tf_wait_timeout) {
   metro_perception_core::FrameContext context;
   context.measurement_time_ns = std::int64_t(h.stamp.sec) * 1000000000LL + h.stamp.nanosec;
   context.calibration_verified = c.calibration_verified;
@@ -101,8 +102,7 @@ metro_perception_core::FrameContext resolve_context(
   }
   try {
     auto& core = static_cast<tf2::BufferCore&>(buffer);
-    const auto lookup_time =
-        tf2::TimePoint(std::chrono::nanoseconds(context.measurement_time_ns));
+    const auto lookup_time = tf2::TimePoint(std::chrono::nanoseconds(context.measurement_time_ns));
     if (tf_wait_timeout > std::chrono::nanoseconds::zero()) {
       const auto deadline = std::chrono::steady_clock::now() + tf_wait_timeout;
       while (!core.canTransform(c.target_frame, h.frame_id, lookup_time) &&

@@ -66,8 +66,9 @@ class PerceptionNode : public rclcpp::Node {
 
     publisher_ = create_publisher<FrameAnalysis>("~/output/analysis", 1);
     subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-        "~/input/points", qos,
-        [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr message) { on_cloud(std::move(message)); });
+        "~/input/points", qos, [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr message) {
+          on_cloud(std::move(message));
+        });
 
     worker_ = std::thread([this] { worker_loop(); });
 
@@ -146,12 +147,12 @@ class PerceptionNode : public rclcpp::Node {
     }
 
     const auto tf_wait_started = std::chrono::steady_clock::now();
-    const auto context = metro_perception_ros::resolve_context(
-        work.message->header, config_, *buffer_, tf_wait_timeout_);
-    const double tf_wait_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  tf_wait_started)
-            .count();
+    const auto& header = work.message->header;
+    const auto context =
+        metro_perception_ros::resolve_context(header, config_, *buffer_, tf_wait_timeout_);
+    const double tf_wait_ms = std::chrono::duration<double, std::milli>(
+                                  std::chrono::steady_clock::now() - tf_wait_started)
+                                  .count();
     const auto frame =
         metro_perception_ros::process_cloud(*work.message, *pipeline_, max_points_, context);
     processed_.fetch_add(1);
@@ -192,10 +193,9 @@ class PerceptionNode : public rclcpp::Node {
     output.overwritten_frames = overwritten_.load();
     output.queue_age_ms = queue_age_ms;
     output.tf_wait_ms = tf_wait_ms;
-    output.processing_age_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  work.received_at)
-            .count();
+    output.processing_age_ms = std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - work.received_at)
+                                   .count();
     publisher_->publish(output);
   }
 

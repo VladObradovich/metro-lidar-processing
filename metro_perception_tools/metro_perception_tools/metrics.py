@@ -19,8 +19,10 @@ def summarize(rows):
     return {
         'schema_version': 1, 'frames': len(rows), 'states': dict(states),
         'unknown_fraction': states['UNKNOWN'] / len(rows),
-        'processing_ms': dict(zip(('p50', 'p95', 'p99'),
-                                 np.percentile(timings, [50, 95, 99]).tolist())),
+        'processing_ms': dict(zip(
+            ('p50', 'p95', 'p99'),
+            np.percentile(timings, [50, 95, 99]).tolist(),
+        )),
         'quality_metrics': None,
         'quality_note': 'TP/FP/FN and distance error require reviewed annotations and matching.',
         'scaffold': any(row.get('mode') in {'scaffold', 'a02'} for row in rows),

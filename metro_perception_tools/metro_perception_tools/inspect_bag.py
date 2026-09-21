@@ -22,8 +22,13 @@ def main():
     topics = [item['topic_metadata']['name'] for item in info['topics_with_message_count']
               if item['topic_metadata']['type'] == 'sensor_msgs/msg/PointCloud2']
     reader = rosbag2_py.SequentialReader()
-    reader.open(rosbag2_py.StorageOptions(uri=str(args.bag), storage_id=info['storage_identifier']),
-                rosbag2_py.ConverterOptions('', ''))
+    reader.open(
+        rosbag2_py.StorageOptions(
+            uri=str(args.bag),
+            storage_id=info['storage_identifier'],
+        ),
+        rosbag2_py.ConverterOptions('', ''),
+    )
     if not topics:
         parser.error('No PointCloud2 topics')
     reader.set_filter(rosbag2_py.StorageFilter(topics=topics))

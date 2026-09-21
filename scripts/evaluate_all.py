@@ -24,17 +24,28 @@ def main():
     parser.add_argument('--output-dir', type=Path, required=True)
     parser.add_argument('--dataset', type=Path, default=root / 'evaluation/dataset.yaml')
     parser.add_argument('--image-id', default='not_recorded')
-    parser.add_argument('--preview', action='store_true',
-                        help='Use unverified lidar-centered visualization profiles (always UNKNOWN)')
+    parser.add_argument(
+        '--preview',
+        action='store_true',
+        help='Use unverified lidar-centered visualization profiles (always UNKNOWN)',
+    )
     args = parser.parse_args()
     dataset = yaml.safe_load(args.dataset.read_text())
     args.output_dir.mkdir(parents=True, exist_ok=False)
-    git = lambda *cmd: subprocess.check_output(['git', '-C', str(root), *cmd], text=True).strip()
+
+    def git(*cmd):
+        return subprocess.check_output(
+            ['git', '-C', str(root), *cmd],
+            text=True,
+        ).strip()
     manifest = {'schema_version': 1, 'mode': 'a02', 'image_id': args.image_id,
                 'commit': git('rev-parse', 'HEAD'), 'dirty': bool(git('status', '--porcelain')),
                 'dataset_sha256': sha256(args.dataset), 'config_sha256': {}, 'bags': [],
                 'preview': args.preview,
-                'note': 'Profiles are selected by sensor_profile metadata; full-scan orientation remains unresolved, no detector/deskew.'}
+                'note': (
+                    'Profiles are selected by sensor_profile metadata; '
+                    'full-scan orientation remains unresolved, no detector/deskew.'
+                )}
     for config in sorted(list((root / 'metro_perception_bringup/config').rglob('*.yaml')) +
                          list((root / 'metro_perception_ros/config').rglob('*.yaml'))):
         manifest['config_sha256'][str(config.relative_to(root))] = sha256(config)
@@ -47,7 +58,9 @@ def main():
                            (entry['sensor_profile'] + '_preview.yaml'))
             else:
                 profiles = {
-                    'forward_sector': root / 'metro_perception_ros/config/forward_sector_assumed.yaml',
+                    'forward_sector': (
+                        root / 'metro_perception_ros/config/forward_sector_assumed.yaml'
+                    ),
                     'full_scan': root / 'metro_perception_ros/config/full_scan_unresolved.yaml',
                 }
                 try:
@@ -62,8 +75,13 @@ def main():
                               if item.is_file()}}
             manifest['bags'].append(info)
             try:
-                subprocess.run(['ros2', 'run', 'metro_perception_ros', 'evaluate_bag', str(bag),
-                                entry['input_topic'], str(result_dir / 'frames.jsonl'), str(profile)], check=True)
+                subprocess.run(
+                    [
+                        'ros2', 'run', 'metro_perception_ros', 'evaluate_bag', str(bag),
+                        entry['input_topic'], str(result_dir / 'frames.jsonl'), str(profile),
+                    ],
+                    check=True,
+                )
                 subprocess.run(['ros2', 'run', 'metro_perception_tools', 'metrics',
                                 str(result_dir / 'frames.jsonl'), '--output',
                                 str(result_dir / 'summary.json')], check=True)
