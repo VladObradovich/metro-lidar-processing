@@ -9,18 +9,36 @@
 namespace metro_perception_ros {
 namespace {
 using Field = sensor_msgs::msg::PointField;
+
+std::uint64_t scalar_bytes(std::uint8_t datatype) {
+  if (datatype == Field::FLOAT32) return 4;
+  if (datatype == Field::FLOAT64) return 8;
+  return 0;
+}
+
 Field coordinate_field(const sensor_msgs::msg::PointCloud2& msg, const char* name) {
-  const auto it = std::find_if(msg.fields.begin(), msg.fields.end(),
-                               [name](const Field& f) { return f.name == name; });
-  if (it == msg.fields.end() || it->count != 1 ||
-      (it->datatype != Field::FLOAT32 && it->datatype != Field::FLOAT64)) {
+  const Field* match = nullptr;
+  for (const auto& field : msg.fields) {
+    if (field.name != name) continue;
+    if (match) throw std::invalid_argument("Duplicate XYZ field");
+    match = &field;
+  }
+  if (!match || match->count != 1 || scalar_bytes(match->datatype) == 0) {
     throw std::invalid_argument("XYZ must be scalar FLOAT32/FLOAT64");
   }
-  const std::uint64_t bytes = it->datatype == Field::FLOAT32 ? 4 : 8;
-  if (std::uint64_t(it->offset) + bytes > msg.point_step) {
+  const auto bytes = scalar_bytes(match->datatype);
+  if (std::uint64_t(match->offset) + bytes > msg.point_step) {
     throw std::invalid_argument("XYZ field exceeds point_step");
   }
-  return *it;
+  return *match;
+}
+
+bool fields_overlap(const Field& a, const Field& b) {
+  const auto a_begin = std::uint64_t(a.offset);
+  const auto a_end = a_begin + scalar_bytes(a.datatype);
+  const auto b_begin = std::uint64_t(b.offset);
+  const auto b_end = b_begin + scalar_bytes(b.datatype);
+  return a_begin < b_end && b_begin < a_end;
 }
 template <typename T>
 double read_number(const std::uint8_t* ptr, bool big_endian) {
@@ -55,6 +73,13 @@ metro_perception_core::FrameInput decode_cloud(const sensor_msgs::msg::PointClou
   }
   const std::array<Field, 3> fields{coordinate_field(msg, "x"), coordinate_field(msg, "y"),
                                     coordinate_field(msg, "z")};
+  for (std::size_t i = 0; i < fields.size(); ++i) {
+    for (std::size_t j = i + 1; j < fields.size(); ++j) {
+      if (fields_overlap(fields[i], fields[j])) {
+        throw std::invalid_argument("XYZ fields overlap");
+      }
+    }
+  }
   frame.points.reserve(static_cast<std::size_t>(count));
   for (std::uint32_t row = 0; row < msg.height; ++row) {
     for (std::uint32_t col = 0; col < msg.width; ++col) {
@@ -69,7 +94,8 @@ metro_perception_core::FrameInput decode_cloud(const sensor_msgs::msg::PointClou
       frame.points.push_back({xyz[0], xyz[1], xyz[2]});
     }
   }
-  // Raw XYZ: preserve zeros/NaNs for preprocessing; optional fields are not used yet.
+  // Raw XYZ: preserve zeros/NaNs for centralized preprocessing filtering; optional fields are
+  // not used yet. Structural corruption has already been rejected above.
   return frame;
 }
 metro_perception_core::FrameResult process_cloud(
