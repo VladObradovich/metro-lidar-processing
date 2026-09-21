@@ -77,6 +77,7 @@ class PerceptionNode : public rclcpp::Node {
           output.header = message->header;
           if (frame.preprocessed.transform_applied) output.header.frame_id = config_.target_frame;
           output.transform_applied = frame.preprocessed.transform_applied;
+          output.calibration_trust = static_cast<std::uint8_t>(frame.calibration_trust);
           output.calibration_verified = config_.calibration_verified;
           output.calibration_assumed =
               config_.allow_unverified_calibration && !config_.calibration_verified;

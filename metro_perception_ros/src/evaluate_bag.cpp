@@ -103,6 +103,7 @@ int main(int argc, char** argv) {
              << ",\"state\":\"UNKNOWN\",\"reason\":" << json_string(assessment.reason)
              << ",\"distance_m\":null,\"candidate_count\":0,\"evaluation_region_valid\":false"
              << ",\"processing_status\":" << static_cast<unsigned>(result.status)
+             << ",\"calibration_trust\":" << static_cast<unsigned>(result.calibration_trust)
              << ",\"transform_applied\":"
              << (result.preprocessed.transform_applied ? "true" : "false")
              << ",\"calibration_verified\":" << (config.calibration_verified ? "true" : "false")

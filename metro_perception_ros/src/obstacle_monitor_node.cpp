@@ -35,6 +35,8 @@ class ObstacleMonitor : public rclcpp::Node {
           result.status =
               static_cast<metro_perception_core::AnalysisStatus>(frame->processing_status);
           result.reason = frame->reason;
+          result.calibration_trust =
+              static_cast<metro_perception_core::CalibrationTrust>(frame->calibration_trust);
           const auto stamp =
               std::int64_t(frame->header.stamp.sec) * 1000000000LL + frame->header.stamp.nanosec;
           const auto assessment = monitor_.update(result, stamp);
@@ -44,6 +46,7 @@ class ObstacleMonitor : public rclcpp::Node {
           output_.frame_sequence = frame->frame_sequence;
           output_.state = static_cast<std::uint8_t>(assessment.state);
           output_.reason = assessment.reason;
+          output_.calibration_trust = static_cast<std::uint8_t>(assessment.calibration_trust);
           output_.distance_valid = false;
           output_.stale = false;
           processing_age_ms_ = frame->processing_age_ms;

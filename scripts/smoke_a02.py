@@ -73,6 +73,12 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             assert online.header.stamp == cloud.header.stamp
             assert online.transform_applied and not online.calibration_verified
             assert online.calibration_assumed == args.default
+            expected_trust = (FrameAnalysis.CALIBRATION_TRUST_ASSUMED if args.default
+                              else FrameAnalysis.CALIBRATION_TRUST_UNKNOWN)
+            assert online.calibration_trust == expected_trust
+            until(lambda: any(a.frame_sequence == online.frame_sequence for a in assessments))
+            assessment = next(a for a in assessments if a.frame_sequence == online.frame_sequence)
+            assert assessment.calibration_trust == online.calibration_trust
             assert (online.geometry_point_count, online.detection_point_count,
                     online.invalid_point_count, online.blind_point_count,
                     online.outside_roi_point_count) == (2, 1, 2, 1, 1)
@@ -100,7 +106,8 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                             '/points', str(result)] + ([] if args.default else [str(profile)]), check=True)
             offline = json.loads(result.read_text())
             for field in ('reason', 'processing_status', 'transform_applied',
-                          'calibration_verified', 'calibration_assumed', 'geometry_point_count', 'detection_point_count',
+                          'calibration_verified', 'calibration_assumed', 'calibration_trust',
+                          'geometry_point_count', 'detection_point_count',
                           'invalid_point_count', 'blind_point_count', 'outside_roi_point_count'):
                 assert offline[field] == getattr(online, field), field
             assert offline['measurement_stamp_ns'] == 123000000000
@@ -120,6 +127,7 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             failed = next(a for a in analyses if a.reason == 'TF_UNAVAILABLE')
             assert not failed.transform_applied and failed.geometry_point_count == 0
             assert failed.header.frame_id == 'unknown_sensor'
+            assert failed.calibration_trust == FrameAnalysis.CALIBRATION_TRUST_UNKNOWN
             until(lambda: any(a.reason == 'TF_UNAVAILABLE' for a in assessments))
             until(lambda: any(a.stale and a.frame_sequence > 0 for a in assessments))
             assert all(a.state == PathAssessment.UNKNOWN and not a.distance_valid

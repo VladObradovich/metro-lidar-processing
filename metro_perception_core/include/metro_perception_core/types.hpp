@@ -36,6 +36,7 @@ enum class AnalysisStatus : std::uint8_t {
   INVALID_GEOMETRY = 4
 };
 enum class State : std::uint8_t { UNKNOWN = 0, OBSTACLE = 1, NO_OBSTACLE_DETECTED = 2 };
+enum class CalibrationTrust : std::uint8_t { UNKNOWN = 0, ASSUMED = 1, VERIFIED = 2 };
 struct ObstacleCandidate {
   std::uint64_t id{0};
   PointXYZ center, size, nearest_point;
@@ -67,11 +68,13 @@ struct FrameResult {
   std::vector<ObstacleCandidate> candidates;
   std::vector<CorridorSegment> corridor;
   bool evaluation_region_valid{false};
+  CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
 };
 struct Assessment {
   State state{State::UNKNOWN};
   std::string reason{"NOT_IMPLEMENTED"};
   bool distance_valid{false};
   double distance_m{0};
+  CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
 };
 }  // namespace metro_perception_core

@@ -20,6 +20,10 @@ Depth image — отдельный существующий путь визуа�
 Статический профиль публикуется в /tf_static и используется общим TF resolver
 онлайн/offline. Внешний TF онлайн читается строго на header.stamp без ожидания
 и без подмены последним transform. Счётчики A02 публикуются в FrameAnalysis.
+`calibration_trust` формируется в core после успешного TF/transform и проходит
+через FrameAnalysis, monitor и PathAssessment. `ASSUMED` не эквивалентен
+`VERIFIED`: пустой результат при assumed-калибровке не может подтверждать
+свободный путь.
 Тяжёлый worker, reset service, ground/corridor, Detection3DArray и подтверждение
 ещё не реализованы. Межкадрового накопления облаков нет.
 
