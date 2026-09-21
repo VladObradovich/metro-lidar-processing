@@ -115,8 +115,9 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
 
 bool bind_source_frame(const PreprocessingConfig& c, SourceFrameBinding& binding,
                        const std::string& frame) {
-  if (!valid_frame_name(frame) || frame == c.target_frame) return false;
+  if (!valid_frame_name(frame)) return false;
   if (c.source_frame_mode == SourceFrameMode::EXACT) return frame == c.source_frame;
+  if (frame == c.target_frame) return false;
   if (binding.frame_id.empty()) binding.frame_id = frame;
   return binding.frame_id == frame;
 }

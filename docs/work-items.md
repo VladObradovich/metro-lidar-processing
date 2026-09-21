@@ -15,7 +15,7 @@
 | A05–A07, A | Кандидаты, clustering, raw validation, distance | core/clusterer, object_validator, pipeline | реальный positive, sensor origin |
 | R02, B | Переходы состояний, retirement source, reset | core/temporal_monitor, ros/monitor | late result, stop/restart, history |
 | R04, C | Bbox/corridor/nearest point и удаление markers | ros/visualizer_node | stale UI и namespace |
-| E01, B | Online TF: exact-stamp bounded wait реализован; evaluator ещё не воспроизводит dynamic bag TF и все runtime overrides | ros/preprocessing, ros/evaluate_bag | delayed/missing TF tests, online/offline parity |
+| E01, B | Реализован общий A02-контракт: exact-stamp TF, replay `/tf` + `/tf_static`, max_points/max_cloud_bytes; realtime queue/wait/watchdog остаются online-only | ros/preprocessing, ros/evaluate_bag | delayed/missing TF tests, online/offline parity |
 | D04/E02, T1 | Разметка, matching, TP/FP/FN и distance error | evaluation, tools/metrics.py | UNKNOWN не скрывает FN |
 | P01/P02, C/T2 | Runtime и CI с новыми зависимостями | docker, .github | чистая сборка + smoke |
 | X01–X03 | Только измеренные улучшения | core, evaluation/experiments.yaml | сравнение с сохранённым B0 |

@@ -104,6 +104,8 @@ TEST(Transform, SameFrameDoesNotRequireTfTree) {
   c.source_frame = "lidar_livox";
   c.target_frame = "lidar_livox";
   SourceFrameBinding binding;
+  EXPECT_TRUE(bind_source_frame(c, binding, "lidar_livox"));
+  EXPECT_TRUE(binding.frame_id.empty());
   auto h = header(123);
   h.frame_id = "lidar_livox";
   const auto context = resolve_context(h, c, binding, buffer);

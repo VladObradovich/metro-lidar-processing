@@ -158,8 +158,10 @@ Evaluator и нода используют один loader статическо�
 Без профиля evaluator использует только forward-sector assumed default.
 `evaluate_all.py` выбирает forward_sector/full_scan профиль по dataset metadata.
 Динамические `/tf` из будущих bag пока не воспроизводятся.
-Offline лимит точек — 2 000 000; кастомный ROS override `max_points` автоматически
-не переносится (оставшаяся часть E01). Прогон проверяет A02, а не качество детекции.
+Offline defaults совпадают с online: `max_points=2 000 000` и
+`max_cloud_bytes=268 435 456`. Для нестандартного запуска оба лимита передаются
+`evaluate_bag` явными overrides; `evaluate_all.py` делает это автоматически и
+фиксирует значения в manifest. Прогон проверяет A02, а не качество детекции.
 
 `smoke_a02.py` создаёт свой маленький bag и сравнивает онлайн/offline причины,
 статусы и все счётчики. Отдельно проверяет missing TF, UNKNOWN и watchdog

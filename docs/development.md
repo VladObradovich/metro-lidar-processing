@@ -88,10 +88,11 @@ ros2 run metro_perception_tools report /results/run-001/summary.json --output /r
 Инструменты отказываются перезаписывать результат. Код 0 evaluator означает
 успешный экспорт, а не реализованный детектор: каждая строка содержит
 `mode=a02`, UNKNOWN и невалидную область. Пятый аргумент evaluate_bag — путь
-к sensor profile YAML. Статический профиль, TF resolver и A02 общие с нодой;
-динамический TF из bag evaluator пока не воспроизводит. При изменении ROS-параметра
-max_points относительно стандартных 2 000 000 этот override не переносится в evaluator.
-Полная runtime/config parity остаётся в E01; worker 1+1 реализован в R01.
+к sensor profile YAML. Статический профиль, TF resolver и A02 общие с нодой. Evaluator воспроизводит
+`/tf` и `/tf_static` из bag и использует точный measurement stamp. Общие resource limits
+`max_points` и `max_cloud_bytes` можно явно передать evaluator; `evaluate_all.py`
+пробрасывает их и сохраняет в manifest. Realtime-only параметры очереди, bounded TF wait
+и watchdog намеренно не эмулируются offline. Worker 1+1 реализован в R01.
 
 Для всех bag из паспорта набора:
 
