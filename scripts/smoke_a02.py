@@ -13,6 +13,7 @@ import time
 import rclpy
 from rclpy.serialization import serialize_message
 from rclpy.qos import QoSProfile, DurabilityPolicy
+from geometry_msgs.msg import TransformStamped
 from tf2_msgs.msg import TFMessage
 import rosbag2_py
 from sensor_msgs.msg import PointCloud2, PointField
@@ -121,13 +122,86 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                 check=True,
             )
             offline = json.loads(result.read_text())
-            for field in ('reason', 'processing_status', 'transform_applied',
-                          'calibration_verified', 'calibration_assumed', 'calibration_trust',
-                          'geometry_point_count', 'detection_point_count',
-                          'invalid_point_count', 'blind_point_count', 'outside_roi_point_count'):
+            for field in ('processing_status', 'transform_applied', 'calibration_verified',
+                          'calibration_assumed', 'calibration_trust', 'geometry_point_count',
+                          'detection_point_count', 'invalid_point_count', 'blind_point_count',
+                          'outside_roi_point_count'):
                 assert offline[field] == getattr(online, field), field
+            assert offline['reason'] == assessment.reason
+            state_names = {
+                PathAssessment.UNKNOWN: 'UNKNOWN',
+                PathAssessment.OBSTACLE: 'OBSTACLE',
+                PathAssessment.NO_OBSTACLE_DETECTED: 'NO_OBSTACLE_DETECTED',
+            }
+            assert offline['state'] == state_names[assessment.state]
+            assert offline['distance_valid'] == assessment.distance_valid
+            assert offline['distance_m'] is None
+            assert offline['candidate_count'] == len(online.candidates)
+            assert offline['evaluation_region_valid'] == online.evaluation_region_valid
             assert offline['measurement_stamp_ns'] == 123000000000
             assert offline['bag_stamp_ns'] == 124000000000
+
+            dynamic_profile = root / 'dynamic_sensor.yaml'
+            dynamic_profile.write_text('''source_frame: dynamic_lidar
+target_frame: dynamic_base
+calibration_verified: true
+calibration_source: synthetic dynamic TF fixture
+translation_m: null
+rotation_rpy_rad: null
+''')
+            dynamic_cloud = PointCloud2()
+            dynamic_cloud.header.frame_id = 'dynamic_lidar'
+            dynamic_cloud.header.stamp.sec = 123
+            dynamic_cloud.height, dynamic_cloud.width = cloud.height, cloud.width
+            dynamic_cloud.point_step, dynamic_cloud.row_step = cloud.point_step, cloud.row_step
+            dynamic_cloud.fields = cloud.fields
+            dynamic_cloud.data = cloud.data
+
+            static_tf = TransformStamped()
+            static_tf.header.frame_id = 'dynamic_mid'
+            static_tf.child_frame_id = 'dynamic_lidar'
+            static_tf.transform.translation.x = 1.0
+            static_tf.transform.rotation.w = 1.0
+            dynamic_tf = TransformStamped()
+            dynamic_tf.header.frame_id = 'dynamic_base'
+            dynamic_tf.child_frame_id = 'dynamic_mid'
+            dynamic_tf.header.stamp.sec = 123
+            dynamic_tf.transform.translation.x = 2.0
+            dynamic_tf.transform.rotation.w = 1.0
+
+            dynamic_bag = root / 'dynamic_bag'
+            writer = rosbag2_py.SequentialWriter()
+            writer.open(
+                rosbag2_py.StorageOptions(uri=str(dynamic_bag), storage_id='sqlite3'),
+                rosbag2_py.ConverterOptions('', ''),
+            )
+            writer.create_topic(rosbag2_py.TopicMetadata(
+                name='/tf_static', type='tf2_msgs/msg/TFMessage', serialization_format='cdr'))
+            writer.create_topic(rosbag2_py.TopicMetadata(
+                name='/tf', type='tf2_msgs/msg/TFMessage', serialization_format='cdr'))
+            writer.create_topic(rosbag2_py.TopicMetadata(
+                name='/points', type='sensor_msgs/msg/PointCloud2', serialization_format='cdr'))
+            static_message = TFMessage()
+            static_message.transforms = [static_tf]
+            dynamic_message = TFMessage()
+            dynamic_message.transforms = [dynamic_tf]
+            writer.write('/tf_static', serialize_message(static_message), 121000000000)
+            writer.write('/tf', serialize_message(dynamic_message), 122000000000)
+            writer.write('/points', serialize_message(dynamic_cloud), 124000000000)
+            del writer
+
+            dynamic_result = root / 'dynamic_frames.jsonl'
+            subprocess.run(
+                [
+                    'ros2', 'run', 'metro_perception_ros', 'evaluate_bag', str(dynamic_bag),
+                    '/points', str(dynamic_result), str(dynamic_profile),
+                ],
+                check=True,
+            )
+            dynamic_offline = json.loads(dynamic_result.read_text())
+            assert dynamic_offline['reason'] == 'NOT_IMPLEMENTED'
+            assert dynamic_offline['transform_applied']
+            assert dynamic_offline['calibration_trust'] == FrameAnalysis.CALIBRATION_TRUST_VERIFIED
             # Measurement time goes backwards: a bind_first profile may bind a new frame name.
             cloud.header.stamp.sec = 120
             if args.default:
