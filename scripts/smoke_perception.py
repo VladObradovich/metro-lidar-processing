@@ -40,7 +40,7 @@ def main():
     try:
         spin_until(lambda: publisher.get_subscription_count() > 0 and bool(received))
         cloud = PointCloud2()
-        cloud.header.frame_id = 'test_lidar'
+        cloud.header.frame_id = 'hesai_lidar'
         cloud.header.stamp.sec = 123
         cloud.height = cloud.width = 1
         cloud.point_step = cloud.row_step = 12
@@ -61,7 +61,7 @@ def main():
         assert all(row.state == PathAssessment.UNKNOWN for row in received)
         assert all(not row.distance_valid and not row.evaluation_region_valid for row in received)
         assert stale.header.stamp == fresh.header.stamp
-        assert stale.header.frame_id == 'base_link'
+        assert stale.header.frame_id == 'lidar_assumed'
         assert stale.source_instance_id == fresh.source_instance_id
         assert stale.result_age_ms >= 500
         spin_until(lambda: any('INPUT_PAUSED_OR_STOPPED' in marker.text
