@@ -31,6 +31,13 @@ class PerceptionNode : public rclcpp::Node {
     }
     max_processing_age_ = std::chrono::duration<double>(max_age_s);
 
+    const auto tf_wait_s = declare_parameter<double>("tf_wait_timeout_s", 0.05);
+    if (!std::isfinite(tf_wait_s) || tf_wait_s < 0.0 || tf_wait_s > 1.0) {
+      throw std::invalid_argument("tf_wait_timeout_s must be in [0, 1]");
+    }
+    tf_wait_timeout_ = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>(tf_wait_s));
+
     config_ = metro_perception_ros::load_preprocessing(
         declare_parameter<std::string>("sensor_profile", ""));
     config_.algorithm.max_points = max_points_;
@@ -138,8 +145,13 @@ class PerceptionNode : public rclcpp::Node {
       buffer_->setTransform(config_.static_transform, "sensor_profile", true);
     }
 
-    const auto context =
-        metro_perception_ros::resolve_context(work.message->header, config_, *buffer_);
+    const auto tf_wait_started = std::chrono::steady_clock::now();
+    const auto context = metro_perception_ros::resolve_context(
+        work.message->header, config_, *buffer_, tf_wait_timeout_);
+    const double tf_wait_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  tf_wait_started)
+            .count();
     const auto frame =
         metro_perception_ros::process_cloud(*work.message, *pipeline_, max_points_, context);
     processed_.fetch_add(1);
@@ -179,6 +191,7 @@ class PerceptionNode : public rclcpp::Node {
     output.rejected_frames = rejected_.load();
     output.overwritten_frames = overwritten_.load();
     output.queue_age_ms = queue_age_ms;
+    output.tf_wait_ms = tf_wait_ms;
     output.processing_age_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   work.received_at)
@@ -191,6 +204,7 @@ class PerceptionNode : public rclcpp::Node {
   std::unique_ptr<tf2_ros::TransformListener> listener_;
   std::size_t max_points_{0};
   std::chrono::duration<double> max_processing_age_{0.30};
+  std::chrono::nanoseconds tf_wait_timeout_{std::chrono::milliseconds(50)};
   std::unique_ptr<metro_perception_core::PerceptionPipeline> pipeline_;
 
   std::string source_;

@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <string>
 
 #include "geometry_msgs/msg/transform_stamped.hpp"
@@ -17,7 +18,7 @@ struct PreprocessingConfig {
 PreprocessingConfig load_preprocessing(const std::string& path);
 // Wildcard profiles bind once; a later frame change is rejected by resolve_context.
 void bind_source_frame(PreprocessingConfig& config, const std::string& frame);
-metro_perception_core::FrameContext resolve_context(const std_msgs::msg::Header& header,
-                                                    const PreprocessingConfig& config,
-                                                    tf2_ros::Buffer& buffer);
+metro_perception_core::FrameContext resolve_context(
+    const std_msgs::msg::Header& header, const PreprocessingConfig& config, tf2_ros::Buffer& buffer,
+    std::chrono::nanoseconds tf_wait_timeout = std::chrono::nanoseconds::zero());
 }  // namespace metro_perception_ros

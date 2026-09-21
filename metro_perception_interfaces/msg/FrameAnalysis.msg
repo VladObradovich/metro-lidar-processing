@@ -19,6 +19,8 @@ float64 evaluated_range_m
 float64 processing_age_ms
 # Time spent waiting for the latest-only worker before processing starts.
 float64 queue_age_ms
+# Time spent waiting for an exact-stamp TF before preprocessing.
+float64 tf_wait_ms
 uint64 received_frames
 uint64 processed_frames
 uint64 rejected_frames

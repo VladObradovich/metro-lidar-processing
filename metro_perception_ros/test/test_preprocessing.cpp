@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <thread>
 
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 #include "metro_perception_ros/preprocessing.hpp"
@@ -122,4 +124,38 @@ TEST(Profile, DefaultForwardSectorUsesExplicitAssumption) {
   EXPECT_FALSE(resolve_context(h, c, buffer).transform_available);
   input.context.allow_unverified_calibration = false;
   EXPECT_EQ(PerceptionPipeline(c.algorithm).process(input).reason, "CALIBRATION_UNVERIFIED");
+}
+
+TEST(Transform, BoundedWaitAcceptsTransformArrivingAfterCloud) {
+  tf2_ros::Buffer buffer(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME));
+  PreprocessingConfig c;
+  c.source_frame = "lidar";
+  c.target_frame = "base_link";
+  c.calibration_verified = true;
+
+  std::thread producer([&buffer] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    buffer.setTransform(transform(123, 7), "delayed_test", false);
+  });
+  const auto context = resolve_context(header(123), c, buffer, std::chrono::milliseconds(100));
+  producer.join();
+
+  ASSERT_TRUE(context.transform_available);
+  EXPECT_DOUBLE_EQ(context.sensor_to_target.translation.x, 7);
+}
+
+TEST(Transform, BoundedWaitDoesNotFallBackToLatestTransform) {
+  tf2_ros::Buffer buffer(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME));
+  PreprocessingConfig c;
+  c.source_frame = "lidar";
+  c.target_frame = "base_link";
+  c.calibration_verified = true;
+  buffer.setTransform(transform(200, 9), "future_test", false);
+
+  const auto started = std::chrono::steady_clock::now();
+  const auto context = resolve_context(header(123), c, buffer, std::chrono::milliseconds(20));
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+
+  EXPECT_FALSE(context.transform_available);
+  EXPECT_LT(elapsed, std::chrono::milliseconds(250));
 }
