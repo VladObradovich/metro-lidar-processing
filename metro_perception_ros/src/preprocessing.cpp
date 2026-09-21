@@ -24,7 +24,7 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
   PreprocessingConfig c;
   const auto file = path.empty()
                         ? ament_index_cpp::get_package_share_directory("metro_perception_ros") +
-                              "/config/lidar_only.yaml"
+                              "/config/forward_sector_assumed.yaml"
                         : path;
   const auto n = YAML::LoadFile(file);
   c.source_frame = n["source_frame"].as<std::string>();
@@ -90,6 +90,12 @@ metro_perception_core::FrameContext resolve_context(const std_msgs::msg::Header&
   if (context.measurement_time_ns <= 0 || h.stamp.nanosec >= 1000000000u || h.frame_id.empty() ||
       (!c.source_frame.empty() && h.frame_id != c.source_frame))
     return context;
+  if (h.frame_id == c.target_frame) {
+    context.sensor_to_target = {};
+    context.sensor_origin = {};
+    context.transform_available = true;
+    return context;
+  }
   try {
     const auto t = static_cast<tf2::BufferCore&>(buffer).lookupTransform(
         c.target_frame, h.frame_id,

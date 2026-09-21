@@ -1,94 +1,82 @@
-# Режим по умолчанию: только лидар
+# Режим по умолчанию: lidar-only профили
 
-Для приватного rosbag не требуется измеренная монтажная калибровка, TF, odometry
-или IMU. Нода и evaluator автоматически загружают один установленный профиль
-`metro_perception_ros/config/lidar_only.yaml`, если sensor_profile не указан.
-`evaluate_all.py` также использует этот профиль (без `--preview`).
+Измеренной монтажной калибровки, TF, odometry и IMU в предоставленных bag нет.
+Поэтому проект не выдаёт одну геометрическую гипотезу за универсальную калибровку.
 
-Допущения фиксированы для всех bag, без выбора по названию записи:
+## Профили
 
-- X вперёд = исходная −Y, Y влево = исходная +X, Z вверх = исходная +Z;
-- rotation RPY = [0, 0, π/2], translation = [0, 0, 0];
-- `base_link` — условная база с началом в оптическом центре лидара;
-- расстояние считается от лидара, не от переднего габарита поезда;
-- source frame берётся из первого непустого допустимого header.frame_id.
-  Изменение frame в последующих сообщениях даёт TF_UNAVAILABLE; для нового
-  источника с другим frame нужно перезапустить обработку или задать другой профиль.
+Для стандартного входа `/lidar_points` с frame `hesai_lidar` без явного
+`sensor_profile` используется установленный
+`metro_perception_ros/config/forward_sector_assumed.yaml`.
 
-Это практический baseline по доступным данным. Он не определяет ориентацию
-неизвестного лидара автоматически. Если в приватном bag другие оси или монтаж,
-нужно заменить профиль, а не перенастраивать пороги по имени bag.
-Поворот/перенос не требуют odometry. Накопления облаков и deskew нет.
+Он фиксирует только подтверждённую по сектору гипотезу:
 
-`calibration_verified: false` сохраняется честно. Новый параметр
-`allow_unverified_calibration: true` разрешает продолжить pipeline с этими
-допущениями; в FrameAnalysis и JSONL будет `calibration_assumed: true`.
-Отсутствие измеренной калибровки больше не порождает CALIBRATION_UNVERIFIED
-в дефолтном режиме. Ошибки входа, TF и пустая geometry ROI всё ещё отклоняются.
-Сейчас после A02 возвращается NOT_IMPLEMENTED/UNKNOWN, поскольку A03–A07
-(сам детектор) ещё не реализованы; калибровка больше не блокирует их подключение.
+- target frame: `lidar_assumed`;
+- начало координат: оптический центр лидара;
+- X вперёд = исходная −Y;
+- Y влево = исходная +X;
+- Z вверх = исходная +Z;
+- `calibration_verified: false`;
+- `allow_unverified_calibration: true`;
+- `calibration_trust=ASSUMED`.
 
-Доверие к калибровке передаётся через весь тракт отдельным `calibration_trust`:
-`UNKNOWN`, `ASSUMED` или `VERIFIED`. Это состояние конкретного результата кадра,
-а не только выбранного YAML. Политика monitor асимметрична: assumed-калибровка
-может использоваться будущим детектором для формирования кандидата препятствия,
-но пустой список кандидатов при `ASSUMED` не может подтвердить
-`NO_OBSTACLE_DETECTED`. Для подтверждения свободного пути требуется `VERIFIED`.
-Ошибка TF оставляет trust в `UNKNOWN`, даже если выбран default profile.
+Имя `base_link` для этой гипотезы не используется. Настоящий `base_link`
+оставлен для измеренной или независимо подтверждённой геометрии машины.
+
+Для 360-градусного входа `/sensing/lidar/hesai128/pointcloud` с frame
+`lidar_livox` используется `full_scan_unresolved.yaml`. Облако остаётся в
+своём native frame, направление движения не угадывается, а результат остаётся
+fail-closed (`UNKNOWN`) до появления проверенной ориентации.
+
+`scripts/evaluate_all.py` выбирает эти профили по `sensor_profile` из
+`evaluation/dataset.yaml`, а не по имени bag. Неизвестный sensor_profile
+считается ошибкой конфигурации.
+
+## Доверие к калибровке
+
+`calibration_trust` проходит через core → FrameAnalysis → monitor →
+PathAssessment:
+
+- `UNKNOWN` — TF/геометрия не установлены;
+- `ASSUMED` — используется явно документированная гипотеза;
+- `VERIFIED` — калибровка подтверждена.
+
+Пустой список кандидатов при `ASSUMED` не может подтверждать
+`NO_OBSTACLE_DETECTED`. Для подтверждения свободного пути требуется
+`VERIFIED`.
 
 ## Запуск
 
-После пересборки пакетов/образа и source ROS workspace:
+Forward-sector default:
 
 ```bash
 ros2 launch metro_perception_bringup perception.launch.py \
   input_topic:=/lidar_points use_sim_time:=true
-# Во втором терминале:
 ros2 bag play /data/private_bag --clock
 ```
 
-Для RViz вместо perception.launch.py использовать demo.launch.py. Fixed Frame
-по умолчанию — base_link. Static TF появляется после первого допустимого облака.
-Для другого topic (включая /sensing/lidar/hesai128/pointcloud) достаточно изменить
-input_topic; имя frame не нужно угадывать. Topic автоматически не выбирается.
-
-Offline без профиля — те же допущения и та же обработка:
+Offline forward-sector без пятого аргумента использует тот же default:
 
 ```bash
 ros2 run metro_perception_ros evaluate_bag \
   /data/private_bag /lidar_points /results/private.jsonl
-python3 scripts/evaluate_all.py --dataset-root /data --output-dir /results/default-run
-python3 scripts/smoke_a02.py --default
 ```
 
-## Точная калибровка и внешние TF остаются опциональными
+Для всего зарегистрированного набора:
 
-Можно передать свой YAML через `sensor_profile:=/path/sensor.yaml` или пятым
-аргументом evaluate_bag. Существующие preview/strict-профили не изменены.
-Если allow_unverified_calibration отсутствует, используется строгий режим:
-неподтверждённая калибровка блокирует последующие стадии как раньше.
+```bash
+python3 scripts/evaluate_all.py --dataset-root /data --output-dir /results/run
+```
 
-Если известен монтаж, задать реальные translation_m/rotation_rpy_rad и
-calibration_verified=true с источником измерений. Для внешнего TF онлайн:
-задать конкретные source_frame/target_frame, оставить translation_m и
-rotation_rpy_rad null, указать политику принятия калибровки. Тогда static TF
-не публикуется, resolver использует внешний TF на header.stamp.
-Default не переключается между своим и внешним TF от кадра к кадру: один
-источник преобразования на запуск. Динамический TF из bag в offline evaluator
-пока не воспроизводится. IMU/odom пока не используются алгоритмом.
+Для full-scan отдельный профиль выбирается автоматически только в
+`evaluate_all.py` по dataset metadata. При ручном запуске его нужно передать
+явно. Автовыбора по имени topic/frame/размеру облака в runtime нет.
 
-Проверка: default и strict online/offline smoke, поздний подписчик /tf_static,
-сброс сессии, отказ при смене source frame; тесты core и ROS resolver.
-Исторический [отчёт A02](a02-validation.md) относится к строгому preview,
-до введения этого рабочего режима по умолчанию.
+## Настоящая калибровка
 
-## Результат проверки 21.09.2026
+Шаблоны `forward_sector.yaml` и `full_scan.yaml` в bringup используют
+`target_frame: base_link` и предназначены для реальной геометрии. После
+измерения монтажа нужно заполнить translation/RPY и `calibration_source`, а
+`calibration_verified=true` ставить только после независимой проверки.
 
-Сборка Humble и 14 C++/ROS-тестов прошли; scripts/test — 13 passed.
-В установленном runtime без исходников прошли default и strict online/offline smoke,
-проверки позднего подписчика /tf_static, смены frame, reset и watchdog.
-Без аргумента профиля повторно обработаны все 345 кадров doubleT_platform
-и 201 кадр doubleT_obstacle: transform_applied=true, calibration_assumed=true,
-calibration_verified=false, reason=NOT_IMPLEMENTED. Блокировки калибровкой нет.
-Это не проверка готовности детектора; остальные bag повторно в этом режиме не прогонялись.
-Логи и JSONL: results/lidar-only-default-20260921/ (не в Git).
+A03–A07 пока не реализованы; текущий A02 остаётся preprocessing-каркасом.

@@ -34,7 +34,7 @@ def main():
                 'commit': git('rev-parse', 'HEAD'), 'dirty': bool(git('status', '--porcelain')),
                 'dataset_sha256': sha256(args.dataset), 'config_sha256': {}, 'bags': [],
                 'preview': args.preview,
-                'note': 'Static profiles only; mounting remains unverified, no detector/deskew.'}
+                'note': 'Profiles are selected by sensor_profile metadata; full-scan orientation remains unresolved, no detector/deskew.'}
     for config in sorted(list((root / 'metro_perception_bringup/config').rglob('*.yaml')) +
                          list((root / 'metro_perception_ros/config').rglob('*.yaml'))):
         manifest['config_sha256'][str(config.relative_to(root))] = sha256(config)
@@ -42,9 +42,18 @@ def main():
     try:
         for entry in dataset['bags']:
             bag = args.dataset_root / entry['path']
-            profile = (root / 'metro_perception_bringup/config/sensors' /
-                       (entry['sensor_profile'] + '_preview.yaml') if args.preview else
-                       root / 'metro_perception_ros/config/lidar_only.yaml')
+            if args.preview:
+                profile = (root / 'metro_perception_bringup/config/sensors' /
+                           (entry['sensor_profile'] + '_preview.yaml'))
+            else:
+                profiles = {
+                    'forward_sector': root / 'metro_perception_ros/config/forward_sector_assumed.yaml',
+                    'full_scan': root / 'metro_perception_ros/config/full_scan_unresolved.yaml',
+                }
+                try:
+                    profile = profiles[entry['sensor_profile']]
+                except KeyError as exc:
+                    raise ValueError(f"Unknown sensor_profile: {entry['sensor_profile']}") from exc
             result_dir = args.output_dir / entry['id']
             result_dir.mkdir()
             info = {'id': entry['id'], 'topic': entry['input_topic'], 'status': 'running',

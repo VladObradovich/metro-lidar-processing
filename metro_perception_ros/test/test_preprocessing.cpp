@@ -82,32 +82,44 @@ TEST(Profile, LoadsAndRejectsUnsafeConfiguration) {
   std::remove(path.c_str());
 }
 
-TEST(Profile, DefaultLidarOnlyAcceptsAssumptionsAndBindsFirstFrame) {
+TEST(Transform, SameFrameDoesNotRequireTfTree) {
+  tf2_ros::Buffer buffer(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME));
+  PreprocessingConfig c;
+  c.source_frame = "lidar_livox";
+  c.target_frame = "lidar_livox";
+  auto h = header(123);
+  h.frame_id = "lidar_livox";
+  const auto context = resolve_context(h, c, buffer);
+  EXPECT_TRUE(context.transform_available);
+  EXPECT_DOUBLE_EQ(context.sensor_to_target.rotation[0], 1);
+  EXPECT_DOUBLE_EQ(context.sensor_to_target.rotation[4], 1);
+  EXPECT_DOUBLE_EQ(context.sensor_to_target.rotation[8], 1);
+  EXPECT_DOUBLE_EQ(context.sensor_origin.x, 0);
+}
+
+TEST(Profile, DefaultForwardSectorUsesExplicitAssumption) {
   auto c = load_preprocessing("");
-  EXPECT_EQ(c.source_frame, "*");
+  EXPECT_EQ(c.source_frame, "hesai_lidar");
+  EXPECT_EQ(c.target_frame, "lidar_assumed");
   EXPECT_TRUE(c.allow_unverified_calibration);
   EXPECT_FALSE(c.calibration_verified);
-  bind_source_frame(c, "");
-  EXPECT_EQ(c.source_frame, "*");
-  bind_source_frame(c, "private_lidar_frame");
-  EXPECT_EQ(c.source_frame, "private_lidar_frame");
+  EXPECT_TRUE(c.has_static_transform);
   tf2_ros::Buffer buffer(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME));
   buffer.setTransform(c.static_transform, "default_profile", true);
   auto h = header(123);
-  h.frame_id = "private_lidar_frame";
+  h.frame_id = "hesai_lidar";
   FrameInput input;
   input.points = {{0, -10, 0}};
   input.context = resolve_context(h, c, buffer);
   const auto result = PerceptionPipeline(c.algorithm).process(input);
   EXPECT_EQ(result.status, AnalysisStatus::NOT_IMPLEMENTED);
   EXPECT_TRUE(result.preprocessed.transform_applied);
+  EXPECT_EQ(result.calibration_trust, CalibrationTrust::ASSUMED);
   ASSERT_EQ(result.preprocessed.geometry_points.size(), 1u);
   EXPECT_NEAR(result.preprocessed.geometry_points[0].point.x, 10, 1e-8);
   EXPECT_DOUBLE_EQ(result.preprocessed.sensor_origin.z, 0);
-  bind_source_frame(c, "different_sensor");
   h.frame_id = "different_sensor";
   EXPECT_FALSE(resolve_context(h, c, buffer).transform_available);
-  // Explicit strict mode still blocks unverified mounting.
   input.context.allow_unverified_calibration = false;
   EXPECT_EQ(PerceptionPipeline(c.algorithm).process(input).reason, "CALIBRATION_UNVERIFIED");
 }

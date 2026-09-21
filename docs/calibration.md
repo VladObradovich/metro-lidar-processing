@@ -25,8 +25,9 @@
 (у `new_data`: −134.5° и −44.2°). Это основание для **гипотезы** направления
 вперёд вдоль −Y. Это не проверка roll/pitch, высоты над рельсом или переднего
 габарита. Полный скан `doubleT_obstacle` содержит 921600 точек; его направление
-движения из полного круга не определяется. Такой же поворот в full_scan_preview
-дан только как удобная визуальная гипотеза, а не как подтверждение общего монтажа.
+движения из полного круга не определяется. Поэтому full_scan_preview и
+full_scan_unresolved больше не задают фиктивный поворот: облако остаётся в
+native frame до появления отдельной оценки направления.
 
 ### Что дают приложенные файлы
 
@@ -112,11 +113,11 @@ ros2 topic echo /metro/analysis
 Для `doubleT_obstacle` выбрать `full_scan_preview.yaml` и
 `input_topic:=/sensing/lidar/hesai128/pointcloud`.
 
-Preview явно использует frame **lidar_preview**, начало в оптическом центре и
-`Rz(+π/2)` (−Y → +X, +X → +Y, +Z → +Z). Он публикует static TF для просмотра,
-но **не выдаёт его за base_link поезда**: `calibration_verified: false`,
-ожидается `CALIBRATION_UNVERIFIED`, state=UNKNOWN.
-Без `sensor_profile` теперь используется рабочий lidar-only default; см. ссылку выше.
+Forward-sector preview использует frame **lidar_preview**, начало в оптическом
+центре и `Rz(+π/2)` (−Y → +X, +X → +Y, +Z → +Z). Он не выдаётся за
+`base_link`. Full-scan preview остаётся в `lidar_livox` без придуманной оси
+движения. Без `sensor_profile` runtime использует только explicit
+forward-sector default; см. ссылку выше.
 
 ## Когда появится монтажная калибровка
 
@@ -145,8 +146,9 @@ python3 scripts/smoke_a02.py
 ```
 
 Evaluator и нода используют один loader статического профиля, resolver и core.
-Без профиля evaluator использует lidar-only default. Динамические `/tf` из будущих
-bag пока не воспроизводятся: этот путь ограничен текущим набором без TF.
+Без профиля evaluator использует только forward-sector assumed default.
+`evaluate_all.py` выбирает forward_sector/full_scan профиль по dataset metadata.
+Динамические `/tf` из будущих bag пока не воспроизводятся.
 Offline лимит точек — 2 000 000; кастомный ROS override `max_points` автоматически
 не переносится (оставшаяся часть E01). Прогон проверяет A02, а не качество детекции.
 

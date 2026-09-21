@@ -1,7 +1,7 @@
 # Архитектура
 
-**Актуальный режим по умолчанию:** [lidar-only-default.md](lidar-only-default.md).
-Для проверки приватных bag измеренная калибровка не требуется.
+**Lidar-only policy:** [lidar-only-default.md](lidar-only-default.md).
+Forward-sector имеет отдельный ASSUMED-профиль; full-scan без ориентации остаётся UNKNOWN.
 
 ```text
 PointCloud2 → perception_node → FrameAnalysis → obstacle_monitor → PathAssessment

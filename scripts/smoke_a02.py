@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--default", action="store_true", help="Check automatic lidar-only profile")
     args = parser.parse_args()
     reason = "NOT_IMPLEMENTED" if args.default else "CALIBRATION_UNVERIFIED"
-    target = "base_link" if args.default else "test_preview"
+    target = "lidar_assumed" if args.default else "test_preview"
     rclpy.init(args=[])
     node = rclpy.create_node('a02_smoke_client')
     analyses, assessments = [], []
@@ -57,7 +57,7 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
         try:
             until(lambda: publisher.get_subscription_count() > 0 and bool(assessments))
             cloud = PointCloud2()
-            cloud.header.frame_id = 'test_lidar'
+            cloud.header.frame_id = 'hesai_lidar' if args.default else 'test_lidar'
             cloud.header.stamp.sec = 123
             points = [(0., 0., 0.), (float('nan'), 1., 2.), (0.1, 0., 0.),
                       (0., -10., -1.), (8., -10., 0.), (0., -200., 0.)]

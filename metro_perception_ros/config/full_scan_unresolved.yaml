@@ -1,6 +1,5 @@
-# Full-scan preview in the native LiDAR frame.
-# A 360-degree cloud does not determine the train forward direction.
-input_topic: /sensing/lidar/hesai128/pointcloud
+# Full 360-degree LiDAR with unresolved vehicle-forward direction.
+# Keep the cloud in its native frame and fail closed until orientation is established.
 source_frame: lidar_livox
 target_frame: lidar_livox
 calibration_verified: false
