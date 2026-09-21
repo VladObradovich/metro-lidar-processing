@@ -1,6 +1,5 @@
 # Visualization hypothesis only. Origin remains at lidar, NOT vehicle base.
 # Rz(+pi/2): source -Y -> target +X; source +X -> target +Y.
-input_topic: /lidar_points
 source_frame: hesai_lidar
 target_frame: lidar_preview
 calibration_verified: false

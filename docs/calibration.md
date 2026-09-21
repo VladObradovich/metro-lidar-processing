@@ -117,7 +117,9 @@ ros2 topic echo /metro/analysis
 на путь к записи, например `rosbags/new_data`.
 
 Для `doubleT_obstacle` выбрать `full_scan_preview.yaml` и
-`input_topic:=/sensing/lidar/hesai128/pointcloud`.
+`input_topic:=/sensing/lidar/hesai128/pointcloud`. Поле `input_topic` намеренно
+не хранится в sensor YAML: profile описывает геометрию/TF policy, а routing
+остаётся ответственностью launch или dataset metadata.
 
 Forward-sector preview использует frame **lidar_preview**, начало в оптическом
 центре и `Rz(+π/2)` (−Y → +X, +X → +Y, +Z → +Z). Он не выдаётся за

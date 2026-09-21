@@ -33,7 +33,9 @@ fail-closed (`UNKNOWN`) до появления проверенной орие�
 
 `scripts/evaluate_all.py` выбирает эти профили по `sensor_profile` из
 `evaluation/dataset.yaml`, а не по имени bag. Неизвестный sensor_profile
-считается ошибкой конфигурации.
+считается ошибкой конфигурации. Topic routing не хранится в geometry-профиле:
+он задаётся отдельно через `input_topic` в launch или через `input_topic` metadata
+в `evaluation/dataset.yaml`. Поэтому выбор геометрии и выбор ROS topic не смешаны.
 
 ## Доверие к калибровке
 

@@ -1,6 +1,5 @@
 # Full-scan preview in the native LiDAR frame.
 # A 360-degree cloud does not determine the train forward direction.
-input_topic: /sensing/lidar/hesai128/pointcloud
 source_frame: lidar_livox
 target_frame: lidar_livox
 calibration_verified: false
