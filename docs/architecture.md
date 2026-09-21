@@ -1,7 +1,9 @@
 # Архитектура
 
 **Lidar-only policy:** [lidar-only-default.md](lidar-only-default.md).
-Forward-sector имеет отдельный ASSUMED-профиль; full-scan без ориентации остаётся UNKNOWN.
+Forward-sector имеет отдельный ASSUMED-профиль; его source frame bind-ится по первому
+валидному PointCloud2 каждой session, не по модели лидара. Full-scan без ориентации
+остаётся UNKNOWN.
 
 ```text
 PointCloud2 → perception_node → FrameAnalysis → obstacle_monitor → PathAssessment

@@ -60,8 +60,10 @@ int main(int argc, char** argv) {
     auto config = metro_perception_ros::load_preprocessing(argc == 5 ? argv[4] : "");
     auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
     tf2_ros::Buffer buffer(clock);
-    if (config.has_static_transform && config.source_frame != "*")
-      buffer.setTransform(config.static_transform, "sensor_profile", true);
+    metro_perception_ros::SourceFrameBinding source_binding;
+    if (const auto transform =
+            metro_perception_ros::resolved_static_transform(config, source_binding))
+      buffer.setTransform(*transform, "sensor_profile", true);
     metro_perception_core::PerceptionPipeline pipeline(config.algorithm);
     metro_perception_core::TemporalMonitor monitor;
     std::uint64_t sequence = 0, session = 0;
@@ -80,14 +82,16 @@ int main(int argc, char** argv) {
           ++session;
           pipeline.reset();
           monitor.reset();
+          source_binding.reset();
         }
         previous_stamp = stamp;
-        metro_perception_ros::bind_source_frame(config, cloud.header.frame_id);
-        if (config.has_static_transform && config.source_frame != "*")
-          buffer.setTransform(config.static_transform, "sensor_profile", true);
+        metro_perception_ros::bind_source_frame(config, source_binding, cloud.header.frame_id);
+        if (const auto transform =
+                metro_perception_ros::resolved_static_transform(config, source_binding))
+          buffer.setTransform(*transform, "sensor_profile", true);
         result = metro_perception_ros::process_cloud(
             cloud, pipeline, config.algorithm.max_points,
-            metro_perception_ros::resolve_context(cloud.header, config, buffer));
+            metro_perception_ros::resolve_context(cloud.header, config, source_binding, buffer));
       } catch (const std::exception&) {
         result.status = metro_perception_core::AnalysisStatus::BAD_INPUT;
         result.reason = "DESERIALIZATION_ERROR";

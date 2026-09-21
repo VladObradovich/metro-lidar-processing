@@ -5,9 +5,11 @@
 
 ## Профили
 
-Для стандартного входа `/lidar_points` с frame `hesai_lidar` без явного
+Для стандартного forward-sector входа `/lidar_points` без явного
 `sensor_profile` используется установленный
-`metro_perception_ros/config/forward_sector_assumed.yaml`.
+`metro_perception_ros/config/forward_sector_assumed.yaml`. Имя исходного ROS
+frame заранее не фиксируется: режим `source_frame_mode: bind_first` принимает
+`header.frame_id` первого валидного облака и закрепляет его до конца session.
 
 Он фиксирует только подтверждённую по сектору гипотезу:
 
@@ -18,7 +20,8 @@
 - Z вверх = исходная +Z;
 - `calibration_verified: false`;
 - `allow_unverified_calibration: true`;
-- `calibration_trust=ASSUMED`.
+- `calibration_trust=ASSUMED`;
+- имя source frame не является идентификатором модели лидара и не выбирает профиль.
 
 Имя `base_link` для этой гипотезы не используется. Настоящий `base_link`
 оставлен для измеренной или независимо подтверждённой геометрии машины.
@@ -57,7 +60,10 @@ ros2 bag play /data/private_bag --clock
 
 Обычный headless launch не публикует assumed transform в глобальный TF graph.
 Для RViz `demo.launch.py` включает публикацию profile TF отдельным
-`tf2_ros/static_transform_publisher`; perception-нода не владеет `/tf_static`.
+`tf2_ros/static_transform_publisher`. Для bind-first профиля имя child frame
+нужно передать явно, например для текущих открытых bag:
+`sensor_frame_override:=hesai_lidar`. Для приватного bag указывается фактический
+`PointCloud2.header.frame_id`. Perception-нода сама не владеет `/tf_static`.
 
 Offline forward-sector без пятого аргумента использует тот же default:
 
@@ -74,7 +80,9 @@ python3 scripts/evaluate_all.py --dataset-root /data --output-dir /results/run
 
 Для full-scan отдельный профиль выбирается автоматически только в
 `evaluate_all.py` по dataset metadata. При ручном запуске его нужно передать
-явно. Автовыбора по имени topic/frame/размеру облака в runtime нет.
+явно. Автовыбора профиля по имени topic/frame/размеру облака в runtime нет:
+bind-first определяет только имя уже выбранной системы координат, а не модель
+лидара и не геометрическую ориентацию.
 
 ## Настоящая калибровка
 

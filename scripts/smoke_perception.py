@@ -25,6 +25,7 @@ def main():
     launch = subprocess.Popen([
         'ros2', 'launch', 'metro_perception_bringup', 'demo.launch.py', 'rviz:=false',
         'namespace:=scaffold_smoke', 'input_topic:=/scaffold_smoke/points',
+        'sensor_frame_override:=private_scaffold_lidar',
         'use_sim_time:=true',  # No /clock: watchdog must still use steady time.
     ], start_new_session=True)
 
@@ -40,7 +41,7 @@ def main():
     try:
         spin_until(lambda: publisher.get_subscription_count() > 0 and bool(received))
         cloud = PointCloud2()
-        cloud.header.frame_id = 'hesai_lidar'
+        cloud.header.frame_id = 'private_scaffold_lidar'
         cloud.header.stamp.sec = 123
         cloud.height = cloud.width = 1
         cloud.point_step = cloud.row_step = 12

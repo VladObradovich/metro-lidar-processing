@@ -11,9 +11,9 @@ from metro_perception_interfaces.msg import FrameAnalysis, PathAssessment
 from sensor_msgs.msg import PointCloud2, PointField
 
 
-def make_cloud(stamp_sec):
+def make_cloud(stamp_sec, frame_id):
     cloud = PointCloud2()
-    cloud.header.frame_id = 'hesai_lidar'
+    cloud.header.frame_id = frame_id
     cloud.header.stamp.sec = stamp_sec
     cloud.height = 1
     cloud.width = 1
@@ -157,7 +157,7 @@ def main():
 
         first_a = publish_until_chain(
             publisher_a,
-            make_cloud(100),
+            make_cloud(100, 'private_a_lidar'),
             analyses_a,
             assessments_a,
         )
@@ -180,7 +180,7 @@ def main():
         a_count_before_b = len(analyses_a)
         first_b = publish_until_chain(
             publisher_b,
-            make_cloud(200),
+            make_cloud(200, 'private_b_lidar'),
             analyses_b,
             assessments_b,
         )
@@ -201,8 +201,8 @@ def main():
             for row in assessments_a
         )
 
-        publisher_a.publish(make_cloud(300))
-        publisher_b.publish(make_cloud(400))
+        publisher_a.publish(make_cloud(300, 'private_a_lidar'))
+        publisher_b.publish(make_cloud(400, 'private_b_lidar'))
         spin_until(
             lambda: find_analysis(analyses_a, 300) is not None
             and find_analysis(analyses_b, 400) is not None
@@ -217,15 +217,24 @@ def main():
         assert simultaneous_b.frame_sequence > first_b.frame_sequence
 
         b_count_before_reset = len(analyses_b)
-        reset_a = publish_and_wait(publisher_a, make_cloud(250), analyses_a)
+        reset_a = publish_and_wait(
+            publisher_a,
+            make_cloud(250, 'private_a_lidar_after_reset'),
+            analyses_a,
+        )
         assert reset_a is not None
         assert reset_a.session_id > simultaneous_a.session_id
         assert reset_a.source_instance_id == first_a.source_instance_id
+        assert reset_a.transform_applied
 
         spin_for(0.5)
         assert len(analyses_b) == b_count_before_reset
 
-        after_reset_b = publish_and_wait(publisher_b, make_cloud(500), analyses_b)
+        after_reset_b = publish_and_wait(
+            publisher_b,
+            make_cloud(500, 'private_b_lidar'),
+            analyses_b,
+        )
         assert after_reset_b is not None
         assert after_reset_b.session_id == simultaneous_b.session_id
         assert after_reset_b.frame_sequence > simultaneous_b.frame_sequence

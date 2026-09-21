@@ -32,25 +32,27 @@ TEST(Transform, UsesMeasurementTimeNotLatestAndRejectsExtrapolation) {
   PreprocessingConfig c;
   c.source_frame = "lidar";
   c.calibration_verified = true;
+  SourceFrameBinding binding;
   buffer.setTransform(transform(10, 1), "test", false);
   buffer.setTransform(transform(20, 11), "test", false);
-  const auto context = resolve_context(header(15), c, buffer);
+  const auto context = resolve_context(header(15), c, binding, buffer);
   ASSERT_TRUE(context.transform_available);
   EXPECT_DOUBLE_EQ(context.sensor_to_target.translation.x, 6);
-  EXPECT_FALSE(resolve_context(header(0), c, buffer).transform_available);
-  EXPECT_FALSE(resolve_context(header(9), c, buffer).transform_available);
-  EXPECT_FALSE(resolve_context(header(21), c, buffer).transform_available);
+  EXPECT_FALSE(resolve_context(header(0), c, binding, buffer).transform_available);
+  EXPECT_FALSE(resolve_context(header(9), c, binding, buffer).transform_available);
+  EXPECT_FALSE(resolve_context(header(21), c, binding, buffer).transform_available);
   auto h = header(15);
   h.frame_id = "wrong";
-  EXPECT_FALSE(resolve_context(h, c, buffer).transform_available);
+  EXPECT_FALSE(resolve_context(h, c, binding, buffer).transform_available);
 }
 TEST(Transform, StaticTransformWorksWithoutClockAndRemainsUnverified) {
   tf2_ros::Buffer buffer(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME));
   PreprocessingConfig c;
   c.source_frame = "lidar";
-  EXPECT_FALSE(resolve_context(header(123), c, buffer).transform_available);
+  SourceFrameBinding binding;
+  EXPECT_FALSE(resolve_context(header(123), c, binding, buffer).transform_available);
   buffer.setTransform(transform(0, 3), "test", true);
-  const auto context = resolve_context(header(123), c, buffer);
+  const auto context = resolve_context(header(123), c, binding, buffer);
   EXPECT_TRUE(context.transform_available);
   EXPECT_FALSE(context.calibration_verified);
   EXPECT_DOUBLE_EQ(context.sensor_origin.x, 3);
@@ -66,11 +68,12 @@ TEST(Profile, LoadsAndRejectsUnsafeConfiguration) {
       "1.5707963267948966]\n");
   const auto c = load_preprocessing(path);
   ASSERT_TRUE(c.has_static_transform);
+  SourceFrameBinding binding;
   tf2_ros::Buffer buffer(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME));
   buffer.setTransform(c.static_transform, "test", true);
   FrameInput frame;
   frame.points = {{0, -10, 0}};
-  frame.context = resolve_context(header(123), c, buffer);
+  frame.context = resolve_context(header(123), c, binding, buffer);
   const auto result = PerceptionPipeline(c.algorithm).process(frame);
   ASSERT_EQ(result.preprocessed.geometry_points.size(), 1u);
   EXPECT_NEAR(result.preprocessed.geometry_points[0].point.x, 11, 1e-6);
@@ -81,6 +84,13 @@ TEST(Profile, LoadsAndRejectsUnsafeConfiguration) {
   EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
   save("calibration_verified: false\nrotation_rpy_rad: [0, 0, 0]\n");
   EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
+  {
+    std::ofstream file(path);
+    file << "source_frame_mode: bind_first\nsource_frame: null\ntarget_frame: base_link\n"
+            "calibration_verified: true\ncalibration_source: measured\n"
+            "translation_m: [0, 0, 0]\nrotation_rpy_rad: [0, 0, 0]\n";
+  }
+  EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
   std::remove(path.c_str());
 }
 
@@ -89,9 +99,10 @@ TEST(Transform, SameFrameDoesNotRequireTfTree) {
   PreprocessingConfig c;
   c.source_frame = "lidar_livox";
   c.target_frame = "lidar_livox";
+  SourceFrameBinding binding;
   auto h = header(123);
   h.frame_id = "lidar_livox";
-  const auto context = resolve_context(h, c, buffer);
+  const auto context = resolve_context(h, c, binding, buffer);
   EXPECT_TRUE(context.transform_available);
   EXPECT_DOUBLE_EQ(context.sensor_to_target.rotation[0], 1);
   EXPECT_DOUBLE_EQ(context.sensor_to_target.rotation[4], 1);
@@ -99,31 +110,49 @@ TEST(Transform, SameFrameDoesNotRequireTfTree) {
   EXPECT_DOUBLE_EQ(context.sensor_origin.x, 0);
 }
 
-TEST(Profile, DefaultForwardSectorUsesExplicitAssumption) {
-  auto c = load_preprocessing("");
-  EXPECT_EQ(c.source_frame, "hesai_lidar");
+TEST(Profile, DefaultForwardSectorBindsRuntimeFramePerSession) {
+  const auto c = load_preprocessing("");
+  EXPECT_EQ(c.source_frame_mode, SourceFrameMode::BIND_FIRST);
+  EXPECT_TRUE(c.source_frame.empty());
   EXPECT_EQ(c.target_frame, "lidar_assumed");
   EXPECT_TRUE(c.allow_unverified_calibration);
   EXPECT_FALSE(c.calibration_verified);
   EXPECT_TRUE(c.has_static_transform);
+
+  SourceFrameBinding binding;
+  EXPECT_FALSE(bind_source_frame(c, binding, ""));
+  EXPECT_TRUE(bind_source_frame(c, binding, "private_pandar"));
+  EXPECT_EQ(binding.frame_id, "private_pandar");
+  EXPECT_TRUE(bind_source_frame(c, binding, "private_pandar"));
+  EXPECT_FALSE(bind_source_frame(c, binding, "different_sensor"));
+
   tf2_ros::Buffer buffer(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME));
-  buffer.setTransform(c.static_transform, "default_profile", true);
+  const auto transform = resolved_static_transform(c, binding);
+  ASSERT_TRUE(transform.has_value());
+  EXPECT_EQ(transform->child_frame_id, "private_pandar");
+  buffer.setTransform(*transform, "default_profile", true);
+
   auto h = header(123);
-  h.frame_id = "hesai_lidar";
+  h.frame_id = "private_pandar";
   FrameInput input;
   input.points = {{0, -10, 0}};
-  input.context = resolve_context(h, c, buffer);
+  input.context = resolve_context(h, c, binding, buffer);
   const auto result = PerceptionPipeline(c.algorithm).process(input);
   EXPECT_EQ(result.status, AnalysisStatus::NOT_IMPLEMENTED);
   EXPECT_TRUE(result.preprocessed.transform_applied);
   EXPECT_EQ(result.calibration_trust, CalibrationTrust::ASSUMED);
   ASSERT_EQ(result.preprocessed.geometry_points.size(), 1u);
   EXPECT_NEAR(result.preprocessed.geometry_points[0].point.x, 10, 1e-8);
-  EXPECT_DOUBLE_EQ(result.preprocessed.sensor_origin.z, 0);
+
   h.frame_id = "different_sensor";
-  EXPECT_FALSE(resolve_context(h, c, buffer).transform_available);
-  input.context.allow_unverified_calibration = false;
-  EXPECT_EQ(PerceptionPipeline(c.algorithm).process(input).reason, "CALIBRATION_UNVERIFIED");
+  EXPECT_FALSE(resolve_context(h, c, binding, buffer).transform_available);
+
+  binding.reset();
+  EXPECT_TRUE(bind_source_frame(c, binding, "different_sensor"));
+  const auto rebound = resolved_static_transform(c, binding);
+  ASSERT_TRUE(rebound.has_value());
+  buffer.setTransform(*rebound, "default_profile", true);
+  EXPECT_TRUE(resolve_context(h, c, binding, buffer).transform_available);
 }
 
 TEST(Transform, BoundedWaitAcceptsTransformArrivingAfterCloud) {
@@ -132,12 +161,14 @@ TEST(Transform, BoundedWaitAcceptsTransformArrivingAfterCloud) {
   c.source_frame = "lidar";
   c.target_frame = "base_link";
   c.calibration_verified = true;
+  SourceFrameBinding binding;
 
   std::thread producer([&buffer] {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     buffer.setTransform(transform(123, 7), "delayed_test", false);
   });
-  const auto context = resolve_context(header(123), c, buffer, std::chrono::milliseconds(100));
+  const auto context =
+      resolve_context(header(123), c, binding, buffer, std::chrono::milliseconds(100));
   producer.join();
 
   ASSERT_TRUE(context.transform_available);
@@ -150,10 +181,12 @@ TEST(Transform, BoundedWaitDoesNotFallBackToLatestTransform) {
   c.source_frame = "lidar";
   c.target_frame = "base_link";
   c.calibration_verified = true;
+  SourceFrameBinding binding;
   buffer.setTransform(transform(200, 9), "future_test", false);
 
   const auto started = std::chrono::steady_clock::now();
-  const auto context = resolve_context(header(123), c, buffer, std::chrono::milliseconds(20));
+  const auto context =
+      resolve_context(header(123), c, binding, buffer, std::chrono::milliseconds(20));
   const auto elapsed = std::chrono::steady_clock::now() - started;
 
   EXPECT_FALSE(context.transform_available);

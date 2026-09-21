@@ -27,7 +27,24 @@ def _sensor_tf(context):
     translation = data.get('translation_m')
     rotation = data.get('rotation_rpy_rad')
     source = data.get('source_frame')
+    source_mode = data.get('source_frame_mode', 'exact')
     target = data.get('target_frame')
+    override = LaunchConfiguration('sensor_frame_override').perform(context).strip()
+
+    if source == '*':
+        source_mode = 'bind_first'
+        source = None
+    if source_mode == 'bind_first':
+        if not override:
+            raise RuntimeError(
+                'publish_sensor_tf with bind_first profile requires sensor_frame_override'
+            )
+        source = override
+    elif source_mode == 'exact':
+        if override and override != source:
+            raise RuntimeError('sensor_frame_override conflicts with exact source_frame')
+    else:
+        raise RuntimeError('source_frame_mode must be exact or bind_first')
 
     if translation is None and rotation is None:
         return []
@@ -61,6 +78,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('sensor_profile', default_value=''),
         DeclareLaunchArgument('publish_sensor_tf', default_value='false'),
+        DeclareLaunchArgument('sensor_frame_override', default_value=''),
         DeclareLaunchArgument('namespace', default_value='metro'),
         DeclareLaunchArgument('input_topic', default_value='/lidar_points'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),

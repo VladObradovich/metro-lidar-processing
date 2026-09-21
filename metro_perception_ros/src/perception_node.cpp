@@ -14,6 +14,7 @@
 #include "tf2_ros/transform_listener.h"
 
 using metro_perception_interfaces::msg::FrameAnalysis;
+using metro_perception_ros::resolve_context;
 
 class PerceptionNode : public rclcpp::Node {
  public:
@@ -45,9 +46,10 @@ class PerceptionNode : public rclcpp::Node {
 
     buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     listener_ = std::make_unique<tf2_ros::TransformListener>(*buffer_);
-    if (config_.has_static_transform && config_.source_frame != "*") {
+    if (const auto transform =
+            metro_perception_ros::resolved_static_transform(config_, source_binding_)) {
       // Keep profile TF private to perception. Bringup owns optional publication to /tf_static.
-      buffer_->setTransform(config_.static_transform, "sensor_profile", true);
+      buffer_->setTransform(*transform, "sensor_profile", true);
     }
 
     std::random_device random;
@@ -128,6 +130,7 @@ class PerceptionNode : public rclcpp::Node {
   void process_frame(PendingFrame work) {
     if (!worker_session_initialized_ || worker_session_ != work.session_id) {
       pipeline_->reset();
+      source_binding_.reset();
       worker_session_ = work.session_id;
       worker_session_initialized_ = true;
     }
@@ -140,19 +143,20 @@ class PerceptionNode : public rclcpp::Node {
       return;
     }
 
-    metro_perception_ros::bind_source_frame(config_, work.message->header.frame_id);
+    metro_perception_ros::bind_source_frame(config_, source_binding_,
+                                            work.message->header.frame_id);
     // A simulation-clock reset may clear the private TF buffer, including static entries.
-    if (config_.has_static_transform && config_.source_frame != "*") {
-      buffer_->setTransform(config_.static_transform, "sensor_profile", true);
+    if (const auto transform =
+            metro_perception_ros::resolved_static_transform(config_, source_binding_)) {
+      buffer_->setTransform(*transform, "sensor_profile", true);
     }
 
     const auto tf_wait_started = std::chrono::steady_clock::now();
     const auto& header = work.message->header;
     const auto context =
-        metro_perception_ros::resolve_context(header, config_, *buffer_, tf_wait_timeout_);
-    const double tf_wait_ms = std::chrono::duration<double, std::milli>(
-                                  std::chrono::steady_clock::now() - tf_wait_started)
-                                  .count();
+        resolve_context(header, config_, source_binding_, *buffer_, tf_wait_timeout_);
+    const auto tf_wait_elapsed = std::chrono::steady_clock::now() - tf_wait_started;
+    const double tf_wait_ms = std::chrono::duration<double, std::milli>(tf_wait_elapsed).count();
     const auto frame =
         metro_perception_ros::process_cloud(*work.message, *pipeline_, max_points_, context);
     processed_.fetch_add(1);
@@ -206,6 +210,7 @@ class PerceptionNode : public rclcpp::Node {
   std::chrono::duration<double> max_processing_age_{0.30};
   std::chrono::nanoseconds tf_wait_timeout_{std::chrono::milliseconds(50)};
   std::unique_ptr<metro_perception_core::PerceptionPipeline> pipeline_;
+  metro_perception_ros::SourceFrameBinding source_binding_;
 
   std::string source_;
   std::atomic<std::uint64_t> session_{0};

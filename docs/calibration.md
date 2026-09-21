@@ -69,9 +69,13 @@ firetime: 3179c91824f48723afa50e0d63dcfc79cd704b9cce93dd327dd7d55c737746f1
 для будущей оценки поверхности/коридора. Геометрия последующих стадий ещё не реализована.
 
 ROS-адаптер запрашивает `target <- source` строго на `header.stamp`.
-Нет подстановки latest/identity при ошибке. Нулевой/отрицательный stamp,
-неожиданный source frame, отсутствующий, устаревший или будущий TF дают
-`TF_UNAVAILABLE`. Lookup неблокирующий; онлайн TF listener работает в своём потоке.
+Нет подстановки latest/identity при ошибке. Для exact-профиля неожиданный source
+frame отвергается. Default forward-sector использует bind-first: первый валидный
+`header.frame_id` фиксируется на session, смена frame внутри той же session
+отвергается, а после скачка stamp назад binding сбрасывается. Имя frame не
+определяет модель лидара и не выбирает геометрический профиль. Нулевой/отрицательный
+stamp, отсутствующий, устаревший или будущий TF дают `TF_UNAVAILABLE`.
+Онлайн lookup ждёт transform ограниченно `tf_wait_timeout_s` по steady clock.
 Статический профиль валиден для любого положительного stamp, не требует `/clock`
 и восстанавливается в приватном TF buffer perception после reset часов.
 Публикация в глобальный `/tf_static` вынесена в bringup: обычный headless launch
@@ -118,8 +122,9 @@ ros2 topic echo /metro/analysis
 Forward-sector preview использует frame **lidar_preview**, начало в оптическом
 центре и `Rz(+π/2)` (−Y → +X, +X → +Y, +Z → +Z). Он не выдаётся за
 `base_link`. Full-scan preview остаётся в `lidar_livox` без придуманной оси
-движения. Без `sensor_profile` runtime использует только explicit
-forward-sector default; см. ссылку выше.
+движения. Без `sensor_profile` runtime использует explicit forward-sector
+default с bind-first source frame; это привязывает только ROS-имя первого облака
+на session, но не угадывает модель или ориентацию.
 
 ## Когда появится монтажная калибровка
 

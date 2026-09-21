@@ -49,7 +49,8 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             'ros2', 'launch', 'metro_perception_bringup', 'perception.launch.py',
             'namespace:=a02_smoke', 'input_topic:=/a02_smoke/points',
             'publish_sensor_tf:=true', 'use_sim_time:=true'
-        ] + ([] if args.default else [f'sensor_profile:={profile}']),
+        ] + (['sensor_frame_override:=private_pandar'] if args.default
+             else [f'sensor_profile:={profile}']),
             start_new_session=True)
 
         def until(predicate, seconds=15):
@@ -62,7 +63,7 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
         try:
             until(lambda: publisher.get_subscription_count() > 0 and bool(assessments))
             cloud = PointCloud2()
-            cloud.header.frame_id = 'hesai_lidar' if args.default else 'test_lidar'
+            cloud.header.frame_id = 'private_pandar' if args.default else 'test_lidar'
             cloud.header.stamp.sec = 123
             points = [(0., 0., 0.), (float('nan'), 1., 2.), (0.1, 0., 0.),
                       (0., -10., -1.), (8., -10., 0.), (0., -200., 0.)]
@@ -95,7 +96,7 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                 transforms.append,
                 QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL),
             )
-            expected_child = 'hesai_lidar' if args.default else 'test_lidar'
+            expected_child = 'private_pandar' if args.default else 'test_lidar'
             until(lambda: any(t.child_frame_id == expected_child
                               for msg in transforms for t in msg.transforms))
             tf = next(t for msg in transforms for t in msg.transforms
@@ -127,14 +128,18 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                 assert offline[field] == getattr(online, field), field
             assert offline['measurement_stamp_ns'] == 123000000000
             assert offline['bag_stamp_ns'] == 124000000000
-            # Measurement time goes backwards: new session, same single-frame crop.
+            # Measurement time goes backwards: a bind_first profile may bind a new frame name.
             cloud.header.stamp.sec = 120
+            if args.default:
+                cloud.header.frame_id = 'private_pandar_after_reset'
             publisher.publish(cloud)
             until(lambda: any(a.session_id > online.session_id for a in analyses))
             reset = next(a for a in analyses if a.session_id > online.session_id)
             assert reset.transform_applied and reset.geometry_point_count == 2
             assert reset.reason == reason
-            # Same configured profile must never transform an unexpected source frame.
+            if args.default:
+                assert reset.header.frame_id == target
+            # Same session must never silently switch to another source frame.
             cloud.header.frame_id = 'unknown_sensor'
             cloud.header.stamp.sec = 124
             publisher.publish(cloud)
