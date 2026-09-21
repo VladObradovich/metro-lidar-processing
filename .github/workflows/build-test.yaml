@@ -74,6 +74,7 @@ jobs:
           python3 scripts/smoke_a02.py --default
           python3 scripts/smoke_namespace_isolation.py
           python3 scripts/smoke_worker_overload.py
+          python3 scripts/smoke_tf_replay.py
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -91,6 +92,8 @@ jobs:
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_perception.py
       - name: A02 online offline parity in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_a02.py
+      - name: TF replay regressions in installed runtime
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_tf_replay.py
       - name: Default lidar only profile in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - --default < scripts/smoke_a02.py
 

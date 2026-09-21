@@ -44,6 +44,9 @@ if(BUILD_TESTING)
   target_compile_features(test_latest_frame_slot PRIVATE cxx_std_17)
   target_include_directories(test_latest_frame_slot PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  ament_add_gtest(test_session_gate test/test_session_gate.cpp)
+  target_compile_features(test_session_gate PRIVATE cxx_std_17)
+  target_include_directories(test_session_gate PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   ament_add_gtest(test_wire_enum_decode test/test_wire_enum_decode.cpp)
   target_compile_features(test_wire_enum_decode PRIVATE cxx_std_17)
   target_include_directories(test_wire_enum_decode PRIVATE

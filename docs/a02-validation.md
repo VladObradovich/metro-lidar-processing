@@ -64,6 +64,9 @@ fail-closed как `BAD_INPUT / INVALID_TIMESTAMP`. TF выбирается то
 - Timestamp, source-frame binding, TF lookup, decode и причины fail-closed проходят через
   общие helpers. Invalid measurement stamp в online monitor и offline monitor нормализуется
   в `0`, а сам frame остаётся `BAD_INPUT / INVALID_TIMESTAMP`.
+- Offline TF replay имеет окно `TF_LOOKAHEAD_S` / `--tf-lookahead-s` (0.05 с по
+  умолчанию), измеряемое по bag record time. При сравнении с online согласовать
+  его с `tf_wait_timeout_s`; это не симуляция wall-clock scheduling.
 - `input_reliability`, `max_processing_age_s`, `tf_wait_timeout_s` и `timeout_s` —
   realtime-only параметры транспорта, очереди, ожидания TF и watchdog. Offline exporter
   намеренно не имитирует wall-clock scheduling/heartbeat. Поэтому они не являются частью

@@ -9,7 +9,9 @@
 `sensor_profile` используется установленный
 `metro_perception_ros/config/forward_sector_assumed.yaml`. Имя исходного ROS
 frame заранее не фиксируется: режим `source_frame_mode: bind_first` принимает
-`header.frame_id` первого валидного облака и закрепляет его до конца session.
+`header.frame_id` первого непустого облака, прошедшего проверку timestamp, layout
+и resource limits, и закрепляет его до конца session. Повреждённые и пустые
+облака не меняют binding.
 
 Он фиксирует только подтверждённую по сектору гипотезу:
 
@@ -61,11 +63,13 @@ ros2 bag play /data/private_bag --clock
 ```
 
 Обычный headless launch не публикует assumed transform в глобальный TF graph.
-Для RViz `demo.launch.py` включает публикацию profile TF отдельным
+Для RViz в `demo.launch.py` передать `publish_sensor_tf:=true`, чтобы включить
+публикацию profile TF отдельным
 `tf2_ros/static_transform_publisher`. Для bind-first профиля имя child frame
 нужно передать явно, например для текущих открытых bag:
 `sensor_frame_override:=hesai_lidar`. Для приватного bag указывается фактический
-`PointCloud2.header.frame_id`. Perception-нода сама не владеет `/tf_static`.
+`PointCloud2.header.frame_id`. Без `publish_sensor_tf:=true` demo запускается
+без глобальной публикации TF. Perception-нода сама не владеет `/tf_static`.
 
 Offline forward-sector без пятого аргумента использует тот же default:
 

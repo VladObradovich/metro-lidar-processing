@@ -13,6 +13,7 @@
 #include "metro_perception_ros/measurement_time.hpp"
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 #include "metro_perception_ros/preprocessing.hpp"
+#include "metro_perception_ros/session_gate.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/transform_listener.h"
 
@@ -112,12 +113,12 @@ class PerceptionNode : public rclcpp::Node {
     const auto sequence = received_.fetch_add(1) + 1;
 
     if (stamp && previous_stamp_ && *stamp < *previous_stamp_) {
-      session_.fetch_add(1);
+      session_.advance();
       if (pending_.clear()) overwritten_.fetch_add(1);
     }
     if (stamp) previous_stamp_ = *stamp;
 
-    PendingFrame next{std::move(message), sequence, session_.load(), received_at};
+    PendingFrame next{std::move(message), sequence, session_.current(), received_at};
     const auto submit = pending_.submit(std::move(next));
     if (submit == metro_perception_ros::SubmitResult::OVERWROTE) {
       overwritten_.fetch_add(1);
@@ -152,30 +153,31 @@ class PerceptionNode : public rclcpp::Node {
       return;
     }
 
-    metro_perception_core::FrameContext context;
     double tf_wait_ms = 0.0;
-    if (metro_perception_ros::decode_measurement_time_ns(work.message->header.stamp)) {
-      metro_perception_ros::bind_source_frame(config_, source_binding_,
-                                              work.message->header.frame_id);
-      // A simulation-clock reset may clear the private TF buffer, including static entries.
-      if (const auto transform =
-              metro_perception_ros::resolved_static_transform(config_, source_binding_)) {
-        buffer_->setTransform(*transform, "sensor_profile", true);
-      }
-
-      const auto tf_wait_started = std::chrono::steady_clock::now();
-      context = resolve_context(work.message->header, config_, source_binding_, *buffer_,
-                                tf_wait_timeout_);
-      const auto tf_wait_elapsed = std::chrono::steady_clock::now() - tf_wait_started;
-      tf_wait_ms = std::chrono::duration<double, std::milli>(tf_wait_elapsed).count();
-    }
-    const auto frame = metro_perception_ros::process_cloud(*work.message, *pipeline_, max_points_,
-                                                           context, max_cloud_bytes_);
+    const auto frame = metro_perception_ros::process_cloud_with_context(
+        *work.message, *pipeline_, max_points_,
+        [&] {
+          metro_perception_ros::bind_source_frame(config_, source_binding_,
+                                                  work.message->header.frame_id);
+          // Simulation-clock resets can clear static entries in the private buffer.
+          if (const auto transform =
+                  metro_perception_ros::resolved_static_transform(config_, source_binding_)) {
+            buffer_->setTransform(*transform, "sensor_profile", true);
+          }
+          const auto tf_wait_started = std::chrono::steady_clock::now();
+          auto context = resolve_context(work.message->header, config_, source_binding_, *buffer_,
+                                         tf_wait_timeout_);
+          tf_wait_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                                 tf_wait_started)
+                           .count();
+          return context;
+        },
+        max_cloud_bytes_);
     processed_.fetch_add(1);
 
     // A reset may happen while an old frame is being processed. Never publish it into the new
     // session, and never publish a result which is already too old to be actionable.
-    if (work.session_id != session_.load() || expired(work)) {
+    if (work.session_id != session_.current() || expired(work)) {
       rejected_.fetch_add(1);
       return;
     }
@@ -212,7 +214,15 @@ class PerceptionNode : public rclcpp::Node {
     output.processing_age_ms = std::chrono::duration<double, std::milli>(
                                    std::chrono::steady_clock::now() - work.received_at)
                                    .count();
-    publisher_->publish(output);
+    if (!session_.publish_if_current(work.session_id, [&] {
+          if (expired(work)) {
+            rejected_.fetch_add(1);
+            return;
+          }
+          publisher_->publish(output);
+        })) {
+      rejected_.fetch_add(1);
+    }
   }
 
   metro_perception_ros::PreprocessingConfig config_;
@@ -226,7 +236,7 @@ class PerceptionNode : public rclcpp::Node {
   metro_perception_ros::SourceFrameBinding source_binding_;
 
   std::string source_;
-  std::atomic<std::uint64_t> session_{0};
+  metro_perception_ros::SessionGate session_;
   std::atomic<std::uint64_t> received_{0};
   std::atomic<std::uint64_t> processed_{0};
   std::atomic<std::uint64_t> rejected_{0};

@@ -119,10 +119,19 @@ metro_perception_core::FrameResult process_cloud(
     const sensor_msgs::msg::PointCloud2& message,
     const metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
     const metro_perception_core::FrameContext& context, std::size_t max_cloud_bytes) {
+  return process_cloud_with_context(
+      message, pipeline, max_points, [&context] { return context; }, max_cloud_bytes);
+}
+
+metro_perception_core::FrameResult process_cloud_with_context(
+    const sensor_msgs::msg::PointCloud2& message,
+    const metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
+    const std::function<metro_perception_core::FrameContext()>& resolve,
+    std::size_t max_cloud_bytes) {
   try {
     auto frame = decode_cloud(message, max_points, max_cloud_bytes);
     const auto measurement_time_ns = frame.context.measurement_time_ns;
-    frame.context = context;
+    if (!frame.points.empty()) frame.context = resolve();
     frame.context.measurement_time_ns = measurement_time_ns;
     return pipeline.process(frame);
   } catch (const std::invalid_argument& e) {

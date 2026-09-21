@@ -76,6 +76,16 @@ frame отвергается. Default forward-sector использует bind-f
 определяет модель лидара и не выбирает геометрический профиль. Нулевой/отрицательный
 stamp, отсутствующий, устаревший или будущий TF дают `TF_UNAVAILABLE`.
 Онлайн lookup ждёт transform ограниченно `tf_wait_timeout_s` по steady clock.
+Offline evaluator читает `/tf` и `/tf_static` отдельным reader с просмотром вперёд
+на 0.05 с по времени записи bag. Это позволяет использовать TF, записанный после
+облака, сохраняя lookup строго на measurement timestamp. Последний необязательный аргумент
+`TF_LOOKAHEAD_S` задаёт окно в пределах `[0, 1]` с; в `evaluate_all.py` ему
+соответствует `--tf-lookahead-s` (значение сохраняется в manifest).
+При скачке stamp назад evaluator очищает старый динамический TF и повторно
+применяет TF из интервала после предыдущего облака, включая уже прочитанные
+преобразования перед первым облаком новой сессии. Статические TF сохраняются
+по последнему значению для каждого child frame. История повторного применения
+ограничена 100 000 преобразований; превышение завершает экспорт с ошибкой.
 Статический профиль валиден для любого положительного stamp, не требует `/clock`
 и восстанавливается в приватном TF buffer perception после reset часов.
 Публикация в глобальный `/tf_static` вынесена в bringup: обычный headless launch
@@ -104,7 +114,7 @@ detection, invalid, blind и outside-ROI точек. Они не означаю�
 ```bash
 profile="$(ros2 pkg prefix metro_perception_bringup)/share/metro_perception_bringup/config/sensors/forward_sector_preview.yaml"
 ros2 launch metro_perception_bringup demo.launch.py \
-  sensor_profile:="$profile" fixed_frame:=lidar_preview \
+  sensor_profile:="$profile" fixed_frame:=lidar_preview publish_sensor_tf:=true \
   input_topic:=/lidar_points use_sim_time:=true
 # Во втором терминале с тем же ROS_DOMAIN_ID:
 ros2 bag play /data/new_data --clock

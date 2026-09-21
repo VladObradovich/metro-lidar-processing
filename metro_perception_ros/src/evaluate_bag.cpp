@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "metro_perception_core/temporal_monitor.hpp"
+#include "metro_perception_ros/bag_tf_replay.hpp"
 #include "metro_perception_ros/measurement_time.hpp"
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 #include "metro_perception_ros/preprocessing.hpp"
@@ -58,26 +59,12 @@ std::size_t parse_limit(const char* text, const char* name) {
   return static_cast<std::size_t>(parsed);
 }
 
-void restore_static_transforms(
-    tf2_ros::Buffer& buffer,
-    const std::vector<geometry_msgs::msg::TransformStamped>& bag_static_transforms,
-    const metro_perception_ros::PreprocessingConfig& config,
-    const metro_perception_ros::SourceFrameBinding& source_binding) {
-  for (const auto& transform : bag_static_transforms) {
-    buffer.setTransform(transform, "bag_tf_static", true);
-  }
-  if (const auto transform =
-          metro_perception_ros::resolved_static_transform(config, source_binding)) {
-    buffer.setTransform(*transform, "sensor_profile", true);
-  }
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc < 4 || argc > 7) {
+  if (argc < 4 || argc > 8) {
     std::cerr << "Usage: evaluate_bag BAG TOPIC OUTPUT.jsonl [SENSOR_PROFILE.yaml] [MAX_POINTS] "
-                 "[MAX_CLOUD_BYTES]\n";
+                 "[MAX_CLOUD_BYTES] [TF_LOOKAHEAD_S]\n";
     return argc == 2 && std::string(argv[1]) == "--help" ? 0 : 2;
   }
 
@@ -106,8 +93,6 @@ int main(int argc, char** argv) {
 
     rosbag2_storage::StorageFilter filter;
     filter.topics = {argv[2]};
-    if (has_tf) filter.topics.push_back("/tf");
-    if (has_tf_static) filter.topics.push_back("/tf_static");
     reader.set_filter(filter);
 
     std::ofstream output(argv[3]);
@@ -118,17 +103,29 @@ int main(int argc, char** argv) {
     auto config = metro_perception_ros::load_preprocessing(argc >= 5 ? argv[4] : "");
     std::size_t max_cloud_bytes = metro_perception_ros::kDefaultMaxCloudBytes;
     if (argc >= 6) config.algorithm.max_points = parse_limit(argv[5], "MAX_POINTS");
-    if (argc == 7) max_cloud_bytes = parse_limit(argv[6], "MAX_CLOUD_BYTES");
+    if (argc >= 7) max_cloud_bytes = parse_limit(argv[6], "MAX_CLOUD_BYTES");
     metro_perception_ros::validate_pointcloud_limits(config.algorithm.max_points, max_cloud_bytes);
     config.algorithm.validate();
 
+    double lookahead_s = 0.05;
+    if (argc == 8) {
+      std::size_t consumed = 0;
+      const std::string text(argv[7]);
+      lookahead_s = std::stod(text, &consumed);
+      if (consumed != text.size() || !std::isfinite(lookahead_s) || lookahead_s < 0.0 ||
+          lookahead_s > 1.0) {
+        throw std::invalid_argument("TF_LOOKAHEAD_S must be in [0, 1]");
+      }
+    }
     rclcpp::Serialization<sensor_msgs::msg::PointCloud2> point_serializer;
-    rclcpp::Serialization<tf2_msgs::msg::TFMessage> tf_serializer;
     auto clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
     tf2_ros::Buffer buffer(clock);
     metro_perception_ros::SourceFrameBinding source_binding;
-    std::vector<geometry_msgs::msg::TransformStamped> bag_static_transforms;
-    restore_static_transforms(buffer, bag_static_transforms, config, source_binding);
+    std::vector<std::string> tf_topics;
+    if (has_tf) tf_topics.push_back("/tf");
+    if (has_tf_static) tf_topics.push_back("/tf_static");
+    metro_perception_ros::BagTfReplay tf_replay(argv[1], tf_topics, buffer,
+                                                static_cast<std::int64_t>(lookahead_s * 1e9));
 
     metro_perception_core::PerceptionPipeline pipeline(config.algorithm);
     metro_perception_core::TemporalMonitor monitor;
@@ -138,20 +135,6 @@ int main(int argc, char** argv) {
 
     while (reader.has_next()) {
       const auto bag_message = reader.read_next();
-
-      if (bag_message->topic_name == "/tf" || bag_message->topic_name == "/tf_static") {
-        tf2_msgs::msg::TFMessage tf_message;
-        rclcpp::SerializedMessage serialized(*bag_message->serialized_data);
-        tf_serializer.deserialize_message(&serialized, &tf_message);
-        const bool is_static = bag_message->topic_name == "/tf_static";
-        for (const auto& transform : tf_message.transforms) {
-          buffer.setTransform(transform, is_static ? "bag_tf_static" : "bag_tf", is_static);
-          if (is_static) bag_static_transforms.push_back(transform);
-        }
-        continue;
-      }
-
-      if (bag_message->topic_name != argv[2]) continue;
 
       const auto start = std::chrono::steady_clock::now();
       std::int64_t stamp = 0;
@@ -164,29 +147,33 @@ int main(int argc, char** argv) {
             metro_perception_ros::decode_measurement_time_ns(cloud.header.stamp);
         stamp = measurement_time.value_or(0);
 
-        metro_perception_core::FrameContext context;
         if (measurement_time) {
-          if (previous_stamp && stamp < *previous_stamp) {
+          const bool new_session = previous_stamp && stamp < *previous_stamp;
+          tf_replay.advance(bag_message->time_stamp, new_session);
+          if (new_session) {
             ++session;
             pipeline.reset();
             monitor.reset();
             source_binding.reset();
-            buffer.clear();
-            restore_static_transforms(buffer, bag_static_transforms, config, source_binding);
           }
           previous_stamp = stamp;
-
-          metro_perception_ros::bind_source_frame(config, source_binding, cloud.header.frame_id);
-          if (const auto transform =
-                  metro_perception_ros::resolved_static_transform(config, source_binding)) {
-            buffer.setTransform(*transform, "sensor_profile", true);
-          }
-          context =
-              metro_perception_ros::resolve_context(cloud.header, config, source_binding, buffer);
         }
 
-        result = metro_perception_ros::process_cloud(cloud, pipeline, config.algorithm.max_points,
-                                                     context, max_cloud_bytes);
+        result = metro_perception_ros::process_cloud_with_context(
+            cloud, pipeline, config.algorithm.max_points,
+            [&] {
+              metro_perception_ros::bind_source_frame(config, source_binding,
+                                                      cloud.header.frame_id);
+              if (const auto transform =
+                      metro_perception_ros::resolved_static_transform(config, source_binding)) {
+                buffer.setTransform(*transform, "sensor_profile", true);
+              }
+              return metro_perception_ros::resolve_context(cloud.header, config, source_binding,
+                                                           buffer);
+            },
+            max_cloud_bytes);
+      } catch (const metro_perception_ros::TfReplayError&) {
+        throw;  // Incomplete TF history must fail the export, not produce a success manifest.
       } catch (const std::exception&) {
         result.status = metro_perception_core::AnalysisStatus::BAD_INPUT;
         result.reason = "DESERIALIZATION_ERROR";

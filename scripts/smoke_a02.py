@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic A02 online/offline parity and missing-TF integration check (no dataset)."""
 import argparse
+import copy
 import json
 import os
 from pathlib import Path
@@ -79,6 +80,14 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             cloud.fields = [PointField(name=n, offset=i * 4, datatype=PointField.FLOAT32, count=1)
                             for i, n in enumerate('xyz')]
             cloud.data = b''.join(struct.pack('<fff', *p) for p in points)
+            if args.default:
+                malformed = copy.deepcopy(cloud)
+                malformed.header.frame_id = 'must_not_bind'
+                malformed.header.stamp.sec = 122
+                malformed.data = b''
+                publisher.publish(malformed)
+                until(lambda: any(a.processing_status == FrameAnalysis.BAD_INPUT
+                                  for a in analyses))
             publisher.publish(cloud)
             until(lambda: any(a.reason == reason for a in analyses))
             online = next(a for a in analyses if a.reason == reason)

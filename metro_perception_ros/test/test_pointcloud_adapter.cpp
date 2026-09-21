@@ -169,3 +169,33 @@ TEST(Adapter, EnforcesIndependentPointAndByteLimits) {
   EXPECT_EQ(result.status, metro_perception_core::AnalysisStatus::BAD_INPUT);
   EXPECT_EQ(result.reason, "POINTCLOUD_BYTE_LIMIT_EXCEEDED");
 }
+
+TEST(Adapter, RejectedCloudsDoNotInvokeStatefulResolver) {
+  const metro_perception_core::PerceptionPipeline pipeline;
+  int calls = 0;
+  auto resolve = [&] {
+    ++calls;
+    metro_perception_core::FrameContext context;
+    context.transform_available = true;
+    context.calibration_verified = true;
+    return context;
+  };
+  auto msg = fixture(false, false);
+  msg.data.clear();
+  EXPECT_EQ(metro_perception_ros::process_cloud_with_context(msg, pipeline, 10, resolve).status,
+            metro_perception_core::AnalysisStatus::BAD_INPUT);
+  msg = fixture(false, false);
+  metro_perception_ros::process_cloud_with_context(msg, pipeline, 1, resolve);
+  metro_perception_ros::process_cloud_with_context(msg, pipeline, 10, resolve, 1);
+  msg.header.stamp.sec = 0;
+  metro_perception_ros::process_cloud_with_context(msg, pipeline, 10, resolve);
+  msg = fixture(false, false);
+  msg.width = 0;
+  metro_perception_ros::process_cloud_with_context(msg, pipeline, 10, resolve);
+  EXPECT_EQ(calls, 0);
+  EXPECT_EQ(
+      metro_perception_ros::process_cloud_with_context(fixture(false, false), pipeline, 10, resolve)
+          .status,
+      metro_perception_core::AnalysisStatus::NOT_IMPLEMENTED);
+  EXPECT_EQ(calls, 1);
+}

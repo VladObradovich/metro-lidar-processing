@@ -14,6 +14,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('sensor_profile', default_value=''),
         DeclareLaunchArgument('sensor_frame_override', default_value=''),
+        DeclareLaunchArgument('publish_sensor_tf', default_value='false'),
         DeclareLaunchArgument('namespace', default_value='metro'),
         DeclareLaunchArgument('input_topic', default_value='/lidar_points'),
         DeclareLaunchArgument('fixed_frame', default_value='lidar_assumed'),
@@ -22,7 +23,7 @@ def generate_launch_description():
         IncludeLaunchDescription(PythonLaunchDescriptionSource(PathJoinSubstitution(
             [share, 'launch', 'perception.launch.py'])), launch_arguments={
                 'sensor_profile': LaunchConfiguration('sensor_profile'),
-                'publish_sensor_tf': 'true',
+                'publish_sensor_tf': LaunchConfiguration('publish_sensor_tf'),
                 'sensor_frame_override': LaunchConfiguration('sensor_frame_override'),
                 'namespace': namespace, 'input_topic': LaunchConfiguration('input_topic'),
                 'use_sim_time': LaunchConfiguration('use_sim_time')}.items()),

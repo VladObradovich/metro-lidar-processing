@@ -1,5 +1,11 @@
 # Набор данных и разметка — T1
 
+TF replay по умолчанию читает на 0.05 с вперёд по bag record time. Опция
+`--tf-lookahead-s` задаёт окно `[0, 1]` с и сохраняется в manifest. При сравнении
+с online учитывать `tf_wait_timeout_s`; measurement timestamp не заменяется
+временем записи или latest TF. Проверки порядка TF и сбросов запускаются через
+`python3 scripts/smoke_tf_replay.py` в собранном ROS workspace.
+
 `dataset.yaml` содержит пути относительно внешнего корня данных и сведения из
 metadata.yaml. Counts имеют статус declared: пересчитать фактически прочитанные
 сообщения при полном аудите, поскольку metadata бывает несогласованной.
