@@ -1,0 +1,6 @@
+services:
+  desktop:
+    gpus: all
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics,display
+      LIBGL_ALWAYS_SOFTWARE: "0"
