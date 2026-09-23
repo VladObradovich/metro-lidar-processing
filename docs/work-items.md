@@ -15,7 +15,7 @@
 | R02, B | Базовые переходы состояний реализованы; temporal confirmation и retirement source ещё нет | core/temporal_monitor, ros/monitor | ассоциация, late result, stop/restart |
 | R04, C | Статус и bbox есть; коридор/nearest point ещё не отображаются | ros/visualizer_node | stale UI, RViz и namespace |
 | E01, B | Общий B0-контракт: exact-stamp TF, replay `/tf` + `/tf_static`, кандидаты в JSONL; realtime queue/wait/watchdog остаются online-only | ros/preprocessing, ros/evaluate_bag | synthetic online/offline parity, real replay |
-| D04/E02, T1 | D2 закрыт: positive/uncertain/negative в doubleT_obstacle, пять отрицательных bag целиком, splits без независимого holdout; остаются matching, TP/FP/FN и distance error | evaluation, tools/metrics.py, docs/doubleT-platform-false-alarms.md | UNKNOWN не скрывает FN |
+| D04/E02, T1 | Закрыт: разметка D2, matching и TP/FP/FN, FP-событий/мин, distance error | tools/metrics.py, tools/report.py, docs/evaluation-metrics.md | test_metrics.py; UNKNOWN на positive — FN |
 | P01/P02, C/T2 | Runtime и CI с новыми зависимостями | docker, .github | чистая сборка + smoke |
 | X01–X03 | Только измеренные улучшения | core, evaluation/experiments.yaml | сравнение с сохранённым B0 |
 

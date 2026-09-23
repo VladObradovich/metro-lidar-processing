@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import Path
 import subprocess
+import sys
 
 import yaml
 
@@ -16,6 +17,15 @@ def sha256(path):
         for block in iter(lambda: stream.read(1024 * 1024), b''):
             digest.update(block)
     return digest.hexdigest()
+
+
+def selected_bags(dataset, requested):
+    """Select registered bag ids, regardless of annotation availability."""
+    registered = [entry['id'] for entry in dataset['bags']]
+    unknown = set(requested or []) - set(registered)
+    if unknown:
+        raise ValueError('Unknown bag ids: ' + ', '.join(sorted(unknown)))
+    return [bag for bag in registered if not requested or bag in requested]
 
 
 def main():
@@ -33,7 +43,15 @@ def main():
         action='store_true',
         help='Use unverified lidar-centered preview profiles (clear path remains UNKNOWN)',
     )
+    parser.add_argument('--bags', nargs='+', help='Bag ids to run (default: all registered)')
+    parser.add_argument(
+        '--full-scan-research',
+        action='store_true',
+        help='Score full_scan bags with the unverified research forward axis (-sensor Y)',
+    )
     args = parser.parse_args()
+    if args.preview and args.full_scan_research:
+        parser.error('--preview and --full-scan-research are mutually exclusive')
     if not 1 <= args.max_points <= 10000000:
         parser.error('--max-points must be in [1, 10000000]')
     if not 1 <= args.max_cloud_bytes <= 1024 * 1024 * 1024:
@@ -41,6 +59,10 @@ def main():
     if not math.isfinite(args.tf_lookahead_s) or not 0 <= args.tf_lookahead_s <= 1:
         parser.error('--tf-lookahead-s must be in [0, 1]')
     dataset = yaml.safe_load(args.dataset.read_text())
+    try:
+        selected = selected_bags(dataset, args.bags)
+    except ValueError as exc:
+        parser.error(str(exc))
     args.output_dir.mkdir(parents=True, exist_ok=False)
 
     def git(*cmd):
@@ -50,10 +72,12 @@ def main():
         ).strip()
     manifest = {'schema_version': 1, 'mode': 'geometric_rolling', 'image_id': args.image_id,
                 'commit': git('rev-parse', 'HEAD'), 'dirty': bool(git('status', '--porcelain')),
-                'dataset_sha256': sha256(args.dataset), 'config_sha256': {}, 'bags': [],
-                'preview': args.preview, 'max_points': args.max_points,
+                'dataset_sha256': sha256(args.dataset), 'config_sha256': {},
+                'scoring_sha256': {}, 'scoring_executed_from': 'source_tree', 'bags': [],
+                'preview': args.preview, 'full_scan_research': args.full_scan_research,
+                'max_points': args.max_points,
                 'max_cloud_bytes': args.max_cloud_bytes,
-                'tf_lookahead_s': args.tf_lookahead_s,
+                'tf_lookahead_s': args.tf_lookahead_s, 'selected_bags': args.bags,
                 'note': (
                     'Profiles are selected by sensor_profile metadata; '
                     'full-scan orientation remains unresolved; experimental detector, no deskew.'
@@ -61,9 +85,21 @@ def main():
     for config in sorted(list((root / 'metro_perception_bringup/config').rglob('*.yaml')) +
                          list((root / 'metro_perception_ros/config').rglob('*.yaml'))):
         manifest['config_sha256'][str(config.relative_to(root))] = sha256(config)
+    score_files = [root / 'evaluation/splits.yaml',
+                   root / 'metro_perception_tools/metro_perception_tools/metrics.py',
+                   root / 'metro_perception_tools/metro_perception_tools/report.py']
+    score_files += [root / entry['annotations'] for entry in dataset['bags']
+                    if entry.get('annotations')]
+    manifest['scoring_sha256'] = {str(path.relative_to(root)): sha256(path)
+                                  for path in score_files}
     manifest_path = args.output_dir / 'manifest.json'
+    manifest['selected_bags'] = selected
+    metrics_script = root / 'metro_perception_tools/metro_perception_tools/metrics.py'
+    report_script = root / 'metro_perception_tools/metro_perception_tools/report.py'
     try:
         for entry in dataset['bags']:
+            if entry['id'] not in manifest['selected_bags']:
+                continue
             bag = args.dataset_root / entry['path']
             if args.preview:
                 profile = (root / 'metro_perception_bringup/config/sensors' /
@@ -73,7 +109,9 @@ def main():
                     'forward_sector': (
                         root / 'metro_perception_ros/config/forward_sector_assumed.yaml'
                     ),
-                    'full_scan': root / 'metro_perception_ros/config/full_scan_unresolved.yaml',
+                    'full_scan': root / 'metro_perception_ros/config' / (
+                        'full_scan_research_assumed.yaml' if args.full_scan_research
+                        else 'full_scan_unresolved.yaml'),
                 }
                 try:
                     profile = profiles[entry['sensor_profile']]
@@ -95,13 +133,21 @@ def main():
                     ],
                     check=True,
                 )
-                subprocess.run(['ros2', 'run', 'metro_perception_tools', 'metrics',
+                subprocess.run([sys.executable, str(metrics_script),
                                 str(result_dir / 'frames.jsonl'), '--output',
                                 str(result_dir / 'summary.json')], check=True)
-                info['status'] = 'exported_a02'
+                info['frames_sha256'] = sha256(result_dir / 'frames.jsonl')
+                info['status'] = 'exported'
             except Exception:
                 info['status'] = 'failed'
                 raise
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
+        subprocess.run([sys.executable, str(metrics_script),
+                        str(args.output_dir), '--root', str(root), '--output',
+                        str(args.output_dir / 'quality.json')], check=True)
+        subprocess.run([sys.executable, str(report_script),
+                        str(args.output_dir / 'quality.json'), '--output',
+                        str(args.output_dir / 'quality.md')], check=True)
     finally:
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
 

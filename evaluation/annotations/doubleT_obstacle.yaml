@@ -2,54 +2,277 @@ schema_version: 1
 bag_id: doubleT_obstacle
 reviewed: true
 time_basis: bag_stamp_ns
-review_method: manual_depth_panorama_review_and_pointcloud_resampling
-review_limits: >-
-  Interval boundaries are conservative visual estimates. The panorama shows
-  a person-shaped return, but vehicle axes and track clearance are not
-  independently calibrated. Two late frames have manually selected 3D person
-  regions and lidar-derived longitudinal ranges in the assumed target frame;
-  these are not surveyed vehicle distances.
+review_method: manual_depth_montage_review_and_pointcloud_resampling_all_positive_frames
+review_limits: Interval boundaries are conservative visual estimates. All 35 positive frames were reviewed as a
+  raw-cloud trajectory in the assumed target frame. ROIs follow the manually reviewed trajectory near lateral
+  coordinate 2 m with a fixed 0.7 m longitudinal width; they are not a tight per-frame fit to every person point.
+  At bag +17.59 and +17.68 s they contain about 58% and 77% of the differing person points, respectively.
+  The ROIs are independent of detector candidates. Early ROIs contain 8-50 background points in the empty control
+  frame, versus more than 1800 points with the person. Vehicle axes and track clearance are not independently
+  calibrated. Only two late frames have measured lidar-derived longitudinal ranges; these are not surveyed vehicle distances.
 reviewed_intervals:
-  - start_ns: 1788354623110040384
-    end_ns: 1788354635095124717
-    label: negative
-    evidence: No person-shaped return in the sampled depth panoramas up to bag +11.985 s.
-  - start_ns: 1788354635095124717
-    end_ns: 1788354640110141925
-    label: uncertain
-    evidence: Person-shaped return enters from the edge; exact crossing into the track is unclear before +17 s.
-  - start_ns: 1788354640110141925
-    end_ns: 1788354643502070680
-    label: positive
-    evidence: Person-shaped return visibly occupies the route toward the track center through the end of the bag.
+- start_ns: 1788354623110040384
+  end_ns: 1788354635095124717
+  label: negative
+  evidence: No person-shaped return in the sampled depth panoramas up to bag +11.985 s.
+- start_ns: 1788354635095124717
+  end_ns: 1788354640110141925
+  label: uncertain
+  evidence: Person-shaped return enters from the edge; exact crossing into the track is unclear before +17 s.
+- start_ns: 1788354640110141925
+  end_ns: 1788354643502070680
+  label: positive
+  evidence: Person-shaped return visibly occupies the route toward the track center through the end of the bag.
 events:
-  - id: person_enters_track_01
-    start_ns: 1788354640110141925
-    end_ns: 1788354643502070680
-    label: positive
-    evidence: >-
-      User-described person entering the rails, supported by depth panorama
-      review and direct PointCloud2 sampling at +17.000, +17.988 and +19.982 s.
-    reference_frames:
-      - bag_stamp_ns: 1788354640110141925
-        distance_m: null
-        uncertainty_m: null
-        method: visual_depth_review_only
-      - bag_stamp_ns: 1788354641098111292
-        distance_m: null
-        uncertainty_m: null
-        method: visual_depth_review_only
-      - bag_stamp_ns: 1788354642093806987
-        distance_m: 11.5116
-        uncertainty_m: 0.2
-        method: manual_person_roi_nearest_inside_corridor_return
-        person_roi_assumed_m:
-          min: [11.5, 1.6, -1.7]
-          max: [12.2, 2.4, 0.3]
-      - bag_stamp_ns: 1788354643092442368
-        distance_m: 14.6705
-        uncertainty_m: 0.2
-        method: manual_person_roi_nearest_inside_corridor_return
-        person_roi_assumed_m:
-          min: [14.65, 1.6, -1.9]
-          max: [15.3, 2.4, 0.5]
+- id: person_enters_track_01
+  start_ns: 1788354640110141925
+  end_ns: 1788354643502070680
+  label: positive
+  evidence: User-described person entering the rails, supported by depth panorama review and direct PointCloud2
+    sampling at +17.000, +17.988 and +19.982 s.
+  reference_frames:
+  - bag_stamp_ns: 1788354640110141925
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [5.5, 1.6, -1.9]
+      max: [6.2, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640206198987
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [5.75, 1.6, -1.9]
+      max: [6.45, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640296447019
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [6.0, 1.6, -1.9]
+      max: [6.7, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640399745532
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [6.25, 1.6, -1.9]
+      max: [6.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640501092399
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [6.5, 1.6, -1.9]
+      max: [7.2, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640597366947
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [6.75, 1.6, -1.9]
+      max: [7.45, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640698064057
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [7.25, 1.6, -1.9]
+      max: [7.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640794260094
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [7.5, 1.6, -1.9]
+      max: [8.2, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640893813142
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [7.75, 1.6, -1.9]
+      max: [8.45, 2.4, 0.5]
+  - bag_stamp_ns: 1788354640992597501
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [8.0, 1.6, -1.9]
+      max: [8.7, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641098111292
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [8.25, 1.6, -1.9]
+      max: [8.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641198693492
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [8.75, 1.6, -1.9]
+      max: [9.45, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641297882476
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [9.0, 1.6, -1.9]
+      max: [9.7, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641399742591
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [9.25, 1.6, -1.9]
+      max: [9.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641498160180
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [9.5, 1.6, -1.9]
+      max: [10.2, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641605360896
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [10.0, 1.6, -1.9]
+      max: [10.7, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641704828786
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [10.25, 1.6, -1.9]
+      max: [10.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641834137859
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [10.5, 1.6, -1.9]
+      max: [11.2, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641898380113
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [11.0, 1.6, -1.9]
+      max: [11.7, 2.4, 0.5]
+  - bag_stamp_ns: 1788354641995296444
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [11.25, 1.6, -1.9]
+      max: [11.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642093806987
+    distance_m: 11.5116
+    uncertainty_m: 0.2
+    method: manual_person_roi_nearest_inside_corridor_return
+    person_roi_assumed_m:
+      min: [11.5, 1.6, -1.7]
+      max: [12.2, 2.4, 0.3]
+  - bag_stamp_ns: 1788354642196401076
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [12.0, 1.6, -1.9]
+      max: [12.7, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642299390141
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [12.25, 1.6, -1.9]
+      max: [12.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642396856686
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [12.5, 1.6, -1.9]
+      max: [13.2, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642493439857
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [12.75, 1.6, -1.9]
+      max: [13.45, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642598632156
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [13.25, 1.6, -1.9]
+      max: [13.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642697424325
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [13.5, 1.6, -1.9]
+      max: [14.2, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642795528417
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [13.75, 1.6, -1.9]
+      max: [14.45, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642892978639
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [14.0, 1.6, -1.9]
+      max: [14.7, 2.4, 0.5]
+  - bag_stamp_ns: 1788354642995860694
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [14.25, 1.6, -1.9]
+      max: [14.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354643092442368
+    distance_m: 14.6705
+    uncertainty_m: 0.2
+    method: manual_person_roi_nearest_inside_corridor_return
+    person_roi_assumed_m:
+      min: [14.65, 1.6, -1.9]
+      max: [15.3, 2.4, 0.5]
+  - bag_stamp_ns: 1788354643194303262
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [15.0, 1.6, -1.9]
+      max: [15.7, 2.4, 0.5]
+  - bag_stamp_ns: 1788354643298794875
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [15.25, 1.6, -1.9]
+      max: [15.95, 2.4, 0.5]
+  - bag_stamp_ns: 1788354643400819161
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [15.5, 1.6, -1.9]
+      max: [16.2, 2.4, 0.5]
+  - bag_stamp_ns: 1788354643502070680
+    distance_m: null
+    uncertainty_m: null
+    method: manual_depth_montage_review_raw_pointcloud_roi
+    person_roi_assumed_m:
+      min: [16.0, 1.6, -1.9]
+      max: [16.7, 2.4, 0.5]

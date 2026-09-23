@@ -22,7 +22,7 @@ inspect_bag выводит метаданные и первые N схем об�
 ограниченная оценка пола, прямой коридор, угловые кластеры и bbox/расстояние.
 В строгом режиме без TF получается TF_UNAVAILABLE, с неподтверждённой калибровкой —
 CALIBRATION_UNVERIFIED; без опоры пола — GROUND_UNSUPPORTED/UNKNOWN.
-Разметка, оценка ложных тревог и временное подтверждение ещё не выполнены.
+Разметка и метрики качества готовы ([evaluation-metrics.md](evaluation-metrics.md)); временное подтверждение ещё не выполнено.
 [Профили калибровки и запуск без TF в bag](calibration.md).
 Оценки габарита/монтажа в YAML оставлены null. PointCloud callback теперь только
 принимает сообщение и заменяет latest pending slot; decode/A02 выполняет один worker.
@@ -105,10 +105,17 @@ ros2 run metro_perception_tools report /results/run-001/summary.json --output /r
 python3 scripts/evaluate_all.py --dataset-root /data --output-dir /results/run-002
 ```
 
+Выгрузка включает и записи без разметки. Их кадры сохраняются, а сводка
+качества указывает `no annotations` в `skipped`; метрики TP/FP/FN для них
+не вычисляются. `--bags new_data` по-прежнему позволяет выгрузить эту запись
+отдельно.
+
 Скрипт сохраняет SHA, признак dirty checkout, hashes bag/config, manifest запуска
 и отдельные результаты по каждой записи. Он не выбирает пороги по имени bag.
 В готовом образе скрипты репозитория отдельно примонтировать/передать через stdin;
-ROS executables и параметры устанавливаются в /ws/install.
+ROS executable `evaluate_bag` и параметры устанавливаются в /ws/install.
+`evaluate_all.py` запускает `metrics.py` и `report.py` непосредственно из
+примонтированных исходников, хеши которых записывает в manifest.
 
 ## Следующие проверки
 

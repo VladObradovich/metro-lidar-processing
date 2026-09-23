@@ -53,7 +53,7 @@ def main():
     args = parser.parse_args()
     labels = yaml.safe_load(args.annotation.read_text())
     references = [item for item in labels['events'][0]['reference_frames']
-                  if 'person_roi_assumed_m' in item]
+                  if item.get('distance_m') is not None]
     rows = {row['bag_stamp_ns']: row for row in
             (json.loads(line) for line in args.evaluation_jsonl.open())}
     assert len(references) >= 2
