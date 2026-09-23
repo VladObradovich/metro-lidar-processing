@@ -57,11 +57,18 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
              else [f'sensor_profile:={profile}']),
             start_new_session=True)
 
-        def until(predicate, seconds=15):
+        def until(predicate, seconds=15, retry=None):
             end = time.monotonic() + seconds
+            next_retry = 0.0
             while not predicate():
                 if launch.poll() is not None or time.monotonic() > end:
-                    raise RuntimeError('A02 smoke deadline or launch failure')
+                    reasons = [(a.header.frame_id, a.reason) for a in analyses[-8:]]
+                    raise RuntimeError(
+                        f'A02 smoke deadline or launch failure; analyses={reasons}'
+                    )
+                if retry is not None and time.monotonic() >= next_retry:
+                    publisher.publish(retry)
+                    next_retry = time.monotonic() + 0.2
                 rclpy.spin_once(node, timeout_sec=0.05)
 
         try:
@@ -88,8 +95,7 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                 publisher.publish(malformed)
                 until(lambda: any(a.processing_status == FrameAnalysis.BAD_INPUT
                                   for a in analyses))
-            publisher.publish(cloud)
-            until(lambda: any(a.reason == reason for a in analyses))
+            until(lambda: any(a.reason == reason for a in analyses), retry=cloud)
             online = next(a for a in analyses if a.reason == reason)
             assert online.header.frame_id == target
             assert online.header.stamp == cloud.header.stamp

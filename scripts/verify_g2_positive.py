@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Check hand-marked person regions against raw lidar and G2 candidates.
+"""
+Check hand-marked person regions against raw lidar and G2 candidates.
 
 The ranges are longitudinal coordinates in the assumed full-scan target frame,
 not surveyed train-to-person distances. This script never derives a reference

@@ -100,11 +100,27 @@ detector:
             deadline = time.monotonic() + seconds
             while not predicate():
                 if launch.poll() is not None or time.monotonic() > deadline:
-                    raise RuntimeError('Ego-motion ROS smoke timed out or launch exited')
+                    recent_analyses = [
+                        (a.frame_sequence, a.header.stamp.sec,
+                         a.header.stamp.nanosec, a.reason)
+                        for a in analyses[-3:]
+                    ]
+                    recent_assessments = [
+                        (a.frame_sequence, a.header.stamp.sec,
+                         a.header.stamp.nanosec, a.reason)
+                        for a in assessments[-3:]
+                    ]
+                    raise RuntimeError(
+                        'Ego-motion ROS smoke timed out or launch exited; '
+                        f'analyses={recent_analyses}, '
+                        f'assessments={recent_assessments}'
+                    )
                 rclpy.spin_once(node, timeout_sec=0.05)
 
         try:
-            wait_for(lambda: publisher.get_subscription_count() > 0 and assessments)
+            wait_for(lambda: publisher.get_subscription_count() > 0 and
+                     node.count_subscribers('/ego_smoke/analysis') >= 2 and
+                     assessments)
             bag = root / 'moving_tunnel'
             writer = rosbag2_py.SequentialWriter()
             writer.open(rosbag2_py.StorageOptions(uri=str(bag), storage_id='sqlite3'),
@@ -118,9 +134,10 @@ detector:
                 writer.write('/points', serialize_message(msg),
                              stamp[0] * 1_000_000_000 + stamp[1])
                 publisher.publish(msg)
-                wait_for(lambda: any(a.header.stamp.sec == stamp[0] and
-                                       a.header.stamp.nanosec == stamp[1]
-                                       for a in analyses))
+                wait_for(lambda: any(
+                    a.header.stamp.sec == stamp[0] and
+                    a.header.stamp.nanosec == stamp[1]
+                    for a in analyses))
                 analysis = next(a for a in analyses
                                 if a.header.stamp.sec == stamp[0] and
                                 a.header.stamp.nanosec == stamp[1])
