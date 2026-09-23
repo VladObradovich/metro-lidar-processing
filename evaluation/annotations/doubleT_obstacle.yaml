@@ -2,35 +2,187 @@ schema_version: 1
 bag_id: doubleT_obstacle
 reviewed: true
 time_basis: bag_stamp_ns
-review_method: manual_depth_montage_review_and_pointcloud_resampling_all_positive_frames
-review_limits: Interval boundaries are conservative visual estimates. All 35 positive frames were reviewed as a
-  raw-cloud trajectory in the assumed target frame. ROIs follow the manually reviewed trajectory near lateral
-  coordinate 2 m with a fixed 0.7 m longitudinal width; they are not a tight per-frame fit to every person point.
-  At bag +17.59 and +17.68 s they contain about 58% and 77% of the differing person points, respectively.
-  The ROIs are independent of detector candidates. Early ROIs contain 8-50 background points in the empty control
-  frame, versus more than 1800 points with the person. Vehicle axes and track clearance are not independently
-  calibrated. Only two late frames have measured lidar-derived longitudinal ranges; these are not surveyed vehicle distances.
+review_method: owner_ground_truth_depth_video_and_raw_pointcloud_review_all_positive_frames
+review_limits: Ground truth from the data owner - the only obstacle in this bag is one person, who appears in the
+  cloud at about +13 s beside the cab and runs forward along the track to the end of the bag. The depth video
+  shows the person entering from the right edge at about +13.5 s and moving to the route centre by +16..17 s.
+  Negative until +13.086 s (first frame with the person); uncertain while the person stands beside the cab, almost
+  entirely outside |y| <= 2 m (+13.086 to +14.607 s); positive from the first frame with a substantial part of the
+  person inside the corridor ahead of the lidar. ROIs from +14.61 to +16.90 s are the raw foreground blob against
+  the empty control frame +10 s, padded by 0.1 m; ROIs from +17.00 s follow the manually reviewed trajectory
+  with a fixed 0.7 m longitudinal width and are not a tight fit to every point. All ROIs are independent of
+  detector candidates. Vehicle axes and track clearance are not independently calibrated. Only two late frames
+  have measured lidar-derived longitudinal ranges; these are not surveyed vehicle distances.
 reviewed_intervals:
 - start_ns: 1788354623110040384
-  end_ns: 1788354635095124717
+  end_ns: 1788354636196438963
   label: negative
-  evidence: No person-shaped return in the sampled depth panoramas up to bag +11.985 s.
-- start_ns: 1788354635095124717
-  end_ns: 1788354640110141925
+  evidence: Owner ground truth - no obstacle before the person appears at about +13 s.
+- start_ns: 1788354636196438963
+  end_ns: 1788354637717340992
   label: uncertain
-  evidence: Person-shaped return enters from the edge; exact crossing into the track is unclear before +17 s.
-- start_ns: 1788354640110141925
+  evidence: Person is in the cloud beside the cab at x -0.7..1.4 m, y 1.7..2.6 m, above the track bed; not yet on
+    the route ahead of the lidar.
+- start_ns: 1788354637717340992
   end_ns: 1788354643502070680
   label: positive
-  evidence: Person-shaped return visibly occupies the route toward the track center through the end of the bag.
+  evidence: Person occupies the corridor ahead of the lidar (22-90% of its points within |y| <= 2 m) and runs
+    forward through the end of the bag.
 events:
 - id: person_enters_track_01
-  start_ns: 1788354640110141925
+  start_ns: 1788354637717340992
   end_ns: 1788354643502070680
   label: positive
-  evidence: User-described person entering the rails, supported by depth panorama review and direct PointCloud2
-    sampling at +17.000, +17.988 and +19.982 s.
+  evidence: Owner-described person on the track, confirmed by the depth video and raw PointCloud2 foreground on
+    every positive frame.
   reference_frames:
+  - bag_stamp_ns: 1788354637717340992
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [0.45, 1.55, -1.25]
+      max: [1.65, 2.45, 0.30]   # +14.61 s, 725 pts
+  - bag_stamp_ns: 1788354637807651771
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [0.60, 1.60, -1.25]
+      max: [1.75, 2.45, 0.30]   # +14.70 s, 935 pts
+  - bag_stamp_ns: 1788354637915034756
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [0.75, 1.60, -1.20]
+      max: [1.85, 2.45, 0.30]   # +14.80 s, 862 pts
+  - bag_stamp_ns: 1788354638003697063
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [0.90, 1.50, -1.30]
+      max: [1.90, 2.45, 0.30]   # +14.89 s, 784 pts
+  - bag_stamp_ns: 1788354638093130492
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [1.05, 1.55, -1.35]
+      max: [2.05, 2.45, 0.30]   # +14.98 s, 1161 pts
+  - bag_stamp_ns: 1788354638196813644
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [1.20, 1.50, -1.35]
+      max: [2.25, 2.45, 0.30]   # +15.09 s, 2664 pts
+  - bag_stamp_ns: 1788354638292303932
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [1.40, 1.55, -1.40]
+      max: [2.40, 2.40, 0.30]   # +15.18 s, 3256 pts
+  - bag_stamp_ns: 1788354638395202688
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [1.60, 1.45, -1.55]
+      max: [2.60, 2.45, 0.30]   # +15.29 s, 3996 pts
+  - bag_stamp_ns: 1788354638500315949
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [1.80, 1.45, -1.60]
+      max: [2.50, 2.45, 0.30]   # +15.39 s, 4243 pts
+  - bag_stamp_ns: 1788354638595212814
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [1.95, 1.30, -1.80]
+      max: [2.95, 2.50, 0.30]   # +15.49 s, 3828 pts
+  - bag_stamp_ns: 1788354638695472832
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [2.10, 1.35, -1.85]
+      max: [3.20, 2.35, 0.30]   # +15.59 s, 3637 pts
+  - bag_stamp_ns: 1788354638795683703
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [2.25, 1.40, -1.75]
+      max: [3.35, 2.35, 0.30]   # +15.69 s, 3971 pts
+  - bag_stamp_ns: 1788354638897009445
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [2.45, 1.35, -1.85]
+      max: [3.65, 2.30, 0.30]   # +15.79 s, 3816 pts
+  - bag_stamp_ns: 1788354638994563138
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [2.70, 1.25, -1.85]
+      max: [3.90, 2.25, 0.30]   # +15.88 s, 3278 pts
+  - bag_stamp_ns: 1788354639098437804
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [2.85, 1.20, -1.85]
+      max: [3.75, 2.25, 0.30]   # +15.99 s, 3235 pts
+  - bag_stamp_ns: 1788354639196173756
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [2.90, 1.20, -1.85]
+      max: [3.95, 2.30, 0.30]   # +16.09 s, 3490 pts
+  - bag_stamp_ns: 1788354639301705724
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [3.20, 1.15, -1.70]
+      max: [4.50, 2.30, 0.30]   # +16.19 s, 2974 pts
+  - bag_stamp_ns: 1788354639405517045
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [3.50, 1.25, -1.70]
+      max: [4.60, 2.30, 0.30]   # +16.30 s, 2686 pts
+  - bag_stamp_ns: 1788354639503939119
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [3.70, 1.25, -1.70]
+      max: [4.70, 2.30, 0.30]   # +16.39 s, 2767 pts
+  - bag_stamp_ns: 1788354639599906134
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [3.90, 1.35, -1.70]
+      max: [4.95, 2.30, 0.30]   # +16.49 s, 2526 pts
+  - bag_stamp_ns: 1788354640012489297
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_empty_control_frame
+    person_roi_assumed_m:
+      min: [4.95, 1.30, -1.75]
+      max: [5.70, 2.35, 0.30]   # +16.90 s, 2258 pts
   - bag_stamp_ns: 1788354640110141925
     distance_m: null
     uncertainty_m: null
