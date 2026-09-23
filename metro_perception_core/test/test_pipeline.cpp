@@ -21,6 +21,9 @@ TEST(Pipeline, RejectsInvalidLimits) {
   AlgorithmConfig config;
   config.max_points = 0;
   EXPECT_THROW(PerceptionPipeline pipeline(config), std::invalid_argument);
+  config = {};
+  config.ground_max_gap_m = 4.9;  // Shorter than one support bin.
+  EXPECT_THROW(PerceptionPipeline pipeline(config), std::invalid_argument);
 }
 
 TEST(Preprocessing, FiltersBeforeTranslationAndPreservesRawIndices) {
@@ -205,4 +208,107 @@ TEST(Detector, RollingBackgroundSuppressesStaticSceneAndFindsNewObject) {
   const auto verified_background = verified_pipeline.process(verified_clear);
   EXPECT_EQ(verified_background.reason, "BACKGROUND_CANNOT_CONFIRM_CLEAR");
   EXPECT_EQ(TemporalMonitor().update(verified_background, 1).state, State::UNKNOWN);
+}
+
+namespace {
+FrameInput verified_input() {
+  FrameInput input;
+  input.context.transform_available = true;
+  input.context.calibration_verified = true;
+  return input;
+}
+void add_floor(FrameInput& input, int x_from, int x_to, double grade = 0.0) {
+  for (int x = x_from; x <= x_to; ++x)
+    for (int yi = -12; yi <= 12; ++yi)
+      input.points.push_back({double(x), yi * 0.2, -1.0 + grade * x});
+}
+AlgorithmConfig single_frame_config() {
+  AlgorithmConfig config;
+  config.background_history_frames = 0;
+  return config;
+}
+}  // namespace
+
+TEST(Ground, SlopedFloorIsFollowed) {
+  auto input = verified_input();
+  const double grade = 0.02;
+  add_floor(input, 4, 50, grade);
+  for (int yi = 0; yi < 9; ++yi)
+    for (int zi = 0; zi < 12; ++zi)
+      input.points.push_back({20.0, -0.32 + yi * 0.08, -1.0 + grade * 20 + 0.3 + zi * 0.12});
+  const auto frame = PerceptionPipeline(single_frame_config()).process(input);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  ASSERT_EQ(frame.corridor.size(), 1u);
+  const auto& plane = frame.corridor.front().ground_plane;
+  EXPECT_NEAR(-plane[0] / plane[2], grade, 1e-3);
+  EXPECT_NEAR(-plane[3] / plane[2], -1.0, 0.02);
+  ASSERT_FALSE(frame.candidates.empty());
+  EXPECT_NEAR(frame.candidates.front().distance_m, 20.0, 0.2);
+}
+
+TEST(Ground, WallIsNeverChosenAsFloor) {
+  auto wall_only = verified_input();
+  for (int x = 4; x <= 50; ++x)
+    for (int zi = 0; zi <= 15; ++zi) wall_only.points.push_back({double(x), 1.5, -1.0 + zi * 0.1});
+  const auto rejected = PerceptionPipeline(single_frame_config()).process(wall_only);
+  EXPECT_EQ(rejected.reason, "GROUND_UNSUPPORTED");
+  EXPECT_EQ(TemporalMonitor().update(rejected, 1).state, State::UNKNOWN);
+
+  auto with_floor = wall_only;
+  add_floor(with_floor, 4, 50);
+  const auto frame = PerceptionPipeline(single_frame_config()).process(with_floor);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  EXPECT_NEAR(frame.corridor.front().ground_plane[2], 1.0, 1e-3);
+  EXPECT_NEAR(-frame.corridor.front().ground_plane[3], -1.0, 0.02);
+}
+
+TEST(Ground, OneSidedPlatformCannotEstablishRoute) {
+  auto input = verified_input();
+  for (int x = 4; x <= 50; ++x)
+    for (int yi = 0; yi <= 10; ++yi) input.points.push_back({double(x), 1.0 + yi * 0.2, 0.0});
+  const auto frame = PerceptionPipeline(single_frame_config()).process(input);
+  EXPECT_EQ(frame.reason, "GROUND_UNSUPPORTED");
+  EXPECT_FALSE(frame.evaluation_region_valid);
+}
+
+TEST(Ground, FloorGapEndsUsableRange) {
+  auto input = verified_input();
+  add_floor(input, 4, 40);
+  add_floor(input, 60, 88);
+  const auto frame = PerceptionPipeline(single_frame_config()).process(input);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  EXPECT_NEAR(frame.evaluated_range_m, 43.0, 0.01);
+  EXPECT_GT(frame.corridor.front().ground_inliers, 0u);
+
+  // Returns at the far edge of the next 5 m bin: 37 -> 51.7 m is a 14.7 m gap.
+  auto edge_gap = verified_input();
+  add_floor(edge_gap, 4, 37);
+  add_floor(edge_gap, 37, 37);  // Enough support for the 37-42 m bin to end at 37 m.
+  for (const double x : {51.7, 51.9})
+    for (int yi = -12; yi <= 12; ++yi) edge_gap.points.push_back({x, yi * 0.2, -1.0});
+  add_floor(edge_gap, 52, 60);
+  const auto edge = PerceptionPipeline(single_frame_config()).process(edge_gap);
+  ASSERT_EQ(edge.status, AnalysisStatus::OK) << edge.reason;
+  EXPECT_NEAR(edge.evaluated_range_m, 40.0, 0.01);
+
+  auto near_gap = verified_input();
+  add_floor(near_gap, 20, 60);  // Nothing observed in the first 18 m.
+  const auto unobservable = PerceptionPipeline(single_frame_config()).process(near_gap);
+  EXPECT_EQ(unobservable.reason, "CORRIDOR_UNOBSERVABLE");
+  EXPECT_EQ(TemporalMonitor().update(unobservable, 1).state, State::UNKNOWN);
+}
+
+TEST(Ground, ShortDropoutKeepsBackgroundHistory) {
+  PerceptionPipeline pipeline;
+  const auto clear = synthetic_scene(false, false);
+  FrameInput no_floor = clear;
+  no_floor.points = {{20, 0, 0.5}};
+  for (int i = 0; i < 10; ++i) pipeline.process(clear);
+  EXPECT_EQ(pipeline.process(no_floor).reason, "GROUND_UNSUPPORTED");
+  const auto resumed = pipeline.process(synthetic_scene(true, false));
+  ASSERT_EQ(resumed.status, AnalysisStatus::OK) << resumed.reason;
+  EXPECT_FALSE(resumed.candidates.empty());
+
+  for (int i = 0; i < 6; ++i) EXPECT_EQ(pipeline.process(no_floor).reason, "GROUND_UNSUPPORTED");
+  EXPECT_EQ(pipeline.process(clear).reason, "BASELINE_WARMUP");
 }

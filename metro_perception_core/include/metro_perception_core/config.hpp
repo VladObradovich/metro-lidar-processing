@@ -23,6 +23,11 @@ struct AlgorithmConfig {
   double corridor_height_m{3.5};
   double ground_max_slope{0.15};
   double ground_inlier_tolerance_m{0.15};
+  // Longest unobserved floor stretch before the usable range ends. At least the
+  // 5 m support bin, so gaps inside one bin never exceed it.
+  double ground_max_gap_m{10.0};
+  // Floor returns needed for a 5 m stretch to count as observed.
+  std::size_t ground_min_bin_points{30};
   double obstacle_min_height_m{0.25};
   double angular_cell_deg{0.25};
   std::size_t min_ground_inliers{30};
@@ -43,10 +48,12 @@ struct AlgorithmConfig {
         corridor_height_m > 8 || !std::isfinite(ground_max_slope) || ground_max_slope <= 0 ||
         ground_max_slope > 0.5 || !std::isfinite(ground_inlier_tolerance_m) ||
         ground_inlier_tolerance_m <= 0 || ground_inlier_tolerance_m > 0.5 ||
-        !std::isfinite(obstacle_min_height_m) || obstacle_min_height_m <= 0 ||
-        obstacle_min_height_m > corridor_height_m || !std::isfinite(angular_cell_deg) ||
-        angular_cell_deg < 0.05 || angular_cell_deg > 1.0 || min_ground_inliers < 3 ||
-        min_candidate_cells == 0 || min_candidate_points == 0 || background_history_frames > 60 ||
+        !std::isfinite(ground_max_gap_m) || ground_max_gap_m < 5 || ground_max_gap_m > 50 ||
+        ground_min_bin_points == 0 || !std::isfinite(obstacle_min_height_m) ||
+        obstacle_min_height_m <= 0 || obstacle_min_height_m > corridor_height_m ||
+        !std::isfinite(angular_cell_deg) || angular_cell_deg < 0.05 || angular_cell_deg > 1.0 ||
+        min_ground_inliers < 3 || min_candidate_cells == 0 || min_candidate_points == 0 ||
+        background_history_frames > 60 ||
         (background_history_frames &&
          (background_lag_frames == 0 || background_lag_frames >= background_history_frames)) ||
         !std::isfinite(background_margin_m) || background_margin_m < 0 ||

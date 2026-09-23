@@ -118,6 +118,8 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("corridor_height_m", c.algorithm.corridor_height_m);
     read_double("ground_max_slope", c.algorithm.ground_max_slope);
     read_double("ground_inlier_tolerance_m", c.algorithm.ground_inlier_tolerance_m);
+    read_double("ground_max_gap_m", c.algorithm.ground_max_gap_m);
+    read_count("ground_min_bin_points", c.algorithm.ground_min_bin_points);
     read_double("obstacle_min_height_m", c.algorithm.obstacle_min_height_m);
     read_double("angular_cell_deg", c.algorithm.angular_cell_deg);
     read_count("min_ground_inliers", c.algorithm.min_ground_inliers);

@@ -13,6 +13,9 @@
 namespace metro_perception_core {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kGroundMinX = 2, kGroundMaxX = 90, kGroundBinM = 5;
+// Brief ground dropouts keep the range history; longer ones restart it.
+constexpr std::size_t kMaxGeometryFailures = 5;
 struct Plane {
   double a{0}, b{0}, c{0};  // z = a*x + b*y + c
   std::size_t inliers{0};
@@ -26,13 +29,72 @@ struct Cell {
   std::vector<std::size_t> points;  // Indices into geometry_points.
 };
 
+bool in_ground_region(const PointXYZ& p) {
+  return p.x >= kGroundMinX && p.x <= kGroundMaxX && std::abs(p.y) <= 3 && p.z >= -3 && p.z <= 0.5;
+}
+bool plausible_ground(const AlgorithmConfig& config, double a, double b, double c) {
+  return std::isfinite(a) && std::isfinite(b) && std::isfinite(c) &&
+         std::hypot(a, b) <= config.ground_max_slope && c >= -3 && c <= 0.5;
+}
+
+// Least-squares z = a*x + b*y + c over the sample plane's inliers. The RANSAC
+// hypothesis is kept when the refit is degenerate or leaves the plausible range.
+void refine_ground(const AlgorithmConfig& config, const std::vector<const PointXYZ*>& seeds,
+                   Plane& plane) {
+  double sxx = 0, sxy = 0, sx = 0, syy = 0, sy = 0, n = 0, sxz = 0, syz = 0, sz = 0;
+  for (const auto* p : seeds) {
+    if (std::abs(plane.height(*p)) > config.ground_inlier_tolerance_m) continue;
+    sxx += p->x * p->x, sxy += p->x * p->y, sx += p->x, syy += p->y * p->y, sy += p->y;
+    sxz += p->x * p->z, syz += p->y * p->z, sz += p->z, n += 1;
+  }
+  const auto det3 = [](double a1, double b1, double c1, double a2, double b2, double c2, double a3,
+                       double b3, double c3) {
+    return a1 * (b2 * c3 - c2 * b3) - b1 * (a2 * c3 - c2 * a3) + c1 * (a2 * b3 - b2 * a3);
+  };
+  const double det = det3(sxx, sxy, sx, sxy, syy, sy, sx, sy, n);
+  if (std::abs(det) < 1e-9) return;
+  const double a = det3(sxz, sxy, sx, syz, syy, sy, sz, sy, n) / det;
+  const double b = det3(sxx, sxz, sx, sxy, syz, sy, sx, sz, n) / det;
+  const double c = det3(sxx, sxy, sxz, sxy, syy, syz, sx, sy, sz) / det;
+  if (plausible_ground(config, a, b, c)) plane.a = a, plane.b = b, plane.c = c;
+}
+
+// The usable range ends at the first floor gap longer than ground_max_gap_m,
+// counted from the sensor to the nearest floor return of the next observed bin.
+// Gaps inside a bin are at most kGroundBinM, which the config keeps <= the limit.
+// Isolated far returns do not extend it.
+void measure_support(const AlgorithmConfig& config, const std::vector<IndexedPoint>& points,
+                     Plane& plane) {
+  const auto bins = static_cast<std::size_t>(std::ceil((kGroundMaxX - kGroundMinX) / kGroundBinM));
+  std::vector<std::size_t> count(bins, 0);
+  std::vector<double> near(bins, kGroundMaxX), far(bins, 0);
+  for (const auto& indexed : points) {
+    const auto& p = indexed.point;
+    if (!in_ground_region(p) || std::abs(plane.height(p)) > config.ground_inlier_tolerance_m)
+      continue;
+    const auto bin =
+        std::min(bins - 1, static_cast<std::size_t>((p.x - kGroundMinX) / kGroundBinM));
+    ++count[bin];
+    near[bin] = std::min(near[bin], p.x);
+    far[bin] = std::max(far[bin], p.x);
+  }
+  plane.inliers = 0;
+  plane.max_supported_x = kGroundMinX;
+  for (std::size_t bin = 0; bin < bins; ++bin) {
+    if (count[bin] < config.ground_min_bin_points) continue;
+    if (near[bin] - plane.max_supported_x > config.ground_max_gap_m) break;
+    plane.inliers += count[bin];
+    plane.max_supported_x = far[bin];
+  }
+}
+
 Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& frame) {
   std::vector<const PointXYZ*> seeds;
   const auto& points = frame.geometry_points;
   const std::size_t stride = std::max<std::size_t>(1, points.size() / 6000);
   for (std::size_t i = 0; i < points.size(); i += stride) {
     const auto& p = points[i].point;
-    if (p.x >= 2 && p.x <= 90 && std::abs(p.y) <= 3 && p.z >= -3 && p.z <= 0.5) seeds.push_back(&p);
+    if (in_ground_region(p)) seeds.push_back(&p);
   }
   if (seeds.size() < config.min_ground_inliers) return {};
   Plane best;
@@ -41,7 +103,7 @@ Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& fr
     random = random * 1664525u + 1013904223u;
     return std::size_t(random) % seeds.size();
   };
-  for (int attempt = 0; attempt < 96; ++attempt) {
+  for (int attempt = 0; attempt < 256; ++attempt) {
     const auto& p = *seeds[pick()];
     const auto& q = *seeds[pick()];
     const auto& r = *seeds[pick()];
@@ -53,10 +115,10 @@ Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& fr
     const double a = (dz1 * dy2 - dz2 * dy1) / det;
     const double b = (dx1 * dz2 - dx2 * dz1) / det;
     const double c = p.z - a * p.x - b * p.y;
-    if (std::hypot(a, b) > config.ground_max_slope || c < -3 || c > 0.5) continue;
+    // The slope limit rejects walls; the offset limit keeps the plane below the sensor.
+    if (!plausible_ground(config, a, b, c)) continue;
     std::size_t inliers = 0;
     std::uint8_t along = 0, across = 0;
-    double max_x = 0;
     for (const auto* point : seeds) {
       if (std::abs(point->z - a * point->x - b * point->y - c) > config.ground_inlier_tolerance_m)
         continue;
@@ -65,14 +127,16 @@ Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& fr
       if (point->x >= 25) along |= 2;
       if (point->y < -0.25) across |= 1;
       if (point->y > 0.25) across |= 2;
-      max_x = std::max(max_x, point->x);
     }
     // A small patch, rail or platform edge cannot establish the route surface.
     if (inliers < config.min_ground_inliers || along != 3 || across != 3) continue;
     if (!best.valid || inliers > best.inliers || (inliers == best.inliers && c < best.c)) {
-      best = {a, b, c, inliers, max_x, true};
+      best = {a, b, c, inliers, 0, true};
     }
   }
+  if (!best.valid) return best;
+  refine_ground(config, seeds, best);
+  measure_support(config, points, best);
   return best;
 }
 
@@ -103,19 +167,15 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   if (measurement_time_ns) last_stamp_ns_ = measurement_time_ns;
   const auto& frame = result.preprocessed;
   const auto ground = estimate_ground(config, frame);
-  if (!ground.valid) {
-    reset();
-    result.status = AnalysisStatus::INVALID_GEOMETRY;
-    result.reason = "GROUND_UNSUPPORTED";
-    return;
-  }
   const double end_x = std::min(config.detection_roi.max[0], ground.max_supported_x + 3.0);
-  if (end_x < 25.0 || frame.detection_indices.empty()) {
-    reset();
+  if (!ground.valid || end_x < 25.0 || frame.detection_indices.empty()) {
+    // Skipped frames do not enter the history; it stays usable after a short dropout.
+    if (++geometry_failures_ > kMaxGeometryFailures) reset();
     result.status = AnalysisStatus::INVALID_GEOMETRY;
-    result.reason = "CORRIDOR_UNOBSERVABLE";
+    result.reason = ground.valid ? "CORRIDOR_UNOBSERVABLE" : "GROUND_UNSUPPORTED";
     return;
   }
+  geometry_failures_ = 0;
   CorridorSegment segment;
   segment.start = {config.detection_roi.min[0], 0, ground.c};
   segment.end = {end_x, 0, ground.a * end_x + ground.c};
@@ -123,6 +183,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   segment.height_m = config.corridor_height_m;
   const double norm = std::sqrt(1 + ground.a * ground.a + ground.b * ground.b);
   segment.ground_plane = {-ground.a / norm, -ground.b / norm, 1 / norm, -ground.c / norm};
+  segment.ground_inliers = static_cast<std::uint32_t>(ground.inliers);
   segment.geometry_valid = true;
   segment.coverage_valid = true;
   result.corridor.push_back(segment);

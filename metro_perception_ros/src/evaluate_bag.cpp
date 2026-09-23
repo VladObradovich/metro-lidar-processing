@@ -215,8 +215,16 @@ int main(int argc, char** argv) {
       output << "]";
       output << ",\"evaluation_region_valid\":"
              << (result.evaluation_region_valid ? "true" : "false")
-             << ",\"evaluated_range_m\":" << result.evaluated_range_m
-             << ",\"processing_status\":" << static_cast<unsigned>(result.status)
+             << ",\"evaluated_range_m\":" << result.evaluated_range_m << ",\"ground_inliers\":"
+             << (result.corridor.empty() ? 0u : result.corridor.front().ground_inliers)
+             << ",\"ground_plane\":";
+      if (result.corridor.empty()) {
+        output << "null";
+      } else {
+        const auto& plane = result.corridor.front().ground_plane;
+        output << '[' << plane[0] << ',' << plane[1] << ',' << plane[2] << ',' << plane[3] << ']';
+      }
+      output << ",\"processing_status\":" << static_cast<unsigned>(result.status)
              << ",\"calibration_trust\":" << static_cast<unsigned>(result.calibration_trust)
              << ",\"transform_applied\":"
              << (result.preprocessed.transform_applied ? "true" : "false")

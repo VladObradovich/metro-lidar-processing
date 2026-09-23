@@ -13,11 +13,13 @@ class GeometricDetector {
   void reset() {
     history_.clear();
     last_stamp_ns_ = 0;
+    geometry_failures_ = 0;
   }
 
  private:
   using RangeMap = std::unordered_map<std::int64_t, double>;
   std::deque<RangeMap> history_;
   std::int64_t last_stamp_ns_{0};
+  std::size_t geometry_failures_{0};
 };
 }  // namespace metro_perception_core

@@ -22,6 +22,8 @@ detector:
   corridor_height_m: 3.5
   ground_max_slope: 0.15
   ground_inlier_tolerance_m: 0.15
+  ground_max_gap_m: 10.0
+  ground_min_bin_points: 30
   obstacle_min_height_m: 0.25
   angular_cell_deg: 0.25
   min_ground_inliers: 30

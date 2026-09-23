@@ -48,6 +48,7 @@ struct CorridorSegment {
   PointXYZ start, end;
   double width_m{0}, height_m{0};
   std::array<double, 4> ground_plane{0, 0, 1, 0};
+  std::uint32_t ground_inliers{0};  // Floor returns within the supported extent.
   bool geometry_valid{false}, coverage_valid{false};
 };
 struct IndexedPoint {
