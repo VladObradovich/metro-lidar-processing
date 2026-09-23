@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Analyze PointCloud2 data in a rosbag2 bag without a running ROS graph.
+"""
+Analyze PointCloud2 data in a rosbag2 bag without a running ROS graph.
 
 Runs in the host venv (pip install rosbags matplotlib scipy) or in the
 devcontainer. Does not import rclpy/sensor_msgs: PointCloud2 is decoded by hand
@@ -105,7 +106,8 @@ def frame_stats(
 
 
 def sampled_timestamps(bag: Path, topic: str, every: int) -> list[int] | None:
-    """Timestamps of every Nth message, read without touching message payloads.
+    """
+    Timestamps of every Nth message, read without touching message payloads.
 
     Returns None when the bag has no sqlite3 files (e.g. mcap); the caller then
     falls back to a full sequential scan.
@@ -129,7 +131,8 @@ def sampled_timestamps(bag: Path, topic: str, every: int) -> list[int] | None:
 
 
 def iter_frames(reader, connections, bag: Path, topic: str, every: int):
-    """Yield (frame_index, connection, timestamp, rawdata) for every Nth frame.
+    """
+    Yield (frame_index, connection, timestamp, rawdata) for every Nth frame.
 
     With every > 1 only the selected messages are read from disk (indexed
     lookup by timestamp); a bag can be tens of GB, so reading all of it just to
@@ -161,7 +164,8 @@ def read_points(reader, connections, timestamp: int) -> np.ndarray:
 
 
 class Grid:
-    """Угловая сетка range-картинки: строки - лучи по углу места, столбцы - азимут.
+    """
+    Угловая сетка range-картинки: строки - лучи по углу места, столбцы - азимут.
 
     Ячейка (row, col) - это направление, а не точка в пространстве. Ячейка
     охватывает d_el градусов по вертикали и az_res по горизонтали, поэтому её
@@ -178,7 +182,8 @@ class Grid:
 
     @classmethod
     def from_points(cls, points, min_range, az_res_deg, ring_step_deg=None):
-        """Определить порядок лучей и шаг по углу места по одному кадру.
+        """
+        Определить порядок лучей и шаг по углу места по одному кадру.
 
         Номер луча (поле ring) - идентификатор лазера. Для каждого луча берём медиану угла места
             el = asin(z / r),
@@ -237,7 +242,8 @@ class Grid:
 
 
 def polar_cells(points: np.ndarray, grid: Grid, min_range: float):
-    """Отнести точки к ячейкам сетки.
+    """
+    Отнести точки к ячейкам сетки.
 
     r   = sqrt(x^2 + y^2 + z^2)                     дальность
     phi = atan2(y, x), phi in (-180, 180]            азимут
@@ -266,7 +272,8 @@ def polar_cells(points: np.ndarray, grid: Grid, min_range: float):
 
 
 def range_image(points: np.ndarray, grid: Grid, min_range: float) -> np.ndarray:
-    """Ближайшая дальность в каждой ячейке (нет возврата = NaN).
+    """
+    Ближайшая дальность в каждой ячейке (нет возврата = NaN).
 
     В ячейку попадает несколько точек; берём минимальную дальность, то есть
     ближайшую поверхность на этом направлении: R[c] = min_i r_i.
@@ -279,7 +286,8 @@ def range_image(points: np.ndarray, grid: Grid, min_range: float) -> np.ndarray:
 
 
 class FrameSource:
-    """Range-картинки кадров с небольшим LRU-кэшем по таймстемпу.
+    """
+    Range-картинки кадров с небольшим LRU-кэшем по таймстемпу.
 
     Скользящий эталон каждый раз читает несколько соседних кадров; кэш не даёт
     перечитывать и пересчитывать одни и те же кадры для соседних позиций окна.
@@ -307,7 +315,8 @@ class FrameSource:
 
 
 def build_baseline(images) -> tuple[np.ndarray, np.ndarray]:
-    """Эталон пустого тоннеля по набору range-картинок.
+    """
+    Эталон пустого тоннеля по набору range-картинок.
 
     Для ячейки c и кадров k = 1..B:
         base[c] = median_k R_k[c]   (NaN-значения пропускаются)
@@ -333,7 +342,8 @@ def pick_images(source, stamps, lo: int, hi: int, count: int):
 
 
 def rolling_baseline(source, stamps, timestamp: int, args):
-    """Эталон для кадра в момент t по окну [t - L - S, t - L] (L=lag, S=span).
+    """
+    Эталон для кадра в момент t по окну [t - L - S, t - L] (L=lag, S=span).
 
     Лидар может ехать, поэтому один эталон на всю запись не годится: геометрия
     меняется (на этой записи медиана |dr| между кадрами при сдвиге 0.1-5 с равна
@@ -363,7 +373,8 @@ def static_baseline(source, stamps, args):
 
 
 def foreground_cells(image, base, frac, col_mask, args) -> np.ndarray:
-    """Булева картинка переднего плана.
+    """
+    Булева картинка переднего плана.
 
     Ячейка c с текущей дальностью R[c] (есть возврат) - передний план, если
       (A) "ближе":   R[c] < base[c] - m(c),   m(c) = margin + margin_rel*base[c]
@@ -380,7 +391,8 @@ def foreground_cells(image, base, frac, col_mask, args) -> np.ndarray:
 
 
 def group_cells(mask: np.ndarray, gap_cells: int) -> np.ndarray:
-    """Пометить связные компоненты переднего плана (8-связность).
+    """
+    Пометить связные компоненты переднего плана (8-связность).
 
     Дальняя цель даёт отдельные ячейки с разрывами из-за пропавших возвратов,
     поэтому перед разметкой маска расширяется на gap_cells ячеек: цели,
@@ -394,7 +406,8 @@ def group_cells(mask: np.ndarray, gap_cells: int) -> np.ndarray:
 
 
 def extract_candidates(points, image, mask, grid: Grid, args) -> list[dict]:
-    """Кандидаты: компонента переднего плана + метрические признаки по её точкам.
+    """
+    Кандидаты: компонента переднего плана + метрические признаки по её точкам.
 
     В точки компоненты берутся только из ячеек переднего плана, только
     ближайшая поверхность ячейки (r <= R[c] + cell_depth_tol; иначе в кандидат
@@ -424,7 +437,7 @@ def extract_candidates(points, image, mask, grid: Grid, args) -> list[dict]:
 
     candidates = []
     for i in range(len(start)):
-        members = idx[bounds[i] : bounds[i + 1]]
+        members = idx[bounds[i]: bounds[i + 1]]
         n_cells = int(np.unique(cell[members]).size)
         if n_cells < args.min_cells:
             continue
@@ -442,7 +455,8 @@ def extract_candidates(points, image, mask, grid: Grid, args) -> list[dict]:
 
 
 def expected_cells(range_m: float, grid: Grid, args) -> float:
-    """Сколько ячеек занимает человек номинального размера W x H на дальности R.
+    """
+    Сколько ячеек занимает человек номинального размера W x H на дальности R.
 
         n_exp = (W / (R * d_az)) * (H / (R * d_el)) = W*H / (R^2 * d_az * d_el)
     (d_az, d_el - углы ячейки в радианах). Убывает как 1/R^2.
@@ -452,7 +466,8 @@ def expected_cells(range_m: float, grid: Grid, args) -> float:
 
 
 def looks_person(c: dict, grid: Grid, args) -> bool:
-    """Кандидат подходит под человека НА СВОЕЙ ДАЛЬНОСТИ.
+    """
+    Кандидат подходит под человека НА СВОЕЙ ДАЛЬНОСТИ.
 
     Пусть R - медианная дальность кандидата, s_h = R*d_az, s_v = R*d_el -
     линейный размер ячейки (один шаг квантования измерения). Условия:
@@ -475,7 +490,8 @@ def looks_person(c: dict, grid: Grid, args) -> bool:
 
 
 def confirm(persons: list[dict], t: float, history: deque, args) -> list[dict]:
-    """Оставить кандидатов, устойчивых во времени.
+    """
+    Оставить кандидатов, устойчивых во времени.
 
     Случайные куски тоннеля редко повторяются на одном месте в нескольких
     кадрах подряд. Кандидат в момент t подтверждён, если в предыдущих
