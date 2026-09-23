@@ -33,7 +33,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
-    python3-numpy python3-opencv python3-yaml \
+    python3-numpy python3-scipy python3-matplotlib python3-opencv python3-yaml python3-pip \
     ros-humble-rclpy ros-humble-sensor-msgs \
     libyaml-cpp0.7 ros-humble-ament-index-cpp ros-humble-tf2-ros ros-humble-tf2 ros-humble-geometry-msgs \
     ros-humble-rclcpp ros-humble-vision-msgs ros-humble-visualization-msgs \
@@ -43,6 +43,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rmw-cyclonedds-cpp \
     && apt-get purge -y python3-colcon-core python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
+
+COPY docker/analysis-requirements.txt /tmp/analysis-requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /tmp/analysis-requirements.txt \
+    && rm /tmp/analysis-requirements.txt
 
 WORKDIR /ws
 COPY --from=builder /ws/install /opt/metro/install

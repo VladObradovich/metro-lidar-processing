@@ -423,7 +423,9 @@ docker run --rm -i --init --network none \
 
 Для проекта используется Dev Container **Ubuntu 22.04 / ROS 2 Humble** с двумя
 профилями. Общая часть включает Python 3.10, C++/CMake, Eigen/PCL,
-NumPy/SciPy/OpenCV, rosbag2, Cyclone DDS, отладчик и средства тестирования.
+NumPy/SciPy/Matplotlib/OpenCV, rosbag2, Cyclone DDS, отладчик и средства
+тестирования. Для анализа облаков `rosbags` и `scikit-learn` устанавливаются
+из PyPI при сборке обоих профилей и установленного runtime-образа.
 
 | Профиль | Назначение | Хост |
 |---|---|---|
