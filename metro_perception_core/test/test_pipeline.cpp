@@ -263,6 +263,33 @@ TEST(Ground, WallIsNeverChosenAsFloor) {
   EXPECT_NEAR(-frame.corridor.front().ground_plane[3], -1.0, 0.02);
 }
 
+TEST(Ground, DenseStructureBesideCorridorIsNotTheFloor) {
+  // Platforms on both sides hold more returns than the track bed. They must not become
+  // the route floor, or an obstacle standing on the bed loses its body below "ground".
+  FrameInput input;
+  input.context.transform_available = true;
+  input.context.allow_unverified_calibration = true;
+  for (int x = 4; x <= 50; ++x)
+    for (int yi = -12; yi <= 12; ++yi) input.points.push_back({double(x), yi * 0.2, -1.9});
+  for (int xi = 12; xi <= 200; ++xi)
+    for (const double y : {2.6, 2.7, 2.8, 2.9})
+      for (const double side : {-1.0, 1.0}) input.points.push_back({xi * 0.25, side * y, -0.3});
+  for (int xi = 0; xi < 5; ++xi)
+    for (int yi = 0; yi < 8; ++yi)
+      for (int zi = 0; zi <= 21; ++zi)
+        input.points.push_back({20.0 + xi * 0.08, -0.28 + yi * 0.08, -1.9 + zi * 0.08});
+  AlgorithmConfig config;
+  config.background_history_frames = 0;
+  const auto frame = PerceptionPipeline(config).process(input);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  ASSERT_FALSE(frame.corridor.empty());
+  const auto& plane = frame.corridor.front().ground_plane;  // Normalised: z + 1.9 = 0.
+  EXPECT_NEAR(-plane[3] / plane[2], -1.9, 0.05);
+  ASSERT_EQ(frame.candidates.size(), 1u);
+  EXPECT_NEAR(frame.candidates.front().distance_m, 20.0, 0.1);
+  EXPECT_GT(frame.candidates.front().size.z, 1.2);  // Whole body above the bed.
+}
+
 TEST(Ground, OneSidedPlatformCannotEstablishRoute) {
   auto input = verified_input();
   for (int x = 4; x <= 50; ++x)

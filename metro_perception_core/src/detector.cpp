@@ -30,8 +30,13 @@ struct Cell {
   std::vector<std::size_t> points;  // Indices into geometry_points.
 };
 
-bool in_ground_region(const PointXYZ& p) {
-  return p.x >= kGroundMinX && p.x <= kGroundMaxX && std::abs(p.y) <= 3 && p.z >= -3 && p.z <= 0.5;
+// The route floor is searched in the same lateral band as candidates. Wider, a platform,
+// a parked train or a bench beside the track can outvote the floor and lift the plane,
+// which cuts the lower body of an obstacle off below "ground".
+bool in_ground_region(const AlgorithmConfig& config, const PointXYZ& p) {
+  return p.x >= kGroundMinX && p.x <= kGroundMaxX &&
+         std::abs(p.y) <= config.corridor_half_width_m + config.candidate_margin_m && p.z >= -3 &&
+         p.z <= 0.5;
 }
 bool plausible_ground(const AlgorithmConfig& config, double a, double b, double c) {
   return std::isfinite(a) && std::isfinite(b) && std::isfinite(c) &&
@@ -71,7 +76,8 @@ void measure_support(const AlgorithmConfig& config, const std::vector<IndexedPoi
   std::vector<double> near(bins, kGroundMaxX), far(bins, 0);
   for (const auto& indexed : points) {
     const auto& p = indexed.point;
-    if (!in_ground_region(p) || std::abs(plane.height(p)) > config.ground_inlier_tolerance_m)
+    if (!in_ground_region(config, p) ||
+        std::abs(plane.height(p)) > config.ground_inlier_tolerance_m)
       continue;
     const auto bin =
         std::min(bins - 1, static_cast<std::size_t>((p.x - kGroundMinX) / kGroundBinM));
@@ -95,7 +101,7 @@ Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& fr
   const std::size_t stride = std::max<std::size_t>(1, points.size() / 6000);
   for (std::size_t i = 0; i < points.size(); i += stride) {
     const auto& p = points[i].point;
-    if (in_ground_region(p)) seeds.push_back(&p);
+    if (in_ground_region(config, p)) seeds.push_back(&p);
   }
   if (seeds.size() < config.min_ground_inliers) return {};
   Plane best;
