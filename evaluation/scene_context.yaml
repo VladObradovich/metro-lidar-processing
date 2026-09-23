@@ -13,7 +13,12 @@ bags:
   doubleT_obstacle:
     track_obstacle_reported: true
     description: Train is stationary in a double tunnel; a person enters the tracks near the end.
-    event_interval: null  # Exact frame and bag timestamps still need review.
+    event_interval:
+      uncertain_start_ns: 1788354635095124717
+      positive_start_ns: 1788354640110141925
+      positive_end_ns: 1788354643502070680
+      time_basis: bag_stamp_ns
+      source: evaluation/annotations/doubleT_obstacle.yaml
   roundT_doubleT:
     track_obstacle_reported: false
     description: Train moves through an ordinary tunnel.

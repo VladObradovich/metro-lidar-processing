@@ -1,0 +1,13 @@
+schema_version: 1
+bag_id: doubleT_platform
+reviewed: true
+time_basis: bag_stamp_ns
+review_method: owner_scene_report
+# Whole bag is negative: the data owner reports no obstacle on the track.
+# Every OBSTACLE frame in this bag counts as a false alarm.
+reviewed_intervals:
+  - start_ns: 1788359712599450851
+    end_ns: 1788359747019017037
+    label: negative
+    evidence: Owner reports no obstacle on the track in the whole bag.
+events: []

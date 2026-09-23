@@ -1,7 +1,13 @@
 schema_version: 1
-status: unassigned
-# Populate before tuning. No bag is claimed to be an untouched holdout yet.
-development: []
-validation: []
+status: assigned_with_no_untouched_holdout
+unit: entire_bag
+frozen_on: '2026-09-23'
+notes:
+  - The development bags influenced G1/G2 design or parameter selection.
+  - Validation bags were inspected and compared during G2 work; this is post-hoc validation, not a blind test.
+  - The only positive bag is in development, so independent positive recall is unavailable.
+  - new_data is excluded from the current annotation and evaluation scope at the user's request.
+development: [doubleT_obstacle, doubleT_platform, roundT_pressureGate_roundT]
+validation: [roundT_doubleT, roundT_squareT_pressureGate_squareT, squareT_platform_squareT_switch]
 holdout: []
 regression: []

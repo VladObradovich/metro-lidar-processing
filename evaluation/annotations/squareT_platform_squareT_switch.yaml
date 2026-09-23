@@ -1,0 +1,18 @@
+schema_version: 1
+bag_id: squareT_platform_squareT_switch
+reviewed: true
+time_basis: bag_stamp_ns
+review_method: owner_scene_report
+# Whole bag is negative: the data owner reports no obstacle on the track.
+# Every OBSTACLE frame in this bag counts as a false alarm.
+reviewed_intervals:
+  - start_ns: 1788358443342122534
+    end_ns: 1788358531550098466
+    label: negative
+    evidence: Owner reports no obstacle on the track in the whole bag.
+# Difficult background for false-alarm analysis; does not limit the label.
+scene_windows:
+  - start_ns: 1788358512749222438
+    end_ns: 1788358529756187224
+    note: Right-side mesh wall near the end (+69.41 to +86.41 s).
+events: []

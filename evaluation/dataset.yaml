@@ -16,7 +16,7 @@ bags:
   input_topic: /lidar_points
   storage_id: sqlite3
   declared_message_count: 345
-  annotations: null
+  annotations: evaluation/annotations/doubleT_platform.yaml
   audit_status: a02_preview_processed
   sensor_profile: forward_sector
   processed_frame_count: 345
@@ -26,7 +26,7 @@ bags:
   input_topic: /lidar_points
   storage_id: sqlite3
   declared_message_count: 252
-  annotations: null
+  annotations: evaluation/annotations/roundT_doubleT.yaml
   audit_status: a02_preview_processed
   sensor_profile: forward_sector
   processed_frame_count: 252
@@ -36,7 +36,7 @@ bags:
   input_topic: /lidar_points
   storage_id: sqlite3
   declared_message_count: 268
-  annotations: null
+  annotations: evaluation/annotations/roundT_pressureGate_roundT.yaml
   audit_status: a02_preview_processed
   sensor_profile: forward_sector
   processed_frame_count: 268
@@ -46,7 +46,7 @@ bags:
   input_topic: /lidar_points
   storage_id: sqlite3
   declared_message_count: 545
-  annotations: null
+  annotations: evaluation/annotations/roundT_squareT_pressureGate_squareT.yaml
   audit_status: a02_preview_processed
   sensor_profile: forward_sector
   processed_frame_count: 545
@@ -56,7 +56,7 @@ bags:
   input_topic: /lidar_points
   storage_id: sqlite3
   declared_message_count: 877
-  annotations: null
+  annotations: evaluation/annotations/squareT_platform_squareT_switch.yaml
   audit_status: a02_preview_processed
   sensor_profile: forward_sector
   processed_frame_count: 877
