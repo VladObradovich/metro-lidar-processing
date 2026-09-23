@@ -114,7 +114,7 @@ TEST(Adapter, RejectsInvalidMeasurementTimestamps) {
   metro_perception_core::FrameContext context;
   context.transform_available = true;
   context.calibration_verified = true;
-  const metro_perception_core::PerceptionPipeline pipeline;
+  metro_perception_core::PerceptionPipeline pipeline;
   const auto result = metro_perception_ros::process_cloud(msg, pipeline, 10, context);
   EXPECT_EQ(result.status, metro_perception_core::AnalysisStatus::BAD_INPUT);
   EXPECT_EQ(result.reason, "INVALID_TIMESTAMP");
@@ -132,10 +132,10 @@ TEST(Adapter, NonFiniteCoordinatesAreFilteredWithoutPropagation) {
   metro_perception_core::FrameContext context;
   context.transform_available = true;
   context.calibration_verified = true;
-  const metro_perception_core::PerceptionPipeline pipeline;
+  metro_perception_core::PerceptionPipeline pipeline;
 
   auto result = metro_perception_ros::process_cloud(msg, pipeline, 10, context);
-  EXPECT_EQ(result.status, metro_perception_core::AnalysisStatus::NOT_IMPLEMENTED);
+  EXPECT_EQ(result.status, metro_perception_core::AnalysisStatus::INVALID_GEOMETRY);
   EXPECT_EQ(result.preprocessed.invalid_points, 1u);
   ASSERT_EQ(result.preprocessed.geometry_points.size(), 1u);
   EXPECT_TRUE(std::isfinite(result.preprocessed.geometry_points.front().point.x));
@@ -163,7 +163,7 @@ TEST(Adapter, EnforcesIndependentPointAndByteLimits) {
   metro_perception_core::FrameContext context;
   context.transform_available = true;
   context.calibration_verified = true;
-  const metro_perception_core::PerceptionPipeline pipeline;
+  metro_perception_core::PerceptionPipeline pipeline;
   const auto result =
       metro_perception_ros::process_cloud(msg, pipeline, 10, context, msg.data.size() - 1);
   EXPECT_EQ(result.status, metro_perception_core::AnalysisStatus::BAD_INPUT);
@@ -171,7 +171,7 @@ TEST(Adapter, EnforcesIndependentPointAndByteLimits) {
 }
 
 TEST(Adapter, RejectedCloudsDoNotInvokeStatefulResolver) {
-  const metro_perception_core::PerceptionPipeline pipeline;
+  metro_perception_core::PerceptionPipeline pipeline;
   int calls = 0;
   auto resolve = [&] {
     ++calls;
@@ -196,6 +196,6 @@ TEST(Adapter, RejectedCloudsDoNotInvokeStatefulResolver) {
   EXPECT_EQ(
       metro_perception_ros::process_cloud_with_context(fixture(false, false), pipeline, 10, resolve)
           .status,
-      metro_perception_core::AnalysisStatus::NOT_IMPLEMENTED);
+      metro_perception_core::AnalysisStatus::INVALID_GEOMETRY);
   EXPECT_EQ(calls, 1);
 }

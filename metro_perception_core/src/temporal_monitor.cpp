@@ -1,4 +1,8 @@
 #include "metro_perception_core/temporal_monitor.hpp"
+
+#include <algorithm>
+#include <limits>
+
 namespace metro_perception_core {
 Assessment TemporalMonitor::update(const FrameResult& frame, std::int64_t) {
   Assessment result;
@@ -7,18 +11,31 @@ Assessment TemporalMonitor::update(const FrameResult& frame, std::int64_t) {
     result.reason = frame.reason;
     return result;
   }
-  // Assumed mounting may support a future obstacle candidate, but an empty candidate
-  // set must never prove that the path is clear without verified calibration.
-  if (frame.calibration_trust == CalibrationTrust::ASSUMED && frame.candidates.empty()) {
+  const ObstacleCandidate* nearest = nullptr;
+  for (const auto& candidate : frame.candidates) {
+    if (!candidate.distance_valid) continue;
+    if (!nearest || candidate.distance_m < nearest->distance_m) nearest = &candidate;
+  }
+  if (nearest) {
+    // B0 reports a measured candidate immediately; temporal confirmation is G4.
+    result.state = State::OBSTACLE;
+    result.reason = frame.calibration_trust == CalibrationTrust::ASSUMED
+                        ? "OBSTACLE_WITH_ASSUMED_CALIBRATION"
+                        : "OBSTACLE_CANDIDATE";
+    result.distance_m = nearest->distance_m;
+    result.distance_valid = true;
+    return result;
+  }
+  if (frame.calibration_trust == CalibrationTrust::ASSUMED) {
     result.reason = "ASSUMED_CALIBRATION_CANNOT_CONFIRM_CLEAR";
-    return result;
+  } else if (frame.calibration_trust == CalibrationTrust::VERIFIED &&
+             frame.evaluation_region_valid) {
+    result.state = State::NO_OBSTACLE_DETECTED;
+    result.reason = "NO_CANDIDATE_IN_EVALUATED_REGION";
+  } else {
+    result.reason =
+        frame.reason == "BACKGROUND_CANNOT_CONFIRM_CLEAR" ? frame.reason : "CORRIDOR_UNOBSERVABLE";
   }
-  if (frame.calibration_trust != CalibrationTrust::VERIFIED) {
-    result.reason = "CALIBRATION_TRUST_UNKNOWN";
-    return result;
-  }
-  // R02/X03: temporal confirmation and final state transitions are still pending.
-  result.reason = "MONITOR_NOT_IMPLEMENTED";
   return result;
 }
 Assessment TemporalMonitor::on_timeout() const {

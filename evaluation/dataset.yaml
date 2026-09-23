@@ -6,7 +6,7 @@ bags:
   input_topic: /sensing/lidar/hesai128/pointcloud
   storage_id: sqlite3
   declared_message_count: 201
-  annotations: null
+  annotations: evaluation/annotations/doubleT_obstacle.yaml
   audit_status: a02_preview_processed
   sensor_profile: full_scan
   processed_frame_count: 201

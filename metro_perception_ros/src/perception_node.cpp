@@ -89,8 +89,8 @@ class PerceptionNode : public rclcpp::Node {
     worker_ = std::thread([this] { worker_loop(); });
 
     RCLCPP_WARN(get_logger(),
-                "A02 active; calibration_verified=%s. Latest-only worker enabled; detector remains "
-                "NOT_IMPLEMENTED",
+                "Experimental geometric detector active; calibration_verified=%s. "
+                "Ground support and straight corridor are required.",
                 config_.calibration_verified ? "true" : "false");
   }
 
@@ -205,6 +205,39 @@ class PerceptionNode : public rclcpp::Node {
     output.frame_sequence = work.frame_sequence;
     output.processing_status = static_cast<std::uint8_t>(frame.status);
     output.reason = frame.reason;
+    output.evaluation_region_valid = frame.evaluation_region_valid;
+    output.evaluated_range_m = frame.evaluated_range_m;
+    for (const auto& candidate : frame.candidates) {
+      auto& item = output.candidates.emplace_back();
+      item.candidate_id = candidate.id;
+      item.bbox.center.position.x = candidate.center.x;
+      item.bbox.center.position.y = candidate.center.y;
+      item.bbox.center.position.z = candidate.center.z;
+      item.bbox.center.orientation.w = 1.0;
+      item.bbox.size.x = candidate.size.x;
+      item.bbox.size.y = candidate.size.y;
+      item.bbox.size.z = candidate.size.z;
+      item.nearest_point.x = candidate.nearest_point.x;
+      item.nearest_point.y = candidate.nearest_point.y;
+      item.nearest_point.z = candidate.nearest_point.z;
+      item.distance_m = candidate.distance_m;
+      item.distance_valid = candidate.distance_valid;
+      item.support_points = candidate.support_points;
+    }
+    for (const auto& segment : frame.corridor) {
+      auto& item = output.corridor.emplace_back();
+      item.start.x = segment.start.x;
+      item.start.y = segment.start.y;
+      item.start.z = segment.start.z;
+      item.end.x = segment.end.x;
+      item.end.y = segment.end.y;
+      item.end.z = segment.end.z;
+      item.width_m = segment.width_m;
+      item.height_m = segment.height_m;
+      item.ground_plane = segment.ground_plane;
+      item.geometry_valid = segment.geometry_valid;
+      item.coverage_valid = segment.coverage_valid;
+    }
     output.received_frames = received_.load();
     output.processed_frames = processed_.load();
     output.rejected_frames = rejected_.load();

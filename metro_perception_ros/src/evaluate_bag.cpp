@@ -184,7 +184,9 @@ int main(int argc, char** argv) {
           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
               .count();
 
-      output << "{\"schema_version\":1,\"mode\":\"a02\",\"bag_id\":";
+      output << "{\"schema_version\":1,\"mode\":\""
+             << (config.algorithm.background_history_frames ? "geometric_rolling" : "geometric_b0")
+             << "\",\"bag_id\":";
       output << json_string(argv[1]);
       output << ",\"session_id\":" << session;
       output << ",\"frame_sequence\":" << ++sequence;
@@ -199,9 +201,21 @@ int main(int argc, char** argv) {
         output << "null";
       }
       output << ",\"distance_valid\":" << (assessment.distance_valid ? "true" : "false")
-             << ",\"candidate_count\":" << result.candidates.size()
-             << ",\"evaluation_region_valid\":"
+             << ",\"candidate_count\":" << result.candidates.size();
+      output << ",\"candidates\":[";
+      for (std::size_t i = 0; i < result.candidates.size(); ++i) {
+        if (i) output << ',';
+        const auto& candidate = result.candidates[i];
+        output << "{\"id\":" << candidate.id << ",\"distance_m\":" << std::setprecision(17)
+               << candidate.distance_m << ",\"support_points\":" << candidate.support_points
+               << ",\"center\":[" << candidate.center.x << ',' << candidate.center.y << ','
+               << candidate.center.z << "],\"size\":[" << candidate.size.x << ','
+               << candidate.size.y << ',' << candidate.size.z << "]}";
+      }
+      output << "]";
+      output << ",\"evaluation_region_valid\":"
              << (result.evaluation_region_valid ? "true" : "false")
+             << ",\"evaluated_range_m\":" << result.evaluated_range_m
              << ",\"processing_status\":" << static_cast<unsigned>(result.status)
              << ",\"calibration_trust\":" << static_cast<unsigned>(result.calibration_trust)
              << ",\"transform_applied\":"
@@ -229,7 +243,7 @@ int main(int argc, char** argv) {
       throw std::runtime_error("No frames processed");
     }
 
-    std::cout << "A02 exported " << sequence << " frames\n";
+    std::cout << "Geometric detector exported " << sequence << " frames\n";
     return 0;
   } catch (const std::exception& e) {
     std::cerr << e.what() << '\n';

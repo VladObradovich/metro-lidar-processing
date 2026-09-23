@@ -144,7 +144,7 @@ TEST(Profile, DefaultForwardSectorBindsRuntimeFramePerSession) {
   input.points = {{0, -10, 0}};
   input.context = resolve_context(h, c, binding, buffer);
   const auto result = PerceptionPipeline(c.algorithm).process(input);
-  EXPECT_EQ(result.status, AnalysisStatus::NOT_IMPLEMENTED);
+  EXPECT_EQ(result.status, AnalysisStatus::INVALID_GEOMETRY);
   EXPECT_TRUE(result.preprocessed.transform_applied);
   EXPECT_EQ(result.calibration_trust, CalibrationTrust::ASSUMED);
   ASSERT_EQ(result.preprocessed.geometry_points.size(), 1u);

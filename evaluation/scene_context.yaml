@@ -1,0 +1,61 @@
+schema_version: 1
+source: user_reported_scene_overview_2026-09-23
+time_basis: approximate_elapsed_from_bag_start
+frame_reviewed: false
+notes:
+  - Only doubleT_obstacle was reported to contain an obstacle on the track.
+  - These descriptions are scene context, not reviewed frame labels or measured distances.
+  - The new_data timeline is partial; later oncoming trains and platforms are not exhaustively listed.
+bags:
+  doubleT_platform:
+    track_obstacle_reported: false
+    description: Train moves through a double tunnel.
+  doubleT_obstacle:
+    track_obstacle_reported: true
+    description: Train is stationary in a double tunnel; a person enters the tracks near the end.
+    event_interval: null  # Exact frame and bag timestamps still need review.
+  roundT_doubleT:
+    track_obstacle_reported: false
+    description: Train moves through an ordinary tunnel.
+  roundT_pressureGate_roundT:
+    track_obstacle_reported: false
+    description: Train moves through an ordinary tunnel; stairs and a service entrance are on the left.
+  roundT_squareT_pressureGate_squareT:
+    track_obstacle_reported: false
+    description: Train moves through an ordinary tunnel.
+  squareT_platform_squareT_switch:
+    track_obstacle_reported: false
+    description: Train moves through an ordinary tunnel; a mesh wall appears on the right near the end.
+  new_data:
+    track_obstacle_reported: false
+    description: Moving train; turns, double tunnel, stops, oncoming trains, and platforms with people.
+    timeline:
+      - {at_s: 12, event: fork_turn_left}
+      - {at_s: 24, event: tunnel_bends_right_train_turns}
+      - {at_s: 40, event: sharp_turn_right}
+      - {at_s: 50, event: straight}
+      - {at_s: 75, event: turn_left}
+      - {at_s: 87, event: turn_right}
+      - {at_s: 98, event: straight}
+      - {at_s: 117, event: double_tunnel}
+      - {start_s: 160, end_s: 170, event: braking_and_stop}
+      - {at_s: 184, event: starts_moving_and_oncoming_train}
+      - {at_s: 186, event: stops}
+      - {at_s: 197, event: starts_moving}
+      - {at_s: 199, event: stops}
+      - {at_s: 204, event: starts_moving}
+      - {at_s: 260, event: oncoming_train}
+      - {at_s: 268, event: platform_with_people}
+      - {at_s: 292, event: stops}
+      - {at_s: 307, event: starts_moving}
+      - {at_s: 360, event: oncoming_train}
+      - {at_s: 416, event: platform}
+      - {at_s: 438, event: stops}
+      - {at_s: 457, event: starts_moving}
+      - {at_s: 595, event: stops_at_platform_with_people}
+      - {at_s: 643, event: starts_moving}
+      - {at_s: 762, event: stops_at_platform_with_people}
+      - {at_s: 776, event: starts_moving_in_ordinary_tunnel}
+      - {at_s: 984, event: stops_at_platform_with_people}
+      - {at_s: 1005, event: starts_moving}
+      - {at_s: 1021, event: fork_turn_right}

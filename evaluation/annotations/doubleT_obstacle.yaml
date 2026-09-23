@@ -1,0 +1,39 @@
+schema_version: 1
+bag_id: doubleT_obstacle
+reviewed: true
+time_basis: bag_stamp_ns
+review_method: manual_depth_panorama_review_and_pointcloud_resampling
+review_limits: >-
+  Interval boundaries are conservative visual estimates. The panorama shows
+  a person-shaped return, but vehicle axes, track clearance, and object
+  distance are not independently calibrated. No reference distance is claimed.
+reviewed_intervals:
+  - start_ns: 1788354623110040384
+    end_ns: 1788354635095124717
+    label: negative
+    evidence: No person-shaped return in the sampled depth panoramas up to bag +11.985 s.
+  - start_ns: 1788354635095124717
+    end_ns: 1788354640110141925
+    label: uncertain
+    evidence: Person-shaped return enters from the edge; exact crossing into the track is unclear before +17 s.
+  - start_ns: 1788354640110141925
+    end_ns: 1788354643502070680
+    label: positive
+    evidence: Person-shaped return visibly occupies the route toward the track center through the end of the bag.
+events:
+  - id: person_enters_track_01
+    start_ns: 1788354640110141925
+    end_ns: 1788354643502070680
+    label: positive
+    evidence: >-
+      User-described person entering the rails, supported by depth panorama
+      review and direct PointCloud2 sampling at +17.000, +17.988 and +19.982 s.
+    reference_frames:
+      - bag_stamp_ns: 1788354640110141925
+        distance_m: null
+        uncertainty_m: null
+        method: visual_depth_review_only
+      - bag_stamp_ns: 1788354641098111292
+        distance_m: null
+        uncertainty_m: null
+        method: visual_depth_review_only

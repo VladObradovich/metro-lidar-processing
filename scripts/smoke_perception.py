@@ -49,12 +49,12 @@ def main():
                         for index, name in enumerate(('x', 'y', 'z'))]
         cloud.data = struct.pack('<fff', 0., -10., 0.)
         deadline = time.monotonic() + 10
-        while not any(row.reason == 'NOT_IMPLEMENTED' and not row.stale for row in received):
+        while not any(row.reason == 'GROUND_UNSUPPORTED' and not row.stale for row in received):
             if time.monotonic() > deadline:
                 raise RuntimeError('No decoded frame assessment')
             publisher.publish(cloud)
             rclpy.spin_once(node, timeout_sec=0.1)
-        fresh = next(row for row in reversed(received) if row.reason == 'NOT_IMPLEMENTED')
+        fresh = next(row for row in reversed(received) if row.reason == 'GROUND_UNSUPPORTED')
         spin_until(lambda: any(row.reason == 'INPUT_PAUSED_OR_STOPPED' and row.stale
                                for row in received), seconds=3)
         stale = next(row for row in reversed(received) if row.stale and row.frame_sequence)
@@ -67,7 +67,7 @@ def main():
         spin_until(lambda: any('INPUT_PAUSED_OR_STOPPED' in marker.text
                                for array in markers for marker in array.markers), seconds=3)
         print(
-            'PASS: default lidar-only no-ring cloud -> NOT_IMPLEMENTED/UNKNOWN '
+            'PASS: default lidar-only no-ring cloud -> GROUND_UNSUPPORTED/UNKNOWN '
             '-> steady-clock timeout; stamp preserved'
         )
     finally:

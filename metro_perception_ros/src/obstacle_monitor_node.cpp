@@ -42,6 +42,15 @@ class ObstacleMonitor : public rclcpp::Node {
           }
           result.calibration_trust =
               metro_perception_ros::decode_calibration_trust(frame->calibration_trust);
+          result.evaluation_region_valid = frame->evaluation_region_valid;
+          result.evaluated_range_m = frame->evaluated_range_m;
+          for (const auto& item : frame->candidates) {
+            metro_perception_core::ObstacleCandidate candidate;
+            candidate.id = item.candidate_id;
+            candidate.distance_m = item.distance_m;
+            candidate.distance_valid = item.distance_valid;
+            result.candidates.push_back(candidate);
+          }
           const auto stamp =
               metro_perception_ros::decode_measurement_time_ns(frame->header.stamp).value_or(0);
           const auto assessment = monitor_.update(result, stamp);
@@ -52,7 +61,13 @@ class ObstacleMonitor : public rclcpp::Node {
           output_.state = static_cast<std::uint8_t>(assessment.state);
           output_.reason = assessment.reason;
           output_.calibration_trust = static_cast<std::uint8_t>(assessment.calibration_trust);
-          output_.distance_valid = false;
+          output_.distance_valid = assessment.distance_valid;
+          output_.distance_m = assessment.distance_m;
+          output_.evaluation_region_valid = frame->evaluation_region_valid;
+          output_.evaluated_range_m = frame->evaluated_range_m;
+          output_.confirmed_objects.clear();
+          if (assessment.state == metro_perception_core::State::OBSTACLE)
+            output_.confirmed_objects = frame->candidates;
           output_.stale = false;
           processing_age_ms_ = frame->processing_age_ms;
           received_at_ = std::chrono::steady_clock::now();
@@ -73,6 +88,8 @@ class ObstacleMonitor : public rclcpp::Node {
         output_.reason = monitor_.on_timeout().reason;
         output_.stale = true;
         output_.distance_valid = false;
+        output_.confirmed_objects.clear();
+        output_.evaluation_region_valid = false;
       }
     }
     publisher_->publish(output_);

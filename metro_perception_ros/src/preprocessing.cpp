@@ -106,6 +106,28 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
       item.second->max = triple(n[item.first]["max"]);
     }
   }
+  if (const auto detector = n["detector"]) {
+    if (!detector.IsMap()) throw std::invalid_argument("detector must be a mapping");
+    auto read_double = [&](const char* key, double& value) {
+      if (detector[key]) value = detector[key].as<double>();
+    };
+    auto read_count = [&](const char* key, std::size_t& value) {
+      if (detector[key]) value = detector[key].as<std::size_t>();
+    };
+    read_double("corridor_half_width_m", c.algorithm.corridor_half_width_m);
+    read_double("corridor_height_m", c.algorithm.corridor_height_m);
+    read_double("ground_max_slope", c.algorithm.ground_max_slope);
+    read_double("ground_inlier_tolerance_m", c.algorithm.ground_inlier_tolerance_m);
+    read_double("obstacle_min_height_m", c.algorithm.obstacle_min_height_m);
+    read_double("angular_cell_deg", c.algorithm.angular_cell_deg);
+    read_count("min_ground_inliers", c.algorithm.min_ground_inliers);
+    read_count("min_candidate_cells", c.algorithm.min_candidate_cells);
+    read_count("min_candidate_points", c.algorithm.min_candidate_points);
+    read_count("background_history_frames", c.algorithm.background_history_frames);
+    read_count("background_lag_frames", c.algorithm.background_lag_frames);
+    read_double("background_margin_m", c.algorithm.background_margin_m);
+    read_double("background_relative_margin", c.algorithm.background_relative_margin);
+  }
   if (c.source_frame_mode == SourceFrameMode::BIND_FIRST && !c.has_static_transform)
     throw std::invalid_argument("bind_first requires an explicit static transform");
 

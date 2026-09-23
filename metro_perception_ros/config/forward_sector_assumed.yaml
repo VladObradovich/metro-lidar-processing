@@ -15,3 +15,19 @@ geometry_roi:
 detection_roi:
   min: [0.0, -5.0, -3.0]
   max: [120.0, 5.0, 5.0]
+
+# Experimental B0 detection parameters; override only after reviewing labelled scenes.
+detector:
+  corridor_half_width_m: 2.0
+  corridor_height_m: 3.5
+  ground_max_slope: 0.15
+  ground_inlier_tolerance_m: 0.15
+  obstacle_min_height_m: 0.25
+  angular_cell_deg: 0.25
+  min_ground_inliers: 30
+  min_candidate_cells: 3
+  min_candidate_points: 5
+  background_history_frames: 10
+  background_lag_frames: 5
+  background_margin_m: 0.5
+  background_relative_margin: 0.02

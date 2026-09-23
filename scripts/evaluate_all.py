@@ -31,7 +31,7 @@ def main():
     parser.add_argument(
         '--preview',
         action='store_true',
-        help='Use unverified lidar-centered visualization profiles (always UNKNOWN)',
+        help='Use unverified lidar-centered preview profiles (clear path remains UNKNOWN)',
     )
     args = parser.parse_args()
     if not 1 <= args.max_points <= 10000000:
@@ -48,7 +48,7 @@ def main():
             ['git', '-C', str(root), *cmd],
             text=True,
         ).strip()
-    manifest = {'schema_version': 1, 'mode': 'a02', 'image_id': args.image_id,
+    manifest = {'schema_version': 1, 'mode': 'geometric_rolling', 'image_id': args.image_id,
                 'commit': git('rev-parse', 'HEAD'), 'dirty': bool(git('status', '--porcelain')),
                 'dataset_sha256': sha256(args.dataset), 'config_sha256': {}, 'bags': [],
                 'preview': args.preview, 'max_points': args.max_points,
@@ -56,7 +56,7 @@ def main():
                 'tf_lookahead_s': args.tf_lookahead_s,
                 'note': (
                     'Profiles are selected by sensor_profile metadata; '
-                    'full-scan orientation remains unresolved, no detector/deskew.'
+                    'full-scan orientation remains unresolved; experimental detector, no deskew.'
                 )}
     for config in sorted(list((root / 'metro_perception_bringup/config').rglob('*.yaml')) +
                          list((root / 'metro_perception_ros/config').rglob('*.yaml'))):

@@ -47,6 +47,7 @@ struct ObstacleCandidate {
 struct CorridorSegment {
   PointXYZ start, end;
   double width_m{0}, height_m{0};
+  std::array<double, 4> ground_plane{0, 0, 1, 0};
   bool geometry_valid{false}, coverage_valid{false};
 };
 struct IndexedPoint {
@@ -68,6 +69,7 @@ struct FrameResult {
   std::vector<ObstacleCandidate> candidates;
   std::vector<CorridorSegment> corridor;
   bool evaluation_region_valid{false};
+  double evaluated_range_m{0};
   CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
 };
 struct Assessment {

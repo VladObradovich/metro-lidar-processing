@@ -72,6 +72,7 @@ jobs:
           python3 scripts/smoke_perception.py
           python3 scripts/smoke_a02.py
           python3 scripts/smoke_a02.py --default
+          python3 scripts/smoke_detector.py
           python3 scripts/smoke_namespace_isolation.py
           python3 scripts/smoke_worker_overload.py
           python3 scripts/smoke_tf_replay.py
@@ -94,6 +95,8 @@ jobs:
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_a02.py
       - name: TF replay regressions in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_tf_replay.py
+      - name: Geometric B0 detection in installed runtime
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_detector.py
       - name: Default lidar only profile in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - --default < scripts/smoke_a02.py
 

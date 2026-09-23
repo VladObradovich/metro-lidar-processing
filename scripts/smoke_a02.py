@@ -29,7 +29,7 @@ def main():
         help="Check automatic lidar-only profile",
     )
     args = parser.parse_args()
-    reason = "NOT_IMPLEMENTED" if args.default else "CALIBRATION_UNVERIFIED"
+    reason = "GROUND_UNSUPPORTED" if args.default else "CALIBRATION_UNVERIFIED"
     target = "lidar_assumed" if args.default else "test_preview"
     max_points = 2000000
     max_cloud_bytes = 256 * 1024 * 1024
@@ -215,7 +215,7 @@ rotation_rpy_rad: null
                 check=True,
             )
             dynamic_offline = json.loads(dynamic_result.read_text())
-            assert dynamic_offline['reason'] == 'NOT_IMPLEMENTED'
+            assert dynamic_offline['reason'] == 'GROUND_UNSUPPORTED'
             assert dynamic_offline['transform_applied']
             assert dynamic_offline['calibration_trust'] == FrameAnalysis.CALIBRATION_TRUST_VERIFIED
             # Measurement time goes backwards: a bind_first profile may bind a new frame name.
