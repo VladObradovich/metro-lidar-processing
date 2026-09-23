@@ -215,7 +215,16 @@ def test_clean_run_remains_reproducible_without_scoring_hashes(tmp_path):
         'bags': [{'id': 'sample', 'status': 'exported', 'files': {'sample.db3': 'abc'}}],
     }))
     result = evaluate_run(run, dataset, splits, tmp_path)
-    assert result['run_reproducible']
+    # Commit and image do not identify the binary that produced the frames.
+    assert not result['run_reproducible']
+    assert result['run_issues'] == ['executable hashes missing']
+    manifest = json.loads((run / 'manifest.json').read_text())
+    manifest['executable_sha256'] = {
+        'metro_perception_ros/lib/metro_perception_ros/evaluate_bag': {
+            'path': '/tmp/i/lib/metro_perception_ros/evaluate_bag', 'sha256': 'abc'}}
+    (run / 'manifest.json').write_text(json.dumps(manifest))
+    result = evaluate_run(run, dataset, splits, tmp_path)
+    assert result['run_reproducible'], result['run_issues']
     assert not result['scoring_current']
     assert any('scoring hash' in issue for issue in result['scoring_issues'])
 

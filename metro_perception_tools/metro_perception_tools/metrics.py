@@ -369,6 +369,9 @@ def evaluate_run(run_dir, dataset_path, splits_path, root, **rules):
                 run_issues.append(f'config hash mismatch: {relative}')
         if not manifest.get('config_sha256'):
             run_issues.append('config hashes missing')
+        # The image and commit alone do not identify the binary that produced the frames.
+        if not manifest.get('executable_sha256'):
+            run_issues.append('executable hashes missing')
         recorded = manifest.get('scoring_sha256') or {}
         score_files = [
             splits_path,
@@ -455,7 +458,8 @@ def evaluate_run(run_dir, dataset_path, splits_path, root, **rules):
         'scoring_current': not scoring_issues,
         'scoring_issues': scoring_issues,
         'provenance': {key: manifest.get(key) for key in (
-            'commit', 'dirty', 'image_id', 'dataset_sha256', 'config_sha256', 'preview',
+            'commit', 'dirty', 'image_id', 'build_info', 'executable_sha256',
+            'dataset_sha256', 'config_sha256', 'preview',
             'full_scan_research', 'max_points', 'max_cloud_bytes', 'tf_lookahead_s')}
         if manifest else None,
         'bags': bags, 'skipped': skipped,

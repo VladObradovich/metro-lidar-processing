@@ -307,9 +307,35 @@ TEST(AssessmentMonitor, ProcessingAgeCountsTowardsTimeout) {
   monitor.on_analysis(slow, t0);
   EXPECT_FALSE(monitor.output(t0 + 40ms).stale);
   expect_stale(monitor.output(t0 + 60ms), slow);
-  // A corrupt processing age must not disable the watchdog.
-  const auto corrupt = frame({.sequence = 2, .processing_age_ms = kNaN});
-  monitor.on_analysis(corrupt, t0 + 100ms);
-  EXPECT_FALSE(monitor.output(t0 + 500ms).stale);
-  expect_stale(monitor.output(t0 + 601ms), corrupt);
+  // Already older than the timeout on arrival: accepted, but never published as fresh.
+  const auto late = frame({.sequence = 2, .candidates = {{9.0, true}}, .processing_age_ms = 600});
+  EXPECT_TRUE(monitor.on_analysis(late, t0 + 100ms).accepted);
+  expect_stale(monitor.output(t0 + 100ms), late);
+}
+
+TEST(AssessmentMonitor, UnknownProcessingAgeIsRejectedImmediately) {
+  AssessmentMonitor monitor(0.5);
+  const auto rejected_first = frame({.sequence = 1, .processing_age_ms = kNaN});
+  EXPECT_FALSE(monitor.on_analysis(rejected_first, t0).accepted);
+  EXPECT_EQ(monitor.output(t0).reason, "WAITING_FOR_INPUT");
+  EXPECT_TRUE(monitor.output(t0).stale);
+
+  const auto valid = frame({.sequence = 2, .candidates = {{12.0, true}}});
+  ASSERT_TRUE(monitor.on_analysis(valid, t0).accepted);
+  std::uint64_t count = 1;
+  for (const double age : {kNaN, std::numeric_limits<double>::infinity(), -1.0}) {
+    SCOPED_TRACE(age);
+    const auto bad = frame({.sequence = 3, .processing_age_ms = age});
+    const auto decision = monitor.on_analysis(bad, t0 + 100ms);
+    EXPECT_FALSE(decision.accepted);
+    EXPECT_EQ(std::string(decision.reason), "INVALID_PROCESSING_AGE");
+    // The very next publication still shows the previous valid frame, never the bad one.
+    const auto& out = monitor.output(t0 + 100ms);
+    expect_fresh(out, valid, PathAssessment::OBSTACLE, "OBSTACLE_CANDIDATE");
+    EXPECT_EQ(out.rejected_analyses, ++count);
+    EXPECT_EQ(out.last_rejection_reason, "INVALID_PROCESSING_AGE");
+  }
+  // The rejection did not refresh the age or consume the sequence number.
+  expect_stale(monitor.output(t0 + 501ms), valid);
+  EXPECT_TRUE(monitor.on_analysis(frame({.sequence = 3}), t0 + 600ms).accepted);
 }

@@ -23,9 +23,14 @@ AssessmentMonitor::AssessmentMonitor(double timeout_s) : timeout_ms_(timeout_s *
 }
 
 GateDecision AssessmentMonitor::on_analysis(const FrameAnalysis& frame, Clock::time_point now) {
+  // An unknown age cannot be treated as fresh. Reject before the gate, so the message has no
+  // side effects and the last valid result keeps ageing towards the watchdog.
+  const bool age_valid = std::isfinite(frame.processing_age_ms) && frame.processing_age_ms >= 0;
   const auto stamp = decode_measurement_time_ns(frame.header.stamp);
   const auto decision =
-      gate_.admit({frame.source_instance_id, frame.session_id, frame.frame_sequence, stamp});
+      age_valid
+          ? gate_.admit({frame.source_instance_id, frame.session_id, frame.frame_sequence, stamp})
+          : GateDecision{false, false, "INVALID_PROCESSING_AGE"};
   if (!decision.accepted) {
     ++output_.rejected_analyses;
     output_.last_rejection_reason = decision.reason;
@@ -68,9 +73,7 @@ GateDecision AssessmentMonitor::on_analysis(const FrameAnalysis& frame, Clock::t
   output_.evaluation_region_valid = analysed && frame.evaluation_region_valid;
   output_.evaluated_range_m = analysed ? frame.evaluated_range_m : 0.0;
   output_.stale = false;
-  processing_age_ms_ = std::isfinite(frame.processing_age_ms) && frame.processing_age_ms > 0
-                           ? frame.processing_age_ms
-                           : 0.0;
+  processing_age_ms_ = frame.processing_age_ms;
   received_at_ = now;
   seen_ = true;
   output_.result_age_ms = processing_age_ms_;

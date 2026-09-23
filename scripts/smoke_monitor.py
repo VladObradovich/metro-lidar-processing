@@ -99,6 +99,9 @@ def main():
         ]
         invalid_stamp = analysis('source-b', 5, 0)
         rejected.append((invalid_stamp, 'INVALID_STAMP'))
+        unknown_age = analysis('source-a', 2, 101, (4.0,))
+        unknown_age.processing_age_ms = float('nan')
+        rejected.append((unknown_age, 'INVALID_PROCESSING_AGE'))
         for count, (msg, reason) in enumerate(rejected, start=1):
             out = send_rejected(msg)
             assert out.rejected_analyses == count, (reason, out.rejected_analyses)

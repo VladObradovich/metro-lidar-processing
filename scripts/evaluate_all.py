@@ -19,6 +19,19 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def executable_hashes():
+    """Hash the installed evaluate_bag and the project libraries it loads."""
+    files = {}
+    for package, relative in (
+            ('metro_perception_ros', 'lib/metro_perception_ros/evaluate_bag'),
+            ('metro_perception_ros', 'lib/libpointcloud_adapter.so'),
+            ('metro_perception_core', 'lib/libmetro_perception_core.so')):
+        prefix = subprocess.check_output(['ros2', 'pkg', 'prefix', package], text=True).strip()
+        path = (Path(prefix) / relative).resolve()
+        files[f'{package}/{relative}'] = {'path': str(path), 'sha256': sha256(path)}
+    return files
+
+
 def selected_bags(dataset, requested):
     """Select registered bag ids, regardless of annotation availability."""
     registered = [entry['id'] for entry in dataset['bags']]
@@ -35,6 +48,8 @@ def main():
     parser.add_argument('--output-dir', type=Path, required=True)
     parser.add_argument('--dataset', type=Path, default=root / 'evaluation/dataset.yaml')
     parser.add_argument('--image-id', default='not_recorded')
+    parser.add_argument('--build-info', default='not_recorded',
+                        help='How the installed packages were built (e.g. colcon command)')
     parser.add_argument('--tf-lookahead-s', type=float, default=0.05)
     parser.add_argument('--max-points', type=int, default=2000000)
     parser.add_argument('--max-cloud-bytes', type=int, default=256 * 1024 * 1024)
@@ -78,6 +93,7 @@ def main():
                 'max_points': args.max_points,
                 'max_cloud_bytes': args.max_cloud_bytes,
                 'tf_lookahead_s': args.tf_lookahead_s, 'selected_bags': args.bags,
+                'build_info': args.build_info, 'executable_sha256': executable_hashes(),
                 'note': (
                     'Profiles are selected by sensor_profile metadata; '
                     'full-scan orientation remains unresolved; experimental detector, no deskew.'
