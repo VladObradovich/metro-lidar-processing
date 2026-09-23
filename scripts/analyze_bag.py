@@ -19,7 +19,10 @@ own angular grid (ring x azimuth), so the same logic works from 5 m to 200 m:
      frames (or of a fixed person-free moment, --baseline-static-at);
   3. a cell is foreground when it is nearer than the baseline by a margin, or
      returns where the baseline never did; only the track corridor is kept;
-  4. foreground cells are grouped by 8-connectivity into candidates;
+  4. foreground points are grouped with a per-point neighbor radius eps(R) that
+     scales continuously with each point's own range (see adaptive_cluster),
+     so 0-50/50-100/100-200/200-300 m all use the same formula and there is no
+     cliff in behavior at the boundaries between them;
   5. a candidate is person-like if its cell count and metric size fit a person
      at *its own range* (thresholds scale with range, see looks_person);
   6. a person-like candidate is confirmed only if it persists over several
@@ -36,7 +39,7 @@ from pathlib import Path
 import numpy as np
 from rosbags.highlevel import AnyReader
 from rosbags.typesys import Stores, get_typestore
-from scipy import ndimage
+from scipy.spatial import cKDTree
 
 # sensor_msgs/PointField datatype -> numpy scalar code
 POINT_FIELD_DTYPES = {
@@ -167,9 +170,9 @@ class Grid:
     """
     Угловая сетка range-картинки: строки - лучи по углу места, столбцы - азимут.
 
-    Ячейка (row, col) - это направление, а не точка в пространстве. Ячейка
-    охватывает d_el градусов по вертикали и az_res по горизонтали, поэтому её
-    линейный размер на дальности R равен R*d (в радианах) и растёт с дальностью.
+    Ячейка (row, col) - это направление. Ячейка охватывает d_el градусов
+    по вертикали и az_res по горизонтали, поэтому её линейный размер
+    на дальности R равен R*d (в радианах) и растёт с дальностью.
     Все пороги ниже выражены через эти углы, а не через метры.
     """
 
@@ -390,33 +393,87 @@ def foreground_cells(image, base, frac, col_mask, args) -> np.ndarray:
     return (nearer | appeared) & col_mask[None, :]
 
 
-def group_cells(mask: np.ndarray, gap_cells: int) -> np.ndarray:
+def eps_for_range(range_m: np.ndarray, grid: Grid, args) -> np.ndarray:
     """
-    Пометить связные компоненты переднего плана (8-связность).
+    Радиус соседства eps(R): растёт с дальностью непрерывно, без разбиения на диапазоны.
 
-    Дальняя цель даёт отдельные ячейки с разрывами из-за пропавших возвратов,
-    поэтому перед разметкой маска расширяется на gap_cells ячеек: цели,
-    разделённые щелью не шире gap_cells, склеиваются. Метки нужны только там,
-    где исходная маска истинна.
+        eps(R) = clip(eps_k * max(s_h(R), s_v(R)), eps_min, eps_max)
+
+    s_h(R), s_v(R) - линейный размер ячейки сетки на дальности R (уже
+    масштабируется с R сам по себе). Множитель eps_k (> 1) добавочно
+    компенсирует то, что с ростом дальности возвраты не просто реже стоят по
+    сетке, а ещё и чаще пропадают (более рваные разрывы), поэтому одной
+    геометрии ячейки недостаточно. eps_min не даёт радиусу выродиться в почти
+    ноль на короткой дистанции (там ячейка сама очень маленькая); eps_max не
+    даёт ему на 200-300 м дотянуться до соседнего, не связанного объекта.
+    Формула одна на весь диапазон 0-300 м: на границах 50/100/200 м она не
+    делает скачка, значения eps слева и справа от границы почти совпадают.
     """
-    structure = np.ones((3, 3), dtype=bool)
-    grown = ndimage.binary_dilation(mask, structure=structure, iterations=gap_cells)
-    labels, _ = ndimage.label(grown, structure=structure)
+    size_h, size_v = grid.cell_size(range_m)
+    return np.clip(args.eps_k * np.maximum(size_h, size_v), args.eps_min, args.eps_max)
+
+
+def adaptive_cluster(
+    xyz: np.ndarray, ranges: np.ndarray, grid: Grid, args
+) -> np.ndarray:
+    """
+    Однослойная (single-link) кластеризация с радиусом, своим для каждой точки.
+
+    Каждая точка i получает свой радиус eps_i = eps(r_i). Две точки объединяются
+    в один кластер, если реальное расстояние между ними не больше БОЛЬШЕГО из
+    их двух радиусов:
+        union(i, j)  <=>  ||p_i - p_j|| <= max(eps_i, eps_j)
+    Берём максимум, а не минимум или среднее, чтобы точка на границе диапазона
+    (скажем, 99 м) корректно дотягивалась и до соседа на 101 м: её сосед там
+    имеет больший eps, и по нему связь пройдёт, даже если у самой точки eps
+    чуть меньше. Кандидатные пары ищутся k-d деревом (scipy.spatial.cKDTree)
+    в радиусе max(eps) по всему кадру, затем каждая пара проверяется точно;
+    объединение - через Union-Find (списки смежности не нужны).
+    """
+    n = len(xyz)
+    if n == 0:
+        return np.empty(0, dtype=np.int64)
+    eps = eps_for_range(ranges, grid, args)
+    parent = np.arange(n)
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    tree = cKDTree(xyz)
+    pairs = tree.query_pairs(r=float(eps.max()), output_type="ndarray")
+    if len(pairs):
+        i, j = pairs[:, 0], pairs[:, 1]
+        distance = np.linalg.norm(xyz[i] - xyz[j], axis=1)
+        for a, b in pairs[distance <= np.maximum(eps[i], eps[j])]:
+            union(int(a), int(b))
+    labels = np.fromiter((find(i) for i in range(n)), dtype=np.int64, count=n)
+    _, labels = np.unique(labels, return_inverse=True)
     return labels
 
 
 def extract_candidates(points, image, mask, grid: Grid, args) -> list[dict]:
     """
-    Кандидаты: компонента переднего плана + метрические признаки по её точкам.
+    Кандидаты: группа точек переднего плана + метрические признаки по ним.
 
-    В точки компоненты берутся только из ячеек переднего плана, только
-    ближайшая поверхность ячейки (r <= R[c] + cell_depth_tol; иначе в кандидат
-    попали бы точки фона позади цели) и только |x| <= max_lateral (ось пути
-    вдоль Y). Признаки: число занятых ячеек, медианная дальность R~, центр
-    (среднее точек) и размер ограничивающего параллелепипеда size = max - min.
+    В точки берутся только ячейки переднего плана, только ближайшая
+    поверхность ячейки (r <= R[c] + cell_depth_tol; иначе в кандидат попали бы
+    точки фона позади цели) и только |x| <= max_lateral (ось пути вдоль Y).
+    Группировка - adaptive_cluster (радиус соседства свой для каждой точки).
+    Отсева по минимальной поддержке здесь нет: на 200-300 м у настоящей цели
+    может быть меньше ячеек, чем любой разумный фиксированный порог, поэтому
+    порог считает только looks_person, тоже по формуле от дальности. Признаки:
+    число занятых ячеек, медианная дальность R~, центр (среднее точек) и
+    размер ограничивающего параллелепипеда size = max - min.
     """
     xyz, r, cell, valid = polar_cells(points, grid, args.min_range)
-    labels = group_cells(mask, args.gap_cells).ravel()
     mask_flat = mask.ravel()
     image_flat = image.ravel()
     with np.errstate(invalid="ignore"):
@@ -429,22 +486,15 @@ def extract_candidates(points, image, mask, grid: Grid, args) -> list[dict]:
     idx = np.flatnonzero(keep)
     if idx.size == 0:
         return []
-    comp = labels[cell[idx]]
-    order = np.argsort(comp, kind="stable")
-    idx, comp = idx[order], comp[order]
-    _, start = np.unique(comp, return_index=True)
-    bounds = np.append(start, len(comp))
+    labels = adaptive_cluster(xyz[idx], r[idx], grid, args)
 
     candidates = []
-    for i in range(len(start)):
-        members = idx[bounds[i]: bounds[i + 1]]
-        n_cells = int(np.unique(cell[members]).size)
-        if n_cells < args.min_cells:
-            continue
+    for label in np.unique(labels):
+        members = idx[labels == label]
         pts = xyz[members]
         candidates.append(
             {
-                "n_cells": n_cells,
+                "n_cells": int(np.unique(cell[members]).size),
                 "n_pts": len(members),
                 "range": float(np.median(r[members])),
                 "center": pts.mean(axis=0),
@@ -471,19 +521,26 @@ def looks_person(c: dict, grid: Grid, args) -> bool:
 
     Пусть R - медианная дальность кандидата, s_h = R*d_az, s_v = R*d_el -
     линейный размер ячейки (один шаг квантования измерения). Условия:
-      1) n_cells >= max(min_cells, cells_frac * n_exp(R))
+      1) n_cells >= max(support_min, cells_frac * n_exp(R))
       2) h_min - s_v <= dz <= h_max + s_v          (высота с допуском в ячейку)
       3) max(dx, dy) <= w_max + s_h                 (ширина с допуском в ячейку)
-    Допуск нужен потому, что размер по точкам занижен на величину до одной
-    ячейки: на 150 м s_v ~ 0.44 м, и человек 1.7 м даёт dz ~ 1.3 м.
-    Габаритный фильтр грубый: столб или ящик тех же размеров тоже пройдёт.
+    support_min - абсолютный пол (по умолчанию 4, подобран по единственной
+    записи с реальным человеком - там минимум был 17 ячеек с большим запасом),
+    а не жёсткая привязка к самой малой дальности - на 200-300 м у настоящего
+    человека n_exp(R) само может быть 2-4, и слишком высокий фиксированный пол
+    отсеял бы его раньше, чем сработает эта проверка. Пока нет записи с
+    реальной целью на 200-300 м, это компромисс, а не измеренная граница.
+    Допуск по высоте/ширине нужен потому, что размер по точкам занижен на
+    величину до одной ячейки: на 150 м s_v ~ 0.44 м, и человек 1.7 м даёт
+    dz ~ 1.3 м. Габаритный фильтр грубый: столб или ящик тех же размеров тоже
+    пройдёт.
     """
     range_m = c["range"]
     size_h, size_v = grid.cell_size(range_m)
     c["n_exp"] = expected_cells(range_m, grid, args)
     dx, dy, dz = c["size"]
     return (
-        c["n_cells"] >= max(args.min_cells, args.cells_frac * c["n_exp"])
+        c["n_cells"] >= max(args.support_min, args.cells_frac * c["n_exp"])
         and args.person_min_height - size_v <= dz <= args.person_max_height + size_v
         and max(dx, dy) <= args.person_max_width + size_h
     )
@@ -664,11 +721,16 @@ def build_parser() -> argparse.ArgumentParser:
         "frames counts as empty; any return there is foreground",
     )
     d.add_argument(
-        "--gap-cells",
-        type=int,
-        default=1,
-        help="Bridge gaps of up to this many cells when grouping",
+        "--eps-k",
+        type=float,
+        default=2.5,
+        help="Neighbor radius = eps_k * local cell size (clipped to eps-min/eps-max), "
+        "so grouping scales continuously with range",
     )
+    d.add_argument(
+        "--eps-min", type=float, default=0.15, help="Neighbor radius floor, m"
+    )
+    d.add_argument("--eps-max", type=float, default=0.6, help="Neighbor radius cap, m")
     d.add_argument(
         "--cell-depth-tol",
         type=float,
@@ -678,7 +740,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = parser.add_argument_group("--clusters: person model and tracking")
     p.add_argument(
-        "--min-cells", type=int, default=3, help="Minimum cells per candidate"
+        "--support-min",
+        type=int,
+        default=4,
+        help="Minimum cells per candidate at any range (a single cell is never a cluster)",
     )
     p.add_argument(
         "--cells-frac",
@@ -700,7 +765,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--track-min-hits",
         type=int,
-        default=3,
+        default=4,
         help="Frames in the window that must contain the candidate",
     )
     p.add_argument(
