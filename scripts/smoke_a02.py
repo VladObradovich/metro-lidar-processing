@@ -92,9 +92,9 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                 malformed.header.frame_id = 'must_not_bind'
                 malformed.header.stamp.sec = 122
                 malformed.data = b''
-                publisher.publish(malformed)
+                # A single volatile sample can be lost during discovery; retry like the others.
                 until(lambda: any(a.processing_status == FrameAnalysis.BAD_INPUT
-                                  for a in analyses))
+                                  for a in analyses), retry=malformed)
             until(lambda: any(a.reason == reason for a in analyses), retry=cloud)
             online = next(a for a in analyses if a.reason == reason)
             assert online.header.frame_id == target
