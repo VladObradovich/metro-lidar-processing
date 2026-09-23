@@ -5,8 +5,8 @@
 
 | Пункт | Следующий результат | Файлы / место | Проверка |
 |---|---|---|---|
-| D02, T1 | Полный аудит всех кадров, а не первых samples | tools/inspect_bag.py | timestamps, смена схемы, числа точек |
-| D03, A/T1 | Опциональное уточнение осей/монтажа; lidar-only default уже доступен | bringup/config/sensors, vehicle.yaml | несколько сцен обоих входов |
+| D02, T1 | Закрыт: аудит всех кадров шести bag, единый корень `/data`, SHA-256 | scripts/audit_bags.py, docs/dataset-passport.md | повторный audit_bags.py, sha256sum -c |
+| D03, A/T1 | Закрыт как ASSUMED: калибровки и габарита от организаторов нет; уточнение — только при их получении | bringup/config/sensors, vehicle.yaml | несколько сцен обоих входов |
 | I01, A/B/C | Утвердить черновой API | core/include, interfaces/msg | сборка всех потребителей |
 | A02 | Реализовано: очистка/TF/два ROI/raw indices; реальные extrinsics не подтверждены | core/pipeline, ros/preprocessing | core/TF tests, smoke_a02, все 7 bag; см. calibration.md |
 | R01, B | Реализовано: latest-only worker 1+1, QoS, overwrite/max-age/session guards; lifecycle оставлен P1 | ros/perception_node, ros/test | overwrite, reset, overload |
