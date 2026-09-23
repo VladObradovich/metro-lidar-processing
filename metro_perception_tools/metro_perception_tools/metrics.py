@@ -329,6 +329,14 @@ def aggregate(bags):
     return result
 
 
+def display_path(path, root):
+    """Path relative to the repository, or absolute for files outside it (synthetic data)."""
+    try:
+        return str(Path(path).relative_to(root))
+    except ValueError:
+        return str(path)
+
+
 def read_rows(path):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
@@ -384,7 +392,7 @@ def evaluate_run(run_dir, dataset_path, splits_path, root, **rules):
             scoring_issues.append('scoring hashes missing')
         else:
             for path in score_files:
-                relative = str(path.relative_to(root))
+                relative = display_path(path, root)
                 if not path.is_file() or recorded.get(relative) != sha256(path):
                     scoring_issues.append(f'scoring hash missing or changed: {relative}')
         if manifest.get('scoring_executed_from') != 'source_tree':
@@ -478,6 +486,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--annotations', type=Path, help='annotation YAML for a single JSONL')
     parser.add_argument('--root', type=Path, default=root, help='repository root')
+    parser.add_argument('--dataset', type=Path, help='default: ROOT/evaluation/dataset.yaml')
+    parser.add_argument('--splits', type=Path, help='default: ROOT/evaluation/splits.yaml')
     parser.add_argument('--event-gap-s', type=float, default=DEFAULT_EVENT_GAP_S)
     parser.add_argument('--stamp-tolerance-s', type=float, default=DEFAULT_STAMP_TOLERANCE_S)
     parser.add_argument('--roi-margin-m', type=float, default=DEFAULT_ROI_MARGIN_M)
@@ -485,8 +495,9 @@ def main():
     rules = {'event_gap_s': args.event_gap_s, 'stamp_tolerance_s': args.stamp_tolerance_s,
              'roi_margin_m': args.roi_margin_m}
     if args.results.is_dir():
-        result = evaluate_run(args.results, args.root / 'evaluation/dataset.yaml',
-                              args.root / 'evaluation/splits.yaml', args.root, **rules)
+        result = evaluate_run(args.results, args.dataset or args.root / 'evaluation/dataset.yaml',
+                              args.splits or args.root / 'evaluation/splits.yaml', args.root,
+                              **rules)
     else:
         rows = read_rows(args.results)
         result = summarize(rows)

@@ -106,8 +106,13 @@ def main():
                    root / 'metro_perception_tools/metro_perception_tools/report.py']
     score_files += [root / entry['annotations'] for entry in dataset['bags']
                     if entry.get('annotations')]
-    manifest['scoring_sha256'] = {str(path.relative_to(root)): sha256(path)
-                                  for path in score_files}
+
+    def display(path):
+        try:
+            return str(path.relative_to(root))
+        except ValueError:  # Annotations of synthetic data live outside the repository.
+            return str(path)
+    manifest['scoring_sha256'] = {display(path): sha256(path) for path in score_files}
     manifest_path = args.output_dir / 'manifest.json'
     manifest['selected_bags'] = selected
     metrics_script = root / 'metro_perception_tools/metro_perception_tools/metrics.py'
@@ -159,7 +164,8 @@ def main():
                 raise
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
         subprocess.run([sys.executable, str(metrics_script),
-                        str(args.output_dir), '--root', str(root), '--output',
+                        str(args.output_dir), '--root', str(root),
+                        '--dataset', str(args.dataset), '--output',
                         str(args.output_dir / 'quality.json')], check=True)
         subprocess.run([sys.executable, str(report_script),
                         str(args.output_dir / 'quality.json'), '--output',
