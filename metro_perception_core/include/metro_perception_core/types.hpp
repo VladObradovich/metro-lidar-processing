@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -80,7 +81,8 @@ struct Assessment {
   State state{State::UNKNOWN};
   std::string reason{"NOT_IMPLEMENTED"};
   bool distance_valid{false};
-  double distance_m{0};
+  // NaN unless distance_valid: a missing distance is never reported as zero.
+  double distance_m{std::numeric_limits<double>::quiet_NaN()};
   CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
 };
 }  // namespace metro_perception_core

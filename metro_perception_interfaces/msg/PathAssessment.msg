@@ -13,7 +13,12 @@ uint8 state
 string reason
 # Trust used for this observation. ASSUMED may never prove a clear path.
 uint8 calibration_trust
-ObstacleCandidate[] confirmed_objects
+# All candidates of the fresh, successfully analysed frame this decision is based on,
+# including candidates without a usable distance. Not confirmed over time (that is G4).
+ObstacleCandidate[] reported_objects
+# Corridor of the same frame, in header.frame_id. Empty on analysis failure or stale output.
+CorridorSegment[] corridor
+# Nearest usable candidate distance; NaN whenever distance_valid is false.
 float64 distance_m
 bool distance_valid
 bool evaluation_region_valid
@@ -21,3 +26,6 @@ float64 evaluated_range_m
 # Local time since last analysis received plus its processing age; not sensor age.
 float64 result_age_ms
 bool stale
+# FrameAnalysis messages rejected by the source/session/sequence gate since start.
+uint64 rejected_analyses
+string last_rejection_reason

@@ -72,6 +72,7 @@ jobs:
           python3 scripts/smoke_perception.py
           python3 scripts/smoke_a02.py
           python3 scripts/smoke_a02.py --default
+          python3 scripts/smoke_monitor.py
           python3 scripts/smoke_detector.py
           python3 scripts/smoke_ego_motion.py
           python3 scripts/smoke_namespace_isolation.py
@@ -96,6 +97,8 @@ jobs:
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_a02.py
       - name: TF replay regressions in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_tf_replay.py
+      - name: Monitor gating and watchdog in installed runtime
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_monitor.py
       - name: Geometric B0 detection in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_detector.py
       - name: Motion compensation in installed runtime

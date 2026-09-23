@@ -19,6 +19,12 @@ target_compile_features(pointcloud_adapter PUBLIC cxx_std_17)
 target_include_directories(pointcloud_adapter PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(pointcloud_adapter ament_index_cpp rclcpp tf2 tf2_ros geometry_msgs sensor_msgs metro_perception_core)
+add_library(assessment_monitor SHARED src/assessment_monitor.cpp)
+target_compile_features(assessment_monitor PUBLIC cxx_std_17)
+target_compile_options(assessment_monitor PRIVATE -Wall -Wextra -Wpedantic)
+target_include_directories(assessment_monitor PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(assessment_monitor metro_perception_core metro_perception_interfaces)
 foreach(node perception_node obstacle_monitor_node visualizer_node evaluate_bag)
   add_executable(${node} src/${node}.cpp)
   target_compile_features(${node} PRIVATE cxx_std_17)
@@ -29,7 +35,8 @@ foreach(node perception_node obstacle_monitor_node visualizer_node evaluate_bag)
   install(TARGETS ${node} DESTINATION lib/${PROJECT_NAME})
 endforeach()
 ament_target_dependencies(evaluate_bag tf2_msgs)
-install(TARGETS pointcloud_adapter EXPORT export_${PROJECT_NAME}
+target_link_libraries(obstacle_monitor_node assessment_monitor)
+install(TARGETS pointcloud_adapter assessment_monitor EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
@@ -52,7 +59,14 @@ if(BUILD_TESTING)
   target_include_directories(test_wire_enum_decode PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
   ament_target_dependencies(test_wire_enum_decode metro_perception_core)
+  ament_add_gtest(test_frame_key_gate test/test_frame_key_gate.cpp)
+  target_compile_features(test_frame_key_gate PRIVATE cxx_std_17)
+  target_include_directories(test_frame_key_gate PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  ament_add_gtest(test_assessment_monitor test/test_assessment_monitor.cpp)
+  target_link_libraries(test_assessment_monitor assessment_monitor)
+  target_compile_features(test_assessment_monitor PRIVATE cxx_std_20)  # Designated initializers.
 endif()
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-ament_export_dependencies(ament_index_cpp rclcpp tf2 tf2_ros geometry_msgs sensor_msgs metro_perception_core yaml-cpp)
+ament_export_dependencies(ament_index_cpp rclcpp tf2 tf2_ros geometry_msgs sensor_msgs metro_perception_core
+  metro_perception_interfaces yaml-cpp)
 ament_package()

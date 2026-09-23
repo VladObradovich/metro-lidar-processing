@@ -111,6 +111,7 @@ TEST(CalibrationTrust, VerifiedGeometryCanConfirmClearPath) {
   frame.status = AnalysisStatus::OK;
   frame.reason = "OK";
   frame.evaluation_region_valid = true;
+  frame.evaluated_range_m = 40.0;
   frame.calibration_trust = CalibrationTrust::VERIFIED;
 
   const auto assessment = TemporalMonitor().update(frame, 1);
