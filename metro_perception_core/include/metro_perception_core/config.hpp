@@ -29,6 +29,8 @@ struct AlgorithmConfig {
   // Floor returns needed for a 5 m stretch to count as observed.
   std::size_t ground_min_bin_points{30};
   double obstacle_min_height_m{0.25};
+  // Candidate extent is measured this far past the corridor edge.
+  double candidate_margin_m{0.5};
   double angular_cell_deg{0.25};
   std::size_t min_ground_inliers{30};
   std::size_t min_candidate_cells{3};
@@ -38,6 +40,11 @@ struct AlgorithmConfig {
   std::size_t background_lag_frames{5};
   double background_margin_m{0.5};
   double background_relative_margin{0.02};
+  // Move the baseline by lidar-only forward odometry before differencing.
+  bool ego_motion_compensation{true};
+  double ego_max_speed_mps{25.0};
+  // Required lead, in metres of mean profile error, of the best shift over the median.
+  double ego_min_contrast{0.005};
   void validate() const {
     if (max_points == 0 || max_points > 10000000)
       throw std::invalid_argument("max_points must be in [1, 10000000]");
@@ -56,6 +63,9 @@ struct AlgorithmConfig {
         background_history_frames > 60 ||
         (background_history_frames &&
          (background_lag_frames == 0 || background_lag_frames >= background_history_frames)) ||
+        !std::isfinite(candidate_margin_m) || candidate_margin_m < 0 || candidate_margin_m > 2 ||
+        !std::isfinite(ego_max_speed_mps) || ego_max_speed_mps <= 0 || ego_max_speed_mps > 60 ||
+        !std::isfinite(ego_min_contrast) || ego_min_contrast <= 0 || ego_min_contrast > 0.3 ||
         !std::isfinite(background_margin_m) || background_margin_m < 0 ||
         !std::isfinite(background_relative_margin) || background_relative_margin < 0 ||
         background_relative_margin > 0.5)

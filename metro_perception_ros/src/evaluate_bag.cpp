@@ -215,7 +215,9 @@ int main(int argc, char** argv) {
       output << "]";
       output << ",\"evaluation_region_valid\":"
              << (result.evaluation_region_valid ? "true" : "false")
-             << ",\"evaluated_range_m\":" << result.evaluated_range_m << ",\"ground_inliers\":"
+             << ",\"evaluated_range_m\":" << result.evaluated_range_m
+             << ",\"ego_motion_valid\":" << (result.ego_motion_valid ? "true" : "false")
+             << ",\"ego_speed_mps\":" << result.ego_speed_mps << ",\"ground_inliers\":"
              << (result.corridor.empty() ? 0u : result.corridor.front().ground_inliers)
              << ",\"ground_plane\":";
       if (result.corridor.empty()) {

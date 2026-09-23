@@ -312,3 +312,160 @@ TEST(Ground, ShortDropoutKeepsBackgroundHistory) {
   for (int i = 0; i < 6; ++i) EXPECT_EQ(pipeline.process(no_floor).reason, "GROUND_UNSUPPORTED");
   EXPECT_EQ(pipeline.process(clear).reason, "BASELINE_WARMUP");
 }
+
+namespace {
+void add_box(FrameInput& input, double x, double y0, double y1, double h0, double h1) {
+  for (double dx = 0; dx <= 0.49; dx += 0.08)
+    for (double y = y0; y <= y1 + 1e-9; y += 0.08)
+      for (double h = h0; h <= h1 + 1e-9; h += 0.08) input.points.push_back({x + dx, y, -1.0 + h});
+}
+}  // namespace
+
+TEST(Candidates, OutsideCorridorIsIgnored) {
+  for (const auto& [y0, y1] : {std::pair{2.6, 3.0}, std::pair{2.1, 2.4}}) {
+    auto input = verified_input();
+    add_floor(input, 4, 50);
+    add_box(input, 20, y0, y1, 0.3, 1.7);
+    const auto frame = PerceptionPipeline(single_frame_config()).process(input);
+    ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+    EXPECT_TRUE(frame.candidates.empty()) << "box at y=" << y0 << ".." << y1;
+  }
+}
+
+TEST(Candidates, BoundaryObjectKeepsFullExtentAndInsideDistance) {
+  auto input = verified_input();
+  add_floor(input, 4, 50);
+  add_box(input, 20, 1.6, 2.4, 0.3, 1.7);
+  const auto frame = PerceptionPipeline(single_frame_config()).process(input);
+  ASSERT_EQ(frame.candidates.size(), 1u) << frame.reason;
+  const auto& candidate = frame.candidates.front();
+  EXPECT_NEAR(candidate.size.y, 0.8, 0.1);
+  EXPECT_NEAR(candidate.size.z, 1.4, 0.1);
+  EXPECT_LE(candidate.nearest_point.y, 2.0);
+  EXPECT_NEAR(candidate.distance_m, 20.0, 0.1);
+}
+
+TEST(Candidates, LowTargetNeedsMinimumHeight) {
+  auto flat = verified_input();
+  add_floor(flat, 4, 50);
+  add_box(flat, 20, -0.4, 0.4, 0.0, 0.2);
+  EXPECT_TRUE(PerceptionPipeline(single_frame_config()).process(flat).candidates.empty());
+
+  auto low = verified_input();
+  add_floor(low, 4, 50);
+  add_box(low, 20, -0.4, 0.4, 0.0, 0.7);
+  const auto frame = PerceptionPipeline(single_frame_config()).process(low);
+  ASSERT_FALSE(frame.candidates.empty()) << frame.reason;
+  EXPECT_NEAR(frame.candidates.front().distance_m, 20.0, 0.1);
+}
+
+namespace {
+// Straight tunnel with irregular posts beside the track, seen from a train that
+// has travelled `travelled` metres.
+FrameInput moving_tunnel(int frame_index, double speed_mps, bool obstacle) {
+  auto input = verified_input();
+  input.context.calibration_verified = false;
+  input.context.allow_unverified_calibration = true;
+  input.context.measurement_time_ns = 1000000000LL + frame_index * 100000000LL;
+  const double travelled = speed_mps * 0.1 * frame_index;
+  add_floor(input, 1, 100);
+  const double spacing[] = {9.3, 13.7, 8.9, 14.4, 11.8, 10.1, 15.2, 12.2};
+  double post = 3;
+  for (int i = 0; post < 260; post += spacing[i++ % 8]) {
+    const double x = post - travelled;
+    if (x < 1 || x > 100) continue;
+    for (const double y : {-1.9, 1.8})
+      for (double dx = 0; dx <= 0.2; dx += 0.1)
+        for (double h = 0.0; h <= 2.4; h += 0.1) input.points.push_back({x + dx, y, -1.0 + h});
+  }
+  // Walls with niches of irregular length, outside the corridor band.
+  const double niche[] = {0.7, 2.9, 1.3, 2.1, 0.9, 3.0, 1.6, 2.4, 1.1};
+  double edge = 0;
+  for (int i = 0; edge < 260; edge += niche[i++ % 9]) {
+    const double lateral = i % 2 ? 3.0 : 2.6;
+    for (double xw = edge; xw < edge + niche[i % 9]; xw += 0.1) {
+      const double x = xw - travelled;
+      if (x < 1 || x > 100) continue;
+      for (double h = 0.3; h <= 2.9; h += 0.3)
+        for (const double side : {-1.0, 1.0}) input.points.push_back({x, side * lateral, -1.0 + h});
+    }
+  }
+  if (obstacle) add_box(input, 20, -0.4, 0.4, 0.3, 1.7);
+  return input;
+}
+}  // namespace
+
+TEST(EgoMotion, MovingTunnelStructureStaysInBackground) {
+  AlgorithmConfig uncompensated;
+  uncompensated.ego_motion_compensation = false;
+  PerceptionPipeline moving, reference(uncompensated);
+  FrameResult frame, frame_reference;
+  for (int i = 0; i < 16; ++i) {
+    frame = moving.process(moving_tunnel(i, 10, false));
+    frame_reference = reference.process(moving_tunnel(i, 10, false));
+  }
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  EXPECT_TRUE(frame.ego_motion_valid);
+  EXPECT_NEAR(frame.ego_speed_mps, 10.0, 0.6);
+  EXPECT_TRUE(frame.candidates.empty())
+      << frame.candidates.size() << " at " << frame.candidates.front().distance_m;
+  ASSERT_EQ(frame_reference.status, AnalysisStatus::OK);
+  EXPECT_FALSE(frame_reference.candidates.empty());  // Approaching posts look new.
+
+  const auto positive = moving.process(moving_tunnel(16, 10, true));
+  ASSERT_FALSE(positive.candidates.empty()) << positive.reason;
+  EXPECT_NEAR(positive.candidates.front().distance_m, 20.0, 0.1);
+}
+
+TEST(EgoMotion, StationaryTrainReportsZeroSpeed) {
+  PerceptionPipeline pipeline;
+  FrameResult frame;
+  for (int i = 0; i < 12; ++i) frame = pipeline.process(moving_tunnel(i, 0, false));
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  EXPECT_TRUE(frame.ego_motion_valid);
+  EXPECT_NEAR(frame.ego_speed_mps, 0.0, 1e-9);
+  EXPECT_TRUE(frame.candidates.empty());
+}
+
+TEST(EgoMotion, LongGapAtSpeedStaysInsideSearchRange) {
+  PerceptionPipeline pipeline;
+  for (int i = 0; i < 12; ++i) pipeline.process(moving_tunnel(i, 10, false));
+  // 1.9 s later the predicted shift (19 m) exceeds the searchable range.
+  const auto frame = pipeline.process(moving_tunnel(30, 10, false));
+  EXPECT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  EXPECT_TRUE(frame.candidates.empty());
+}
+
+TEST(Candidates, HeightThresholdUsesOnlyInsideReturns) {
+  auto low_inside = verified_input();
+  add_floor(low_inside, 4, 50);
+  add_box(low_inside, 20, 1.6, 1.96, 0.3, 0.5);  // 0.16 m of height inside the corridor.
+  EXPECT_TRUE(PerceptionPipeline(single_frame_config()).process(low_inside).candidates.empty());
+
+  auto with_tall_outside = low_inside;
+  add_box(with_tall_outside, 20, 2.04, 2.4, 0.3, 1.7);  // Connected, past the edge.
+  const auto frame = PerceptionPipeline(single_frame_config()).process(with_tall_outside);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  EXPECT_TRUE(frame.candidates.empty());
+}
+
+TEST(EgoMotion, TooFewComparableShiftsNeverConfirmSpeed) {
+  // Uniform walls over 1.8 m only: shifts beyond two 5 cm steps lack overlap, so
+  // no best shift can be compared with the rest.
+  auto scene = [](int frame_index) {
+    auto input = verified_input();
+    input.context.calibration_verified = false;
+    input.context.allow_unverified_calibration = true;
+    input.context.measurement_time_ns = 1000000000LL + frame_index * 100000000LL;
+    add_floor(input, 1, 100);
+    for (double x = 3.0; x < 4.79; x += 0.05)
+      for (const double h : {0.5, 1.5, 2.5})
+        for (const double side : {-1.0, 1.0}) input.points.push_back({x, side * 2.6, -1.0 + h});
+    return input;
+  };
+  PerceptionPipeline pipeline;
+  for (int i = 0; i < 8; ++i) {
+    const auto frame = pipeline.process(scene(i));
+    EXPECT_FALSE(frame.ego_motion_valid) << "frame " << i;
+  }
+}

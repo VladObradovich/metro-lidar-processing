@@ -5,8 +5,10 @@ time_basis: bag_stamp_ns
 review_method: manual_depth_panorama_review_and_pointcloud_resampling
 review_limits: >-
   Interval boundaries are conservative visual estimates. The panorama shows
-  a person-shaped return, but vehicle axes, track clearance, and object
-  distance are not independently calibrated. No reference distance is claimed.
+  a person-shaped return, but vehicle axes and track clearance are not
+  independently calibrated. Two late frames have manually selected 3D person
+  regions and lidar-derived longitudinal ranges in the assumed target frame;
+  these are not surveyed vehicle distances.
 reviewed_intervals:
   - start_ns: 1788354623110040384
     end_ns: 1788354635095124717
@@ -37,3 +39,17 @@ events:
         distance_m: null
         uncertainty_m: null
         method: visual_depth_review_only
+      - bag_stamp_ns: 1788354642093806987
+        distance_m: 11.5116
+        uncertainty_m: 0.2
+        method: manual_person_roi_nearest_inside_corridor_return
+        person_roi_assumed_m:
+          min: [11.5, 1.6, -1.7]
+          max: [12.2, 2.4, 0.3]
+      - bag_stamp_ns: 1788354643092442368
+        distance_m: 14.6705
+        uncertainty_m: 0.2
+        method: manual_person_roi_nearest_inside_corridor_return
+        person_roi_assumed_m:
+          min: [14.65, 1.6, -1.9]
+          max: [15.3, 2.4, 0.5]

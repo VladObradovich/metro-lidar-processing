@@ -25,6 +25,7 @@ detector:
   ground_max_gap_m: 10.0
   ground_min_bin_points: 30
   obstacle_min_height_m: 0.25
+  candidate_margin_m: 0.5
   angular_cell_deg: 0.25
   min_ground_inliers: 30
   min_candidate_cells: 3
@@ -33,3 +34,6 @@ detector:
   background_lag_frames: 5
   background_margin_m: 0.5
   background_relative_margin: 0.02
+  ego_motion_compensation: true
+  ego_max_speed_mps: 25.0
+  ego_min_contrast: 0.005

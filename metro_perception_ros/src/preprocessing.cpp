@@ -129,6 +129,11 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_count("background_lag_frames", c.algorithm.background_lag_frames);
     read_double("background_margin_m", c.algorithm.background_margin_m);
     read_double("background_relative_margin", c.algorithm.background_relative_margin);
+    read_double("candidate_margin_m", c.algorithm.candidate_margin_m);
+    if (detector["ego_motion_compensation"])
+      c.algorithm.ego_motion_compensation = detector["ego_motion_compensation"].as<bool>();
+    read_double("ego_max_speed_mps", c.algorithm.ego_max_speed_mps);
+    read_double("ego_min_contrast", c.algorithm.ego_min_contrast);
   }
   if (c.source_frame_mode == SourceFrameMode::BIND_FIRST && !c.has_static_transform)
     throw std::invalid_argument("bind_first requires an explicit static transform");

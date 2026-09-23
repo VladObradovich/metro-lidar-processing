@@ -72,6 +72,9 @@ struct FrameResult {
   bool evaluation_region_valid{false};
   double evaluated_range_m{0};
   CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
+  // Lidar-only forward speed used to move the range baseline; diagnostic only.
+  bool ego_motion_valid{false};
+  double ego_speed_mps{0};
 };
 struct Assessment {
   State state{State::UNKNOWN};

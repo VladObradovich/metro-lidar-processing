@@ -11,7 +11,7 @@
 | A02 | Реализовано: очистка/TF/два ROI/raw indices; реальные extrinsics не подтверждены | core/pipeline, ros/preprocessing | core/TF tests, smoke_a02, все 7 bag; см. calibration.md |
 | R01, B | Реализовано: latest-only worker 1+1, QoS, overwrite/max-age/session guards; lifecycle оставлен P1 | ros/perception_node, ros/test | overwrite, reset, overload |
 | A03–A04, A | G1 закрыт: RANSAC + МНК, дальность по непрерывной опоре, устойчивость к кратковременной потере пола; криволинейный коридор — P2 | core/src/detector.cpp | real positive/negative, coverage, ложные тревоги |
-| A05–A07, A | B0 с угловой кластеризацией, проверкой исходных точек, bbox и расстоянием; пороги требуют измерений | core/src/detector.cpp, pipeline.cpp | real positive, низкий блок, границы габарита |
+| A05–A07, A | G2 закрыт по алгоритмическому критерию: lidar-одометрия, bbox, две реальные 3D-разметки человека с проверенной дальностью в предполагаемой системе; физическая привязка и полнота обнаружения остаются открыты | core/src/detector.cpp, evaluation/annotations/doubleT_obstacle.yaml | core-тесты, smoke_ego_motion.py, verify_g2_positive.py |
 | R02, B | Базовые переходы состояний реализованы; temporal confirmation и retirement source ещё нет | core/temporal_monitor, ros/monitor | ассоциация, late result, stop/restart |
 | R04, C | Статус и bbox есть; коридор/nearest point ещё не отображаются | ros/visualizer_node | stale UI, RViz и namespace |
 | E01, B | Общий B0-контракт: exact-stamp TF, replay `/tf` + `/tf_static`, кандидаты в JSONL; realtime queue/wait/watchdog остаются online-only | ros/preprocessing, ros/evaluate_bag | synthetic online/offline parity, real replay |
