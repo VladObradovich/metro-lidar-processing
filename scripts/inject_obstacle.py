@@ -325,12 +325,12 @@ def dataset(args):
     print(f'{len(bags)} bags in {args.output_root / "dataset.yaml"}')
 
 
-def report(args):
+def recall_report(run_dir, output_root):
     """Object-level recall per distance bin for every injected bag of a run."""
     result = {}
-    injected = (p for p in args.output_root.iterdir() if (p / 'injection.jsonl').is_file())
+    injected = (p for p in output_root.iterdir() if (p / 'injection.jsonl').is_file())
     for bag_dir in sorted(injected):
-        frames = args.run_dir / bag_dir.name / 'frames.jsonl'
+        frames = run_dir / bag_dir.name / 'frames.jsonl'
         if not frames.is_file():
             continue
         rows = {json.loads(line)['bag_stamp_ns']: json.loads(line)
@@ -362,7 +362,12 @@ def report(args):
             'first_hit_distance_m': first_hit,
             'recall_by_distance': {k: (None if n == 0 else round(h / n, 3), n)
                                    for k, (h, n) in bins.items()}}
-    text = json.dumps(result, indent=2)
+    return result
+
+
+def report(args):
+    """Write the recall report of a run."""
+    text = json.dumps(recall_report(args.run_dir, args.output_root), indent=2)
     args.output.write_text(text + '\n')
     print(text)
 
