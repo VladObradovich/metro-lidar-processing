@@ -628,6 +628,25 @@ TEST(Candidates, LowObjectsCountOnlyBetweenTheRails) {
   EXPECT_EQ(PerceptionPipeline(config).process(scene(0.7, 0.85, 1.7)).candidates.size(), 1u);
 }
 
+TEST(Gauge, TrackLineCrossingTheRailBoundaryIsNotSliced) {
+  // A low line along the track (a rail seen with a small lateral error of the route) drifts
+  // across low_object_half_width_m. The part between the rails must not survive as a short
+  // gauge candidate: the whole line is one structure and too long for the gauge.
+  auto scene = [](int i) {
+    auto input = moving_tunnel(i, 0, false);
+    for (double x = 3.0; x < 30.0; x += 0.02)
+      for (const double h : {0.30, 0.36, 0.42})
+        input.points.push_back({x, 0.35 + 0.03 * x, -1.0 + h});
+    return input;
+  };
+  PerceptionPipeline pipeline;
+  FrameResult frame;
+  for (int i = 0; i < 12; ++i) frame = pipeline.process(scene(i));
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  ASSERT_TRUE(frame.route.valid);
+  EXPECT_TRUE(frame.candidates.empty()) << frame.candidates.front().center.x;
+}
+
 TEST(Gauge, ObstacleBesideTrackEquipmentIsNotMergedWithIt) {
   // Low equipment by the rail is in the gauge band; a person appearing right behind it must
   // be reported at its own distance, not as one component starting at the equipment.

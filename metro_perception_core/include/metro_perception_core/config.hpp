@@ -52,8 +52,8 @@ struct AlgorithmConfig {
   double static_min_height_m{0.3};
   double static_max_height_m{2.5};
   double static_max_length_m{3.0};
-  // Low candidates (top below low_object_height_m above the bed) count only between the
-  // rails: rails (+-0.76 m), the contact rail (~1.5 m), cable ducts and walkways are low
+  // Returns below low_object_height_m above the bed count as obstacle evidence only between
+  // the rails: rails (+-0.76 m), the contact rail (~1.5 m), cable ducts and walkways are low
   // and lie outside low_object_half_width_m. Tall objects count anywhere in the corridor.
   double low_object_height_m{1.0};
   double low_object_half_width_m{0.5};

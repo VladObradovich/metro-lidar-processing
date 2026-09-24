@@ -621,12 +621,16 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   const double gauge_half_width =
       std::min(config.static_half_width_m, config.corridor_half_width_m);
   const double gauge_max_height = std::min(config.static_max_height_m, config.corridor_height_m);
-  // Low returns count for the gauge only between the rails: rails, the contact rail and
-  // ducts would otherwise join a real obstacle beside them into one long component.
   auto gauge_point = [&](double offset, double height) {
     return offset <= gauge_half_width && height >= config.static_min_height_m &&
-           height <= gauge_max_height &&
-           (offset <= config.low_object_half_width_m || height >= config.low_object_height_m);
+           height <= gauge_max_height;
+  };
+  // Static low returns off the space between the rails are track structure (rails, the
+  // contact rail, fastenings, ducts). They link a structure along the route so that its full
+  // length is judged, but never place, size or range a candidate: an obstacle beside them
+  // keeps its own position, and a structure alone has no support.
+  auto structure_point = [&](double offset, double height) {
+    return offset > config.low_object_half_width_m && height < config.low_object_height_m;
   };
   for (const auto index : frame.detection_indices) {
     const auto& p = frame.geometry_points[index].point;
@@ -682,30 +686,39 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     // surface of each cell: a structure parallel to the route is seen at a grazing angle
     // and falls into few angular cells, so the per-cell nearest layer would look short.
     double gauge_lo_x = INFINITY, gauge_hi_x = -INFINITY;
+    std::vector<PointXYZ> structure;
     double inside_top = -INFINITY, inside_offset = 0;
+    std::size_t inside_points = 0;
     for (const auto cell_index : entry.second) {
       const auto& cell = cells[cell_index];
       channels |= cell.channels;
       bool cell_inside = false;
       for (const auto point_index : cell.points) {
         const auto& p = frame.geometry_points[point_index].point;
-        if (gauge_on) {
-          if (gauge_point(std::abs(route.offset(p)), ground.height(p))) {
-            gauge_lo_x = std::min(gauge_lo_x, p.x);
-            gauge_hi_x = std::max(gauge_hi_x, p.x);
-          }
+        const double offset = std::abs(route.offset(p)), height = ground.height(p);
+        if (gauge_on && gauge_point(offset, height)) {
+          gauge_lo_x = std::min(gauge_lo_x, p.x);
+          gauge_hi_x = std::max(gauge_hi_x, p.x);
         }
         if (sensor_range(p) > cell.range + 0.5) continue;
+        const bool inside = offset <= config.corridor_half_width_m;
+        if (inside) {
+          inside_top = std::max(inside_top, height);
+          inside_offset += route.offset(p);
+          ++inside_points;
+        }
+        if (!(cell.channels & ObstacleCandidate::kMotion) && structure_point(offset, height)) {
+          structure.push_back(p);
+          continue;
+        }
         lo.x = std::min(lo.x, p.x);
         lo.y = std::min(lo.y, p.y);
         lo.z = std::min(lo.z, p.z);
         hi.x = std::max(hi.x, p.x);
         hi.y = std::max(hi.y, p.y);
         hi.z = std::max(hi.z, p.z);
-        if (std::abs(route.offset(p)) > config.corridor_half_width_m) continue;
+        if (!inside) continue;
         cell_inside = true;
-        inside_top = std::max(inside_top, ground.height(p));
-        inside_offset += route.offset(p);
         inside_low = std::min(inside_low, p.z);
         inside_high = std::max(inside_high, p.z);
         if (p.x - origin.x < distance) {
@@ -725,9 +738,19 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
         inside_high - inside_low < min_extent ||
         (gauge_only && gauge_hi_x - gauge_lo_x > config.static_max_length_m))
       continue;
+    // A low component centred off the rails is track structure as a whole.
     if (inside_top < config.low_object_height_m &&
-        std::abs(inside_offset / double(support)) > config.low_object_half_width_m)
+        std::abs(inside_offset / double(inside_points)) > config.low_object_half_width_m)
       continue;
+    // Structure returns complete the box only alongside the evidence (the low part of a tall
+    // object at the corridor edge), never extend it along the route.
+    for (const auto& p : structure) {
+      if (p.x < lo.x || p.x > hi.x) continue;
+      lo.y = std::min(lo.y, p.y);
+      lo.z = std::min(lo.z, p.z);
+      hi.y = std::max(hi.y, p.y);
+      hi.z = std::max(hi.z, p.z);
+    }
     ObstacleCandidate candidate;
     candidate.center = {(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2};
     candidate.size = {hi.x - lo.x, hi.y - lo.y, hi.z - lo.z};
