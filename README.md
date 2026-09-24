@@ -1,664 +1,272 @@
-# metro-lidar-processing
+# Metro Perception
 
-ROS 2-проект обработки лидарных записей для хакатона. Геометрический baseline
-обнаружения теперь включает опорную поверхность, прямой коридор, угловую
-кластеризацию и расстояние до ближайшего кандидата. Нода также преобразует
-`PointCloud2` в панорамное изображение глубины и при необходимости сохраняет видео.
-Baseline экспериментальный: по разметке он находит человека в 40% кадров и даёт
-около 7 ложных тревог в минуту ([метрики](docs/evaluation-metrics.md)),
-временное подтверждение не реализовано. В режиме ASSUMED отсутствие кандидата
-остаётся `UNKNOWN`. Алгоритм и ограничения описаны в [отдельной заметке](docs/detection-baseline.md).
+Система на ROS 2 Humble обнаруживает препятствия впереди поезда по облакам LiDAR из rosbag. Общий C++ pipeline работает онлайн и в последовательной офлайн-оценке. Результат `/metro/assessment` содержит состояние пути, причину, кандидатов, подтверждённые треки и продольное расстояние до ближайшего подтверждённого препятствия. `OBSTACLE` требует конечной положительной дальности; отсутствие измерения обозначается `distance_valid=false` и NaN. `NO_OBSTACLE_DETECTED` допускается только при проверенной калибровке, пригодной области наблюдения и отсутствии кандидатов. На предоставленных bag калибровка лишь предполагается, поэтому отсутствие препятствия даёт `UNKNOWN`, а не «путь свободен».
 
-**Для разработки:** [обновлённый план](PLAN.md), [порядок работы и команды](docs/development.md),
-[задачи по участникам](docs/work-items.md), [данные и разметка](evaluation/README.md).
+На текущем коде `28e8d03` (`g4b`) объект человека совпал с разметкой в 53 из 56 положительных кадров; на пяти отрицательных записях осталось 153 ложных кадра в 12 событиях. Это исследовательский результат на известных записях, не оценка скрытого контроля. Статус задач — в [PLAN.md](PLAN.md).
+
+## Содержание
+
+- [Структура проекта](#структура-проекта)
+- [Быстрый старт: образ → bag → результат](#быстрый-старт-образ--bag--результат)
+- [Как читать результат](#как-читать-результат)
+- [RViz](#rviz)
+- [Параметры и профили](#параметры-и-профили)
+- [Архитектура](#архитектура)
+- [Алгоритм](#алгоритм)
+- [Эксперименты и воспроизведение](#эксперименты-и-воспроизведение)
+- [Ограничения](#ограничения)
+- [Разработка](#разработка)
+- [Изображение глубины и рабочие записи](#изображение-глубины-и-рабочие-записи)
 
 ## Структура проекта
 
-Пять пакетов и рабочие материалы по обновлённому плану:
-
 ```text
-metro-lidar-processing/
-├── PLAN.md                      # Актуальный план и историческая справка
-├── metro_perception_core/        # C++17 pipeline, detector и monitor без ROS
-│   ├── include/metro_perception_core/
-│   ├── src/
-│   └── test/
-├── metro_perception_interfaces/  # Черновые ROS-сообщения результата
-│   └── msg/
-├── metro_perception_ros/         # Адаптер, ноды, visualizer, evaluate_bag
-│   ├── include/metro_perception_ros/
-│   ├── src/
-│   └── test/
-├── metro_perception_bringup/     # Launch, шаблоны параметров/калибровки, RViz
-│   ├── launch/
-│   ├── config/sensors/
-│   └── rviz/
-├── metro_perception_tools/       # Depth image, инспекция, сводка и отчёт
-├── evaluation/                  # Паспорт набора, splits, шаблон разметки
-├── docs/                        # Архитектура, алгоритм, задачи и демонстрация
-├── scripts/                     # Сборка, тесты, smoke, evaluate_all.py
-├── .github/workflows/           # Humble build/test и runtime smoke
-├── docker/
-├── .devcontainer/               # Universal (Server) и Desktop
-├── rosbags/                     # Записи rosbag2 → /data, только чтение
-├── results/                     # Видео и результаты → /results
-└── build/, install/, log/       # Создаются при сборке, исключены из Git
+metro_perception_core/                    C++ ядро без зависимости от ROS
+├── include/metro_perception_core/        конфигурация и публичный API
+├── src/                                 pipeline, detector, temporal_monitor
+└── test/                                проверки геометрии и треков
+metro_perception_interfaces/              ROS-типы и их пакет сборки
+└── msg/                                 FrameAnalysis, PathAssessment,
+                                         ObstacleCandidate/Track, CorridorSegment
+metro_perception_ros/                     адаптация ядра к ROS 2
+├── src/                                 perception_node, obstacle_monitor_node,
+│                                        visualizer_node, evaluate_bag и адаптеры
+├── config/                              профили секторного и полного скана
+└── test/                                тесты ROS-контрактов, TF и сессий
+metro_perception_bringup/                 запуск и отображение
+├── launch/                              perception, demo, depth_image
+├── config/                              общие algorithm/runtime YAML
+└── rviz/                                конфигурации RViz для детектора и глубины
+metro_perception_tools/                   Python-инструменты
+├── metro_perception_tools/              depth_image, inspect_bag, metrics, report
+└── test/                                тесты проекции и метрик
+evaluation/                               данные оценки, без самих облаков
+├── annotations/                         интервалы и области размеченных объектов
+├── dataset.yaml, splits.yaml            список bag, профили и разделение выборок
+└── scene_context.yaml                   описание сцен и допущений
+scripts/                                  build/test, smoke, анализ bag,
+                                         оценка, инъекция синтетики, desktop
+docker/                                   Dockerfile для разработки и runtime,
+                                         entrypoint и расширения Compose
+compose.local.yaml, compose.yaml         headless и desktop сервисы
+.devcontainer/                            конфигурации Dev Container и X11-скрипты
+.github/workflows/                        CI: lint, packages, runtime, desktop
+docs/                                    исторические рабочие заметки
+rosbags/                                 приватные входные bag, вне Git
+results/                                 генерируемые JSONL, метрики и логи, вне Git
+README.md, PLAN.md                       текущее описание и план
 ```
 
-Пакеты находятся непосредственно в корне репозитория. Его также можно положить
-в `src/` обычного colcon workspace и собирать штатным `colcon build`.
-Детектор выдаёт предварительных кандидатов; финальная оценка требует разметки и полного replay.
-Для lidar-only данных используются [явные sensor profiles](docs/lidar-only-default.md):
-forward-sector может работать как ASSUMED, а full-scan без известной оси остаётся UNKNOWN.
-Статический TF и A02 описаны в [инструкции по калибровке](docs/calibration.md).
-Временное подтверждение и проверка качества перечислены в [актуальном плане](PLAN.md).
-Калибровки в YAML пока не проверены.
+<a id="быстрый-старт-образ--bag--результат"></a>
 
-После переноса запуск выполняется через `metro_perception_bringup`, а отдельная
-нода — через `ros2 run metro_perception_tools depth_image`. Старого пакета
-`metro_lidar_processing` больше нет. После обновления пересоберите образ или
-выполните **Dev Containers: Rebuild Container**: рабочий каталог теперь `/ws`.
+## Быстрый старт: образ → bag → результат
 
-## Быстрый запуск на своём датасете
-
-Для запуска нужен Docker. ROS, Python-зависимости и собранные пакеты находятся
-в образе; VS Code и ROS на хосте не нужны. Основной сценарий — Linux с Docker
-Engine. На Windows команды выполняются в WSL2 с интеграцией Docker Desktop;
-пути к данным должны быть доступны из WSL.
-
-### С RViz: скрипт `scripts/desktop.sh`
-
-Из корня проекта в графической Linux/WSLg-сессии:
-
-```bash
-# Подготовить X11/GPU, собрать образ и запустить контейнер.
-bash scripts/desktop.sh up
-bash scripts/desktop.sh shell
-ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true
-```
-
-Команда `up` собирает Desktop-образ и запускает контейнер в фоне. Скрипт
-подготавливает X11-прокси, передаёт UID/GID пользователя и подключает GPU,
-если доступен `/dev/dri/renderD*`. Без DRM-устройства используется программный
-рендеринг. Нужны Docker с Compose v2, Python 3 и на Linux `xhost`.
-Каталоги `rosbags/` и `results/` подключаются автоматически; команды можно
-вызывать и из другого каталога, указав путь к скрипту.
-
-Во втором терминале:
-
-```bash
-bash scripts/desktop.sh exec ros2 bag play /data/my_bag
-```
-
-Открыть оболочку или завершить работу:
-
-```bash
-bash scripts/desktop.sh shell
-# После остановки launch и проигрывания через Ctrl+C:
-bash scripts/desktop.sh down
-```
-
-Настройки контейнера находятся в `compose.yaml`; дополнительный файл
-`docker/compose.gpu.yaml` подключается скриптом при наличии GPU. Подготовка
-X11 выполняется на хосте, поэтому для запуска используй `desktop.sh up`.
-Повторный `up` обновляет образ с использованием кеша Docker; после изменения
-кода повтори эту команду и перезапусти launch. Если нужно только собрать образ
-без запуска контейнера, используй `bash scripts/desktop.sh build`. Команда `down`
-удаляет контейнер и останавливает отдельный Compose-прокси, сохраняя образ,
-записи и результаты.
-
-### Без графики: Docker Compose
-
-Из корня репозитория, без графической сессии и X11:
-
-Для разового интерактивного запуска с автоматическим удалением контейнера:
-
-```bash
-docker compose -f compose.local.yaml run --rm --build --name metro-lidar local bash
-```
-
-Во втором терминале войди в тот же контейнер или проиграй bag:
-
-```bash
-docker exec -it metro-lidar /usr/local/bin/metro-entrypoint bash
-docker exec -it metro-lidar /usr/local/bin/metro-entrypoint \
-  ros2 bag play /data/my_bag
-```
-
-В первом терминале запускай обработку. После `exit` контейнер автоматически
-удаляется:
-
-```bash
-ros2 launch -n metro_perception_bringup depth_image.launch.py
-```
-
-Для длительного запуска в фоне используй Compose-сервис:
-
-```bash
-docker compose -f compose.local.yaml up -d --build
-docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint \
-  ros2 launch -n metro_perception_bringup depth_image.launch.py
-```
-
-Во втором терминале проиграй запись:
-
-```bash
-docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint \
-  ros2 bag play /data/my_bag
-```
-
-Открыть оболочку:
-
-```bash
-docker compose -f compose.local.yaml exec local /usr/local/bin/metro-entrypoint bash
-```
-
-После остановки launch и проигрывания через Ctrl+C:
-
-```bash
-docker compose -f compose.local.yaml down
-```
-
-`rosbags/` автоматически подключается как `/data` только для чтения, а
-`results/` — как `/results` для записи. Например, добавь к launch
-`video_path:=/results/depth.mp4`, чтобы сохранить видео на хосте. После изменения
-кода повтори `up -d --build`. Чтобы только собрать образ без запуска контейнера,
-используй `docker compose -f compose.local.yaml build`. Без явных `METRO_UID`/
-`METRO_GID` используются значения `1000:1000`. Compose не требует установки ROS
-на хосте.
-
-### Ручная сборка и запуск через Docker
-
-#### 1. Собрать образ один раз
-
-Из корня этого репозитория:
+Нужны Docker и распакованные bag в `rosbags/` (папка `rosbags/<bag>/` с `metadata.yaml`). Команды выполняются из корня репозитория. `results/` доступен контейнеру для результатов офлайн-оценки; онлайн-сценарий публикует ROS-топик.
 
 ```bash
 docker build -f docker/Dockerfile.runtime --target runtime -t metro-lidar:local .
+mkdir -p results
+docker run --rm --init --name metro-demo \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD/rosbags:/data:ro" -v "$PWD/results:/results" \
+  metro-lidar:local \
+  ros2 launch metro_perception_bringup perception.launch.py input_topic:=/lidar_points
 ```
 
-Образ использует Ubuntu 22.04 / ROS 2 Humble. В builder-стадии `colcon`
-собирает пакеты, а в финальную runtime-стадию копируются `/ws/install` и
-устанавливаются только зависимости запуска. При изменении кода образ нужно пересобрать.
-При запуске ничего скачивать или собирать не требуется. Данные в образ не входят.
-
-#### 2. Подключить свой датасет и открыть контейнер
-
-Поместите записи в `rosbags/` внутри проекта и выполняйте команды из корня
-репозитория. Папка подключается в контейнер как `/data`:
+В другом терминале, когда узлы запустились:
 
 ```bash
-docker run --rm -it --init --name metro-lidar \
-  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
-  metro-lidar:local
+docker exec metro-demo metro-entrypoint ros2 bag play /data/doubleT_platform
 ```
 
-Например, запись `rosbags/my_bag/metadata.yaml` будет доступна
-как `/data/my_bag/metadata.yaml`. Подключайте каталог вместе с `metadata.yaml`
-и всеми файлами `.db3`, указанными в метаданных. Предоставленные записи имеют
-формат rosbag2 SQLite3. Входной каталог подключается только для чтения.
-Содержимое `rosbags/` исключено из Git и контекста Docker-сборки. Если датасет
-проверяющего уже лежит в другом месте, в `source` можно указать любой
-существующий абсолютный путь к нему; пересборка образа не требуется.
-
-#### 3. Запустить обработку в контейнере
+В третьем терминале:
 
 ```bash
-exec ros2 launch -n metro_perception_bringup depth_image.launch.py
+docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field state
+docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field reason
 ```
 
-#### 4. Проиграть свою запись из второго терминала хоста
-
-Замените `my_bag` на имя записи в своём датасете:
+Для положительной записи `doubleT_obstacle` используется полный скан с **исследовательским предположением** о направлении движения. Человек появляется после примерно 13-й секунды bag. Запустите следующий launch вместо варианта выше, затем `ros2 bag play /data/doubleT_obstacle`:
 
 ```bash
-docker exec -it metro-lidar /usr/local/bin/metro-entrypoint \
-  ros2 bag play /data/my_bag
-```
-
-Имена bag не влияют на настройки алгоритма. Если в `/data` смонтирован сам каталог
-одной записи, используйте `ros2 bag play /data`.
-Обработка и проигрывание работают в одном контейнере; настройка ROS-сети хоста
-не требуется. Обёртка `metro-entrypoint` нужна для `docker exec`, потому что Docker
-не вызывает entrypoint образа при exec автоматически.
-
-Для просмотра метаданных записи и результата:
-
-```bash
-docker exec metro-lidar /usr/local/bin/metro-entrypoint ros2 bag info /data/my_bag
-docker exec metro-lidar /usr/local/bin/metro-entrypoint \
-  ros2 topic echo /lidar/depth_image --once --no-arr
-```
-
-Нода ждёт сообщения до начала проигрывания. `exec` заменяет оболочку процессом
-launch, а `-n` включает штатный noninteractive-режим ROS launch, который сам
-передаёт сигнал дочерним процессам. Это позволяет `docker stop metro-lidar`
-мягко остановить ноду и закрыть видеофайл. Для завершения также можно нажать Ctrl+C в терминале launch;
-контейнер завершится и удалится. Если запустить launch без `exec`, сначала
-остановите его через Ctrl+C, затем выйдите из оболочки командой `exit`.
-
-## Входные данные и параметры
-
-Вход: `sensor_msgs/msg/PointCloud2`, поля `x`, `y`, `z` — FLOAT32, `ring` — UINT16.
-Текущая подписка использует Reliable QoS; предоставленные записи совместимы.
-Для нового источника требуется проверить поля и QoS, а не только имя топика.
-Выход: `sensor_msgs/msg/Image` в `/lidar/depth_image`.
-
-| Аргумент launch | По умолчанию | Назначение |
-|---|---|---|
-| `input_topic` | `/lidar_points` | Входной топик из `ros2 bag info` |
-| `output_topic` | `/lidar/depth_image` | Изображение глубины |
-| `min_azimuth_deg`, `max_azimuth_deg` | `-140.0`, `-40.0` | Сектор проекции в градусах |
-| `min_depth`, `max_depth` | `1.0`, `300.0` | Диапазон расстояний в метрах |
-| `image_width`, `image_height` | `320`, `128` | Размер изображения |
-| `point_stride` | `1` | Шаг выборки точек |
-| `histogram_equalization` | `true` | Выравнивание гистограммы раскраски |
-| `video_path`, `video_fps` | пустой путь, `10.0` | Запись видео; пустой путь отключает её |
-| `rviz` | `false` | Открыть RViz, нужен desktop-образ |
-| `fixed_frame` | `hesai_lidar` | Fixed Frame RViz, равный `header.frame_id` облака |
-
-Для пяти предоставленных записей с `/lidar_points` подходят значения по умолчанию.
-Для `doubleT_obstacle`:
-
-```bash
-exec ros2 launch -n metro_perception_bringup depth_image.launch.py \
+docker run --rm --init --name metro-demo \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD/rosbags:/data:ro" -v "$PWD/results:/results" \
+  metro-lidar:local ros2 launch metro_perception_bringup perception.launch.py \
   input_topic:=/sensing/lidar/hesai128/pointcloud \
-  min_azimuth_deg:=-180.0 max_azimuth_deg:=180.0 point_stride:=2
+  sensor_profile:=/opt/metro/install/share/metro_perception_ros/config/full_scan_research_assumed.yaml
 ```
 
-Для неизвестного датасета задайте его топик и подходящий сектор через аргументы
-launch. Пересборка образа для смены датасета или этих параметров не нужна.
+У установленного пакета путь профиля можно получить командой `ros2 pkg prefix metro_perception_ros`: добавьте `/share/metro_perception_ros/config/<имя>.yaml`. Команды `docker exec` явно запускают entrypoint, чтобы загрузить ROS и установленный workspace. Контейнер ограничивает ROS-связь localhost; все терминалы обращаются к одному контейнеру.
 
-## Сохранение видео на хост
+**Проверка 24.09.2026:** сборка и запуск описанных команд прошли. При `doubleT_obstacle` на этом стенде `ros2 bag play` публиковал облако, но `FrameAnalysis` за время прогона не был получен, а assessment оставался `UNKNOWN`; повтор с `--start-offset 13 --rate 0.2` также не дал анализа. Поэтому онлайн-подтверждение человека с дальностью этой инструкцией пока не доказано. Сохранённые результаты G4b ниже получены последовательным `evaluate_bag`; задача online 1× остаётся Q2 в PLAN.md.
 
-Перед запуском создайте каталог результатов и добавьте его к `docker run`.
-UID/GID пользователя хоста обеспечивают доступ к файлам без последующего `sudo`:
+Вариант с Compose запускает такой же headless runtime: `docker compose -f compose.local.yaml up -d --build`, затем `docker compose -f compose.local.yaml exec local metro-entrypoint ros2 launch ...`, `... ros2 bag play ...` и `... ros2 topic echo ...`. После работы: `docker compose -f compose.local.yaml down`.
+
+## Как читать результат
+
+| Топик | Тип | Содержание |
+|---|---|---|
+| `/lidar_points` или `/sensing/lidar/hesai128/pointcloud` | `sensor_msgs/msg/PointCloud2` | Вход; выбирается `input_topic` |
+| `/metro/analysis` | `metro_perception_interfaces/msg/FrameAnalysis` | Геометрия одного кадра, кандидаты и диагностика |
+| `/metro/assessment` | `metro_perception_interfaces/msg/PathAssessment` | Решение монитора, треки, дальность, возраст результата |
+| `/metro/markers` | `visualization_msgs/msg/MarkerArray` | Маркеры при запуске `demo.launch.py` |
+
+В ROS 2 Humble удобно читать отдельные поля:
 
 ```bash
-mkdir -p results
-docker run --rm -it --init --name metro-lidar \
-  --user "$(id -u):$(id -g)" \
-  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
-  --mount "type=bind,source=$PWD/results,target=/results" \
-  metro-lidar:local
+docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field state
+docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field distance_m
+docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field reason
+docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --once --no-arr
+docker exec metro-demo metro-entrypoint ros2 topic echo /metro/analysis --field overwritten_frames
+docker exec metro-demo metro-entrypoint ros2 topic hz /metro/assessment
 ```
 
-В контейнере:
+`state`: `0 UNKNOWN`, `1 OBSTACLE`, `2 NO_OBSTACLE_DETECTED`. Интерпретируйте `distance_m` только вместе с `distance_valid=true`; это продольная дальность до ближайшего подтверждённого трека. `OBSTACLE_WITH_ASSUMED_CALIBRATION` означает препятствие при непроверенной ориентации; `OBSTACLE_COASTING_WITH_ASSUMED_CALIBRATION` — прогноз трека в кадре без повторного измерения. `CANDIDATE_UNCONFIRMED` означает, что кандидат ещё не выполнил правило подтверждения. `ASSUMED_CALIBRATION_CANNOT_CONFIRM_CLEAR`, `BACKGROUND_CANNOT_CONFIRM_CLEAR`, `BASELINE_WARMUP`, `GROUND_UNSUPPORTED` и `INPUT_PAUSED_OR_STOPPED` объясняют типичные `UNKNOWN`. Поле `stale` сообщает о потере актуального входа; при этом объекты и треки очищаются, а ключ последнего наблюдения сохраняется.
+
+`reported_objects` — кандидаты текущего кадра, включая неподтверждённые, с `bbox`, `nearest_point`, `distance_m`, `distance_valid`, `support_points` и `reasons` (`MOTION`/`GAUGE`). `tracks` содержат `track_id`, `confirmed`, `coasting`, `hits`, `age_frames`, `bbox`, `distance_m`. У `FrameAnalysis` смотрите `processing_age_ms`, `queue_age_ms`, `tf_wait_ms`, `received_frames`, `processed_frames`, `rejected_frames`, `overwritten_frames`, `evaluated_range_m` и `reason`. Поле `result_age_ms` в assessment показывает возраст результата по локальным часам.
+
+## RViz
+
+На машине с рабочим графическим дисплеем запустите desktop-контейнер, затем в одном терминале демо, в другом — bag:
 
 ```bash
-exec ros2 launch -n metro_perception_bringup depth_image.launch.py \
-  video_path:=/results/depth.mp4
+bash scripts/desktop.sh up
+bash scripts/desktop.sh exec ros2 launch metro_perception_bringup demo.launch.py \
+  input_topic:=/lidar_points publish_sensor_tf:=true sensor_frame_override:=hesai_lidar
+bash scripts/desktop.sh exec ros2 bag play /data/doubleT_platform
 ```
 
-Запустите bag из второго терминала как выше. После проигрывания остановите launch
-через Ctrl+C, чтобы закрыть видеофайл. Результат останется в `results/depth.mp4`
-после удаления контейнера. Это видео панорамы глубины, не результат детекции.
+Для полного скана замените `input_topic` на `/sensing/lidar/hesai128/pointcloud`, передайте `sensor_profile:=/opt/metro/install/share/metro_perception_ros/config/full_scan_research_assumed.yaml` и оставьте `publish_sensor_tf:=true`. У профиля `exact` имя `sensor_frame_override` не нужно. `demo.launch.py` включает визуализатор и RViz (`rviz:=true`, `fixed_frame:=lidar_assumed`). При `publish_sensor_tf:=true` для профиля `bind_first` обязательно явно указать фактический frame облака через `sensor_frame_override`; для `exact` он уже задан в YAML. После работы: `bash scripts/desktop.sh down`.
 
-## RViz при ручном запуске Docker
+Легенда `/metro/markers`: `status` — текст `STATE d m: reason`; `corridor` — зелёный при пригодной геометрии и покрытии, жёлтый иначе; `candidate_bbox` — красный для `MOTION`, синий для только `GAUGE` (ближайший непрозрачнее); `nearest_point` — точка ближайшего кандидата; `track_label` — `#id d m`, с пометкой `(predicted)` при прогнозе; `track_coasting` — полупрозрачный прогнозируемый бокс. Устаревшие маркеры удаляются.
 
-Headless-образ не требует дисплея и GPU. Для RViz соберите отдельный вариант:
+В пустой конфигурации RViz установите **Fixed Frame = `lidar_assumed`**, затем **Add → By topic → `/metro/markers` → MarkerArray**. Добавьте входной `PointCloud2` и `TF`; для облака должен существовать transform из исходного frame в `lidar_assumed`. Для отдельного инструмента изображения глубины добавьте **Image → `/lidar/depth_image`** после запуска `depth_image.launch.py`.
+
+<details>
+<summary>Ручной desktop Docker и HiDPI</summary>
+
+`docker build -f docker/Dockerfile.runtime --target runtime-desktop -t metro-lidar:desktop .` собирает образ с RViz. `scripts/desktop.sh` настраивает X11 proxy, монтирования, UID/GID и, если доступно, render device. Его `shell` открывает подготовленное окружение; `exec` запускает команду. Для ручного `docker run` нужно самостоятельно передать X11 socket, `DISPLAY`, `/data` и `/results`; подробности и настройки масштаба экрана находятся в [документации демо](docs/demo.md).
+
+</details>
+
+## Параметры и профили
+
+| Аргумент `perception.launch.py` | По умолчанию | Назначение |
+|---|---|---|
+| `input_topic` | `/lidar_points` | Входное облако |
+| `namespace` | `metro` | Пространство выходных топиков |
+| `sensor_profile` | пусто, встроенный `forward_sector_assumed.yaml` | YAML геометрии и алгоритма |
+| `publish_sensor_tf` | `false` | Публикация предполагаемого статического TF для RViz |
+| `sensor_frame_override` | пусто | Явное имя source frame для `bind_first` при публикации TF |
+| `algorithm_config`, `runtime_config` | YAML из bringup | Параметры узлов |
+| `use_sim_time` | `false` | ROS clock; с `true` нужен bag `--clock` |
+
+`demo.launch.py` добавляет `rviz` (`true`) и `fixed_frame` (`lidar_assumed`). Профиль выбирайте по **типу сенсора**, а не по имени bag. `forward_sector_assumed.yaml` связывается с первым `frame_id` потока (`bind_first`); ось вперёд принята как −Y сенсора. `full_scan_research_assumed.yaml` ожидает точно `lidar_livox`, использует ту же непроверенную ориентацию и нужен для исследования положительного bag. `full_scan_unresolved.yaml` не задаёт направление вперёд и сохраняет `UNKNOWN`. Исходные frame в известных данных: секторный `hesai_lidar`, полный скан `lidar_livox`. Передавайте путь к YAML через `sensor_profile:=...`.
+
+Основные параметры в секциях `detector:` и `temporal:` профилей:
+
+| Параметры | Значение | Смысл |
+|---|---:|---|
+| `corridor_half_width_m`, `corridor_height_m` | 2,0 м; 3,5 м | Полуширина и высота коридора |
+| `background_history_frames`, `background_lag_frames` | 10; 5 | История для `MOTION` и лаг сравнения |
+| `static_half_width_m`, `static_min_height_m`, `static_max_height_m` | 0,9 м; 0,3–2,5 м | Центральная полоса и высота для `GAUGE` |
+| `static_max_length_m` | 3,0 м | Отсев длинных конструкций в `GAUGE` |
+| `low_object_height_m`, `low_object_half_width_m` | 1,0 м; 0,5 м | Низкий объект учитывается только между рельсами |
+| `envelope_half_width_m`, `envelope_min_speed_mps` | 1,5 м; 1 м/с | На ходу боковой `MOTION` без `GAUGE` не создаёт кандидата |
+| `confirm_hits`, `confirm_window`; `gauge_confirm_hits`, `gauge_confirm_window` | 2/3; 2/3 | Подтверждение трека по кадрам |
+| `release_misses`, `still_speed_mps`, `still_min_points` | 2; 0,5 м/с; 50 | Удержание и мгновенное подтверждение уверенной цели на стоянке |
+
+Полный набор и допустимые значения — в [config.hpp](metro_perception_core/include/metro_perception_core/config.hpp); загрузка YAML — в [preprocessing.cpp](metro_perception_ros/src/preprocessing.cpp). Параметры среды в [runtime.yaml](metro_perception_bringup/config/runtime.yaml): `input_reliability=best_effort`, `max_processing_age_s=0.30`, `tf_wait_timeout_s=0.05`, `timeout_s=0.5`. Исследовательский профиль разрешает обработку при ASSUMED калибровке, но не подтверждает свободный путь.
+
+## Архитектура
+
+```text
+PointCloud2 → perception_node → FrameAnalysis → obstacle_monitor_node → PathAssessment
+                                                               │
+                                                               └→ visualizer_node → MarkerArray
+rosbag → evaluate_bag → тот же C++ pipeline → frames.jsonl → metrics.py → quality.json
+```
+
+| Пакет | Роль |
+|---|---|
+| `metro_perception_core` | ROS-независимый C++ детектор и временной монитор |
+| `metro_perception_interfaces` | Сообщения анализа, кандидатов, треков и состояния |
+| `metro_perception_ros` | Узлы, адаптер PointCloud2, TF и офлайн-оценщик |
+| `metro_perception_bringup` | Launch, runtime config и RViz |
+| `metro_perception_tools` | Изображение глубины, метрики, отчёты и осмотр bag |
+
+Онлайн-обработка использует latest-only слот: один кадр обрабатывается, один ожидает; более ранний ожидающий может быть перезаписан. Монитор привязывает результат к `source_instance_id`, `session_id`, `frame_sequence`; чужие и старые анализы отвергаются. Watchdog после остановки входа переводит результат в `UNKNOWN`, очищает кандидатов и треки, сохраняя ключ наблюдения. Время bag служит для разметки и оценки, `header.stamp` — для точного TF, локальные монотонные часы — для watchdog и возраста результата.
+
+Контракт решения: `OBSTACLE` возникает только от подтверждённого трека с конечной положительной дальностью; `NO_OBSTACLE_DETECTED` требует `VERIFIED` калибровки, пригодной области на положительной дальности и отсутствия кандидатов; иначе `UNKNOWN`. Кандидаты `reported_objects` относятся к отдельному кадру, а не к подтверждённым трекам. При невалидной дальности сохраняются NaN и `distance_valid=false`.
+
+## Алгоритм
+
+1. **Подготовка A02.** Адаптер проверяет структуру PointCloud2, отбрасывает NaN/Inf и ближнюю слепую область, применяет TF к целевой системе координат и две ROI. Сохраняет связь с исходными точками и диагностику отброса.
+2. **Опора пола.** По нижним точкам пространственных ячеек выбирается ограниченная плоскость RANSAC с проверкой наклона и поддержки. Непрерывность пола по пятиметровым диапазонам ограничивает пригодную дальность; пропадание опоры ведёт к `UNKNOWN`.
+3. **Ось маршрута.** Стены тоннеля дают криволинейную ось `y = c1·x + c2·x²`; коридор строится вокруг неё. Это позволяет отличать путь от стен и платформы на повороте.
+4. **Два канала свидетельств.** `MOTION` сравнивает текущий дальностный профиль со скользящей историей после компенсации собственной скорости по LiDAR. `GAUGE` допускает статический объект в узкой центральной полосе без истории, чтобы обнаружить его при приближении.
+5. **Объекты.** Угловая кластеризация объединяет соседние возвраты; bounding box и ближайшая точка проверяются на исходных точках внутри коридора. Длинные конструкции отсекаются в `GAUGE`; низкие возвраты принимаются только между рельсами. При движении боковой `MOTION` вне габарита вагона не создаёт препятствие, если нет `GAUGE`.
+6. **Дальность и время.** Дальность — продольная координата ближайшей принятой точки, а не Евклидово расстояние до центра бокса. Треки связываются между кадрами: два попадания из трёх подтверждают, один пропуск удерживается прогнозом; достаточно плотный `MOTION` объект при остановке подтверждается сразу. Решение использует только подтверждённые треки и контракт калибровки.
+
+Нужны только облака LiDAR и явно заданный профиль. IMU, одометрия поезда и внешний TF не требуются для assumed-профиля; при наличии TF используется точная метка облака. Предположение об ориентации не является измеренной калибровкой.
+
+## Эксперименты и воспроизведение
+
+Набор состоит из шести коротких bag: одна запись с человеком (`doubleT_obstacle`) и пять отрицательных по описанию владельца. Разметка находится в [evaluation/annotations](evaluation/annotations), выборка — в [splits.yaml](evaluation/splits.yaml). Development содержит positive; validation содержит только отрицательные bag. После G4 ложные тревоги разбирались на обеих половинах («две половины»), поэтому validation не независима. Синтетические объекты добавляются к отрицательным bag и оцениваются отдельно. `new_data` в текущую разметку и метрики не входит.
+
+| Прогон | SHA текущей истории | FP development, кадры/события | FP validation, кадры/события | Совпадения с человеком |
+|---|---|---:|---:|---:|
+| Q1 / G3 | `c1e791e` / `9d5d9a1` | 35 / 12 | 162 / 17 | 11 / 35 |
+| G3f / G3r | `ae6177f` / `0a4b47f` | 53 / 10 | 144 / 13 | 35 / 35 |
+| S2 | `89f02f5` | 157 / 20 | 229 / 17 | 53 / 56 |
+| G4 | `848549d` | 134 / 8 | 203 / 14 | 52 / 56 |
+| G4b | `28e8d03` | 97 / 6 | 56 / 6 (2,13/мин) | 53 / 56 |
+
+Начиная с S2, область человека размечена на 56 кадрах вместо 35, поэтому доли между ранними и поздними прогонами напрямую не сравниваются. `FP` — кадры со состоянием `OBSTACLE` на отрицательном интервале; события объединяют близкие срабатывания. Прогоны и хеши исходного кода/конфигурации сохранены в `results/<run>/manifest.json`, оценка — в `quality.json`. В старых манифестах до перевода тел коммитов записаны прежние SHA; соответствия находятся в `results/ru-bodies/sha-map-2026-09-24.txt`.
+
+| Bag в G4b | Split | FP кадры/события | Offline p50/p95, мс |
+|---|---|---:|---:|
+| `doubleT_obstacle` | development | 67 / 1 | 70,5 / 79,9 |
+| `doubleT_platform` | development | 10 / 3 | 79,5 / 86,2 |
+| `roundT_pressureGate_roundT` | development | 20 / 2 | 72,0 / 103,8 |
+| `roundT_doubleT` | validation | 56 / 6 | 50,4 / 73,7 |
+| `roundT_squareT_pressureGate_squareT` | validation | 0 / 0 | 110,0 / 126,8 |
+| `squareT_platform_squareT_switch` | validation | 0 / 0 | 94,3 / 111,8 |
+
+Это время **последовательной офлайн-обработки кадра**, не задержка онлайн-системы и не доказательство 10 Гц. В G4b синтетический неподвижный человек на validation обнаружен в 32/32 кадрах до 20 м, 40/46 на 20–40 м, 26/42 на 40–60 м, 2/22 на 60–80 м и 0/11 на 80–100 м; первое подтверждение по сценам — около 50–66 м. Пересекающий полосу человек: примерно 70% на 0–40 м. Низкий бокс высотой 0,5 м: 0–20% вблизи. На development синтетический неподвижный человек обнаруживался до 79 м, на 80+ м recall равен нулю. На двух реальных эталонных кадрах ошибка продольной дальности составляет +0,10…+0,13 м; это сравнение с размеченным облаком в предположенной системе координат, а не метрологическая проверка дальности поезда. Задержка первого подтверждения G4 на положительном событии составляла около 0,38 с; у текущего G4b по `quality.json` — 0,286 с.
+
+Основные ложные тревоги приходили от стен, платформ и оборудования при въезде в двойной тоннель, на поворотах и от боковых длинных конструкций. Снижение дали оценка криволинейной оси, раздельный `GAUGE`, ограничение длины/высоты, низких объектов и боковой полосы на ходу, а также подтверждение 2/3. Проверялись и отклонялись склейка близких срезов, чрезмерно широкий криволинейный `GAUGE` и общее правило 3/5: они ухудшали ложные тревоги, дальность или задержку. Сложными остаются двухпутный тоннель и человек около 56 м: последний требует пересмотра разметки/свидетельств без подгонки по имени записи.
+
+Для повторения количественной оценки используйте mounted checkout и новый каталог `/results/NAME`:
 
 ```bash
-docker build -f docker/Dockerfile.runtime --target runtime-desktop \
-  -t metro-lidar:desktop .
+docker build -f docker/Dockerfile --target universal -t metro-lidar:dev docker
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v "$PWD:/repo:ro" -v "$PWD/rosbags:/data:ro" -v "$PWD/results:/results" \
+  metro-lidar:dev bash /repo/scripts/evaluate_in_container.sh my-run --full-scan-research
+python3 scripts/fp_events.py results/my-run
 ```
 
-В графической Linux-сессии с X11/XWayland или WSLg выполните из корня репозитория
-(нужен Python 3 на хосте; на Linux также `xhost`):
+Скрипт строит именно смонтированный checkout, хеширует бинарники и пишет JSONL/метрики; детали аргументов — в [evaluate_in_container.sh](scripts/evaluate_in_container.sh), [evaluate_all.py](scripts/evaluate_all.py), [fp_events.py](scripts/fp_events.py). Синтетические сценарии `static`, `crossing`, `box` создаёт [inject_obstacle.py](scripts/inject_obstacle.py); его команды `inject`, `dataset`, `report` описаны в начале файла. Результаты прогонов в `results/` не входят в Git.
 
-```bash
-python3 .devcontainer/scripts/x11_proxy.py start
-docker run --rm -it --init --name metro-lidar \
-  --user "$(id -u):$(id -g)" \
-  --device=/dev/dri \
-  --group-add "$(stat -c '%g' /dev/dri/renderD128)" \
-  -e DISPLAY="$DISPLAY" \
-  --mount "type=bind,source=$PWD/.devcontainer/.runtime/x11,target=/tmp/.X11-unix" \
-  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
-  metro-lidar:desktop
-```
+## Ограничения
 
-В контейнере запустите обработку с `rviz:=true`. Готовый конфиг показывает облако
-и изображение; топики следуют аргументам `input_topic` и `output_topic`:
-
-Цвет точек определяется координатой Y во входном облаке: RViz использует
-`AxisColor → Y` с автоматическим диапазоном цветов. Окраска выполняется
-в RViz, без дополнительного топика и повторной публикации облака.
-
-```bash
-exec ros2 launch -n metro_perception_bringup depth_image.launch.py rviz:=true
-```
-
-Для `doubleT_obstacle` добавьте к команде обработки выше
-`rviz:=true fixed_frame:=lidar_livox`. Для другого источника укажите его
-`header.frame_id` через `fixed_frame` (посмотреть можно в сообщении PointCloud2).
-После начала `ros2 bag play` в RViz появятся данные. На Linux параметр
-`--device=/dev/dri` и следующая строка `--group-add` включают аппаратный
-Mesa/OpenGL для Intel и AMD. Если каталога `/dev/dri` на хосте нет, уберите обе
-строки: Mesa перейдёт на программный рендеринг. В WSLg они обычно не нужны.
-
-После выхода из графического контейнера остановите прокси:
-
-```bash
-python3 .devcontainer/scripts/x11_proxy.py stop
-```
-
-## Масштаб интерфейса RViz (HiDPI)
-
-При старте X11-прокси масштаб определяется на **хосте** и передаётся в контейнер
-через файл в уже подключённом каталоге X11. Это работает и для готового
-Desktop-образа, и для Desktop Dev Container. На хосте не меняются настройки
-монитора или рабочего стола.
-
-Приоритет: `start --scale` → `METRO_QT_SCALE_FACTOR` → `QT_SCALE_FACTOR` хоста →
-масштаб активного монитора Niri/Sway/Hyprland → `GDK_SCALE` → `Xft.dpi / 96` → `1`.
-В Niri используется монитор сфокусированного рабочего пространства. Для другого
-монитора можно передать `--output DP-1`. Если фокус неизвестен и масштабы мониторов
-различаются, скрипт не выбирает произвольный монитор. Источник и значение масштаба
-выводятся при запуске прокси.
-
-Ручной выбор (в том числе для WSLg и композиторов без доступного источника масштаба):
-
-```bash
-python3 .devcontainer/scripts/x11_proxy.py start --scale 1.5
-```
-
-Для Dev Containers можно задать `METRO_QT_SCALE_FACTOR=1.5` в окружении VS Code
-перед открытием контейнера. Для ручного `docker run` переменная
-`-e QT_SCALE_FACTOR=1.5` переопределяет переданный хостом масштаб.
-Поддерживаются значения от `0.5` до `4`, включая дробные.
-
-После обновления файлов пересоберите Desktop-образ или выполните **Rebuild
-Container**. Масштаб выбирается при старте прокси; при смене монитора перезапустите
-прокси и RViz (в Dev Containers откройте новый терминал). Уже открытое окно RViz
-не меняет масштаб автоматически при переносе между экранами.
-Для обычного X11 без прокси и без явного масштаба настройки Qt не переопределяются.
-Используется [QT_SCALE_FACTOR](https://doc.qt.io/archives/qt-5.15/highdpi.html),
-в режиме `METRO_QT_SCALING_MODE=full`. По умолчанию включён режим `font`:
-`QT_SCALE_FACTOR=1`, а `QT_FONT_DPI=96 × масштаб`. Так текст и зависящие от шрифта
-элементы остаются крупными, но OpenGL-область не масштабируется. Это обход
-[мерцания RViz Humble при HiDPI](https://github.com/ros2/rviz/issues/1052).
-Некоторые иконки в этом режиме могут оставаться небольшими. Полное масштабирование
-можно явно включить через `-e METRO_QT_SCALING_MODE=full`, если на вашем оборудовании
-оно не вызывает мерцания. Для переопределения желаемого размера используйте
-`METRO_QT_SCALE_FACTOR` (например, `-e METRO_QT_SCALE_FACTOR=1.5`).
-
-Если контейнер уже открыт, до пересборки можно закрыть RViz и проверить обход:
-
-```bash
-QT_SCALE_FACTOR=1 QT_SCREEN_SCALE_FACTORS=1 QT_AUTO_SCREEN_SCALE_FACTOR=0 \
-  QT_ENABLE_HIGHDPI_SCALING=0 QT_FONT_DPI=192 rviz2
-```
-
-Значение `192` в этой разовой команде соответствует экрану с масштабом 2×.
-Автоматическая настройка в образе вычисляет DPI из масштаба хоста.
-
-## Проверка готового образа
-
-Из корня репозитория можно проверить обработку внешней записи без сети и без
-монтирования исходников. Сам проверочный скрипт передаётся через stdin:
-
-```bash
-mkdir -p results
-docker run --rm -i --init --network none \
-  --user "$(id -u):$(id -g)" \
-  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
-  --mount "type=bind,source=$PWD/results,target=/results" \
-  metro-lidar:local python3 - /data/my_bag \
-  --video /results/smoke.mp4 < scripts/smoke_runtime.py
-```
-
-Проверка ждёт готовности ноды, проигрывает начало записи, получает пять непустых
-изображений, останавливает процессы через SIGINT и декодирует сохранённое видео.
-Для второго формата входа добавьте `--input-topic /sensing/lidar/hesai128/pointcloud
---min-azimuth -180.0 --max-azimuth 180.0`. Для повторного запуска задайте новый
-`--video`: проверка не перезаписывает существующие результаты.
+- На реальных bag нет утверждения «путь свободен»: калибровка ASSUMED. Официальный профиль неориентированного полного скана сохраняет `UNKNOWN`.
+- Надёжная дальность обнаружения синтетического человека сейчас примерно до 60–80 м, хотя detection ROI простирается до 120 м; после ~90 м часто не хватает опоры пола. Требование 100+ м не доказано.
+- Низкие объекты обнаруживаются плохо; правило между рельсами намеренно отсекает низкие боковые конструкции.
+- Двухпутный тоннель, ошибки LiDAR-одометрии и предполагаемая ориентация полного скана остаются источниками ошибок.
+- Есть только один реальный positive; validation использована при разработке, независимый positive holdout отсутствует. Скрытые контрольные bag могут дать другие метрики.
+- Онлайн 1×, потери, RSS и визуальная проверка RViz на целевой машине ещё не измерены. Пока нет основания обещать частоту или демонстрационную готовность.
+- При движении человек в боковой полосе 1,5–2,0 м без `GAUGE` не сообщается как препятствие: это правило габарита вагона, требующее проверки на контрольных сценах.
 
 ## Разработка
 
-Далее описана среда разработки с монтированием исходников. Для запуска готового
-решения достаточно разделов выше. Образы `metro-lidar-dev:*` содержат инструменты
-разработки, а `metro-lidar:local` и `metro-lidar:desktop` — установленные пакеты.
+Для разработки есть Dev Container и универсальный [Dockerfile](docker/Dockerfile) (`universal`, `desktop`). В среде ROS 2 Humble: `bash scripts/build.sh`, `source install/local_setup.bash`, `bash scripts/test.sh`; интеграция — `python3 scripts/smoke_monitor.py` и `python3 scripts/smoke_detector.py`. CI проверяет `clang-format --dry-run --Werror`, `ament_flake8`, `ament_pep257`, сборку, тесты и smoke в четырёх jobs. Изменения детектора требуют повторить оценку по размеченным bag, синтетике, `UNKNOWN` и времени с зафиксированными commit/profile/manifest.
 
-## Установка и разработка в VS Code
+## Изображение глубины и рабочие записи
 
-Для проекта используется Dev Container **Ubuntu 22.04 / ROS 2 Humble** с двумя
-профилями. Общая часть включает Python 3.10, C++/CMake, Eigen/PCL,
-NumPy/SciPy/Matplotlib/OpenCV, rosbag2, Cyclone DDS, отладчик и средства
-тестирования. Для анализа облаков `rosbags` и `scikit-learn` устанавливаются
-из PyPI при сборке обоих профилей и установленного runtime-образа.
+`depth_image.launch.py` из пакета bringup публикует `/lidar/depth_image` и может записать видео через `video_path`. Это вспомогательный вид облака; состояние пути и расстояние публикует детектор. Параметры изображения доступны через `ros2 launch metro_perception_bringup depth_image.launch.py --show-args`.
 
-| Профиль | Назначение | Хост |
-|---|---|---|
-| **Universal (Server, Headless)** | Сборка, тесты и обработка bag без GUI | Прежде всего Linux-серверы и CI |
-| **Desktop** | Полная среда с RViz; аппаратный Mesa/OpenGL с программным fallback | Linux через XWayland и Windows через WSL2/WSLg |
-
-### 1. Подготовить хост
-
-На Linux нужны Docker Engine, VS Code и расширение **Dev Containers**
-(`ms-vscode-remote.remote-containers`). ROS на хосте не нужен. Проверьте Docker:
-
-```bash
-docker context show
-docker version
-docker ps
-code --install-extension ms-vscode-remote.remote-containers
-```
-
-На Windows используйте Docker Desktop с WSL2 backend и включённой интеграцией
-с выбранным WSL-дистрибутивом. Установите расширения **WSL** и
-**Dev Containers**, храните репозиторий и данные в файловой системе WSL, а не
-на диске `C:`. Открывайте проект из терминала WSL:
-
-```bash
-cd ~/metro-lidar-processing
-code .
-```
-
-Ошибка `docker: unknown command: docker buildx` в логе Dev Containers означает,
-что на хосте нет Buildx-плагина. Dev Containers умеет продолжить legacy-сборкой;
-если ниже присутствует `Successfully built`, эта строка не является причиной
-падения. Чтобы убрать предупреждение и сохранить поддержку будущих версий
-Docker, установите Buildx-плагин из пакетов своего дистрибутива.
-
-Папки `rosbags/` и `results/` уже есть в репозитории. Положите записи в
-`rosbags/`, сохранив каталоги с `metadata.yaml` и файлами данных. Соседние
-каталоги `archive/` и `videos/` больше не используются; ранее сохранённые
-записи и результаты при необходимости перенесите самостоятельно.
-
-### 2. Выбрать и открыть профиль
-
-1. Если VS Code подключён к другому контейнеру, выполните
-   **Dev Containers: Reopen Folder Locally**.
-2. Откройте **`metro-lidar-processing`**.
-3. Выполните **Dev Containers: Reopen in Container**.
-4. Выберите один из двух профилей. Для сервера без GUI выбирайте `Universal`,
-   для обычного рабочего компьютера — `Desktop`.
-5. Дождитесь сборки образа и выполнения `postCreateCommand`. Первая сборка
-   скачивает несколько гигабайт зависимостей.
-6. В новом терминале проверьте:
-
-```bash
-echo "$ROS_DISTRO"                 # humble
-python3 --version                  # Python 3.10.x
-ros2 pkg prefix metro_perception_bringup
-```
-
-### 3. Где находятся файлы
-
-| В контейнере | Назначение |
-|---|---|
-| `/ws` | Исходники с хоста; изменения сразу видны в Git |
-| `/data` | `rosbags/` проекта, подключён только для чтения |
-| `/results` | `results/` проекта; результаты сохраняются после пересоздания |
-| `/ws/build`, `/ws/install`, `/ws/log` | Сборка в корне проекта, исключена из Git |
-
-Сборка и тесты определяют корень проекта по расположению скрипта. Их можно
-вызвать из другого каталога; `build/install/log` появятся только внутри
-репозитория. Эти каталоги сохраняются при **Rebuild Container**. После смены
-ROS-дистрибутива или пути монтирования удалите только `build/`, `install/`,
-`log/` внутри проекта и выполните сборку заново.
-
-Процессы работают от пользователя `dev`. Dev Containers автоматически
-подстраивает его UID/GID под локального пользователя, когда это поддерживается
-хостом, поэтому bind-mounted `/ws` и `/results` не требуют UID/GID `1000:1000`.
-Если автоматическое сопоставление не применяется, остаются значения из Dockerfile
-(`1000:1000` по умолчанию). Для установки дополнительных инструментов есть
-`sudo`. Постоянные зависимости добавляйте в Dockerfile, затем выполняйте
-**Dev Containers: Rebuild Container**.
-
-### 4. Сборка и тесты
-
-Во всех профилях из корня репозитория доступны одинаковые команды:
-
-```bash
-bash scripts/build.sh
-source install/local_setup.bash
-bash scripts/test.sh
-```
-
-В новых терминалах Dev Container Humble и готовый workspace подключаются
-автоматически. На хосте с установленным ROS 2 Humble эти же скрипты работают
-из любого пути к репозиторию. Новые зависимости ROS устанавливайте внутри контейнера:
-
-```bash
-rosdep update --rosdistro humble
-rosdep install --from-paths metro_perception_* --ignore-src --rosdistro humble -y
-```
-
-Для воспроизводимости отразите зависимости в `package.xml` и Dockerfile. Не
-подключайте старый `install/setup.bash` из Jazzy.
-
-### 5. RViz на Linux и Windows
-
-RViz установлен только в профиле `Desktop`. RViz из ROS 2 Humble использует
-OGRE с GLX, поэтому Desktop использует X11/XWayland-сокет и `DISPLAY`, даже если
-рабочий стол хоста использует Wayland. Профиль `Universal` не зависит от дисплея
-и не содержит RViz.
-
-На Linux перед открытием Desktop-профиля проверьте:
-
-```bash
-echo "$DISPLAY"                    # например :0 или :1
-ls -l /tmp/.X11-unix
-```
-
-На Windows обновите WSL (`wsl --update` в PowerShell), включите WSL Integration
-в Docker Desktop и запускайте VS Code командой `code .` из WSL. WSLg должен
-предоставить `DISPLAY` и каталог `/tmp/.X11-unix` в WSL-сессии.
-
-Desktop-профиль автоматически запускает на хосте локальный X11-прокси. Контейнер
-подключается к сокету в `.devcontainer/.runtime/x11`, поэтому один и тот же
-профиль работает с обычным Docker Engine, Snap Docker и Docker Desktop/WSLg.
-Прокси передаёт также DRI3-дескрипторы, нужные аппаратному OpenGL. На Linux
-профиль создаёт в контейнере доступные хосту DRM-устройства из `/sys/class/drm`;
-если их нет, этот шаг завершается без ошибки.
-Runtime-каталог добавлен в `.gitignore` и не попадает в репозиторий. Если
-графическая сессия или XWayland недоступны, выводится предупреждение
-`X11 proxy unavailable`; Dev Containers попробует своё перенаправление GUI.
-Хостовый `DISPLAY` передаётся через `.devcontainer/.runtime/desktop.env` только
-после успешного запуска прокси. При отказе (например, с SSH-дисплеем
-`localhost:10.0`) файл не задаёт `DISPLAY`, чтобы не отключать проброс VS Code.
-После изменения способа подключения к дисплею выполните **Rebuild Container**:
-Docker читает этот файл при создании контейнера.
-Без работающего X11-подключения RViz открыть не получится.
-
-Внутри Desktop-контейнера запустите:
-
-```bash
-rviz2
-```
-
-Для изображения глубины добавьте `Image`, топик `/lidar/depth_image`. Для
-3D-облака добавьте `PointCloud2`, выберите входной топик и установите Fixed Frame
-по его `header.frame_id`: `hesai_lidar` либо `lidar_livox`.
-
-Проверить выбранный рендерер можно командой `glxinfo -B`. Для аппаратного режима
-строка `Accelerated` должна содержать `yes`, а `OpenGL renderer` — имя Intel или
-AMD GPU. `llvmpipe` означает программный fallback и заметно снижает FPS больших
-облаков точек.
-
-### 6. ROS-сеть
-
-Во всех профилях по умолчанию используются обычная bridge-сеть,
-`ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=1` и
-`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`. Это подходит, когда bag и обработка
-запущены внутри одного контейнера. Domain ID не является механизмом защиты.
-
-Для физического лидара или ROS-узлов на других компьютерах потребуется отдельная
-сетевая конфигурация: отключить localhost-only и настроить Cyclone DDS либо явно
-включить host networking на поддерживаемом хосте.
-
-### 7. Сборка образа без VS Code
-
-Dockerfile содержит targets `universal` и `desktop`:
-
-```bash
-docker build --target universal -t metro-lidar-dev:universal docker
-docker build --target desktop -t metro-lidar-dev:desktop docker
-```
-
-Без `--target` собирается headless-вариант. Контекст сборки — только каталог
-`docker`: исходники, архивы, bag-файлы и видео в образ не копируются.
-
-Ручной запуск Universal-профиля:
-
-```bash
-docker run -d --init --name metro-lidar-dev --shm-size 1g \
-  --mount "type=bind,source=$PWD,target=/ws" \
-  --mount "type=bind,source=$PWD/rosbags,target=/data,readonly" \
-  --mount "type=bind,source=$PWD/results,target=/results" \
-  metro-lidar-dev:universal
-docker exec -it metro-lidar-dev bash
-bash scripts/build.sh
-source install/local_setup.bash
-```
-
-При ручном запуске Dev Container без VS Code можно по-прежнему передать при сборке
-`--build-arg USER_UID="$(id -u)" --build-arg USER_GID="$(id -g)"`. Для готовых
-release-образов пересборка под пользователя не нужна: запускайте их с
-`--user "$(id -u):$(id -g)"`, как в примерах выше. Для Desktop нужно
-дополнительно передать X11-сокет и переменные из соответствующего
-`devcontainer.json`.
-
-Документация: [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers).
-
-## Панорамное изображение глубины
-
-`depth_image` преобразует `sensor_msgs/msg/PointCloud2` в дальностное изображение лидара.
-Горизонтальная ось изображения соответствует азимуту лидара. Каждая из 128 строк
-по вертикали соответствует одному физическому лазерному каналу, поэтому тоннель не
-искажается из-за произвольно заданного вертикального поля зрения. Для каждого пикселя
-сохраняется ближайшая точка. Направления без данных остаются чёрными.
-
-Цветовая раскраска соответствует стандартному colorizer Intel RealSense: используется
-палитра Jet с покадровым выравниванием гистограммы. Ближние значения глубины отображаются
-синим/голубым, средние — жёлтым, дальние — красным/тёмно-красным.
-
-### Сборка
-
-```bash
-cd /ws
-bash scripts/build.sh
-source install/local_setup.bash
-```
-
-### Запуск для пяти bag-файлов с `/lidar_points`
-
-```bash
-ros2 launch metro_perception_bringup depth_image.launch.py
-```
-
-### Запуск для `doubleT_obstacle`
-
-```bash
-ros2 launch metro_perception_bringup depth_image.launch.py \
-  input_topic:=/sensing/lidar/hesai128/pointcloud \
-  min_azimuth_deg:=-180.0 \
-  max_azimuth_deg:=180.0 \
-  point_stride:=2
-```
-
-В более крупной записи содержится 921600 точек в одном кадре. `point_stride:=2`
-обрабатывает каждую вторую точку, если более высокая частота обработки важнее
-максимальной угловой детализации.
+[docs/](docs/) и [evaluation/README.md](evaluation/README.md) содержат исторические рабочие записи на дату создания. Текущие статус, команды и ограничения описаны здесь и в [PLAN.md](PLAN.md).
