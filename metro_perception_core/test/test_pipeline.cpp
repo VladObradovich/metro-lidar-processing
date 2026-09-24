@@ -627,3 +627,26 @@ TEST(Candidates, LowObjectsCountOnlyBetweenTheRails) {
   EXPECT_TRUE(PerceptionPipeline(config).process(scene(1.45, 1.65, 0.7)).candidates.empty());
   EXPECT_EQ(PerceptionPipeline(config).process(scene(0.7, 0.85, 1.7)).candidates.size(), 1u);
 }
+
+TEST(Gauge, ObstacleBesideTrackEquipmentIsNotMergedWithIt) {
+  // Low equipment by the rail is in the gauge band; a person appearing right behind it must
+  // be reported at its own distance, not as one component starting at the equipment.
+  auto scene = [](int i) {
+    auto input = moving_tunnel(i, 0, false);
+    // Guard rail at a switch: continuous, low and off-centre, from near the train.
+    for (double x = 6.0; x < 19.95; x += 0.02)
+      for (const double y : {0.60, 0.66})
+        for (const double h : {0.30, 0.36, 0.42}) input.points.push_back({x, y, -1.0 + h});
+    if (i >= 11) add_box(input, 20, 0.40, 0.90, 0.3, 1.7);
+    return input;
+  };
+  PerceptionPipeline pipeline;
+  FrameResult frame;
+  for (int i = 0; i <= 11; ++i) frame = pipeline.process(scene(i));
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  ASSERT_TRUE(frame.route.valid);
+  ASSERT_EQ(frame.candidates.size(), 1u);
+  EXPECT_NEAR(frame.candidates.front().distance_m, 20.0, 0.1);
+  EXPECT_NEAR(frame.candidates.front().center.x, 20.25, 0.5);
+  EXPECT_LT(frame.candidates.front().size.x, 1.0);
+}

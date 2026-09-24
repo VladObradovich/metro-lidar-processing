@@ -621,6 +621,13 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   const double gauge_half_width =
       std::min(config.static_half_width_m, config.corridor_half_width_m);
   const double gauge_max_height = std::min(config.static_max_height_m, config.corridor_height_m);
+  // Low returns count for the gauge only between the rails: rails, the contact rail and
+  // ducts would otherwise join a real obstacle beside them into one long component.
+  auto gauge_point = [&](double offset, double height) {
+    return offset <= gauge_half_width && height >= config.static_min_height_m &&
+           height <= gauge_max_height &&
+           (offset <= config.low_object_half_width_m || height >= config.low_object_height_m);
+  };
   for (const auto index : frame.detection_indices) {
     const auto& p = frame.geometry_points[index].point;
     if (p.x > end_x || p.x < config.detection_roi.min[0]) continue;
@@ -628,8 +635,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     const double offset = std::abs(route.offset(p));
     const bool in_band = offset <= band_half_width && height >= config.obstacle_min_height_m &&
                          height <= config.corridor_height_m;
-    const bool in_gauge = gauge_on && p.x <= route.max_x && offset <= gauge_half_width &&
-                          height >= config.static_min_height_m && height <= gauge_max_height;
+    const bool in_gauge = gauge_on && p.x <= route.max_x && gauge_point(offset, height);
     if (!in_band && !in_gauge) continue;
     const double range = sensor_range(p);
     if (!(range > 0)) continue;
@@ -683,9 +689,8 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       bool cell_inside = false;
       for (const auto point_index : cell.points) {
         const auto& p = frame.geometry_points[point_index].point;
-        if (gauge_on && std::abs(route.offset(p)) <= gauge_half_width) {
-          const double height = ground.height(p);
-          if (height >= config.static_min_height_m && height <= gauge_max_height) {
+        if (gauge_on) {
+          if (gauge_point(std::abs(route.offset(p)), ground.height(p))) {
             gauge_lo_x = std::min(gauge_lo_x, p.x);
             gauge_hi_x = std::max(gauge_hi_x, p.x);
           }
