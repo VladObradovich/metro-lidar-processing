@@ -98,6 +98,32 @@ TEST(Profile, LoadsAndRejectsUnsafeConfiguration) {
   std::remove(path.c_str());
 }
 
+TEST(Profile, TemporalRuleIsReadAndValidated) {
+  // The shipped profile carries the confirmation rule chosen for G4.
+  const auto shipped = load_temporal_config("");
+  EXPECT_EQ(shipped.confirm_hits, 2u);
+  EXPECT_EQ(shipped.confirm_window, 3u);
+  EXPECT_EQ(shipped.release_misses, 2u);
+  const auto path = std::string("/tmp/metro-temporal-test-") + std::to_string(getpid()) + ".yaml";
+  auto save = [&](const std::string& text) { std::ofstream(path) << text; };
+  // Without a temporal section the decision stays per frame.
+  save("source_frame: lidar\n");
+  const auto per_frame = load_temporal_config(path);
+  EXPECT_EQ(per_frame.confirm_hits, 1u);
+  EXPECT_EQ(per_frame.confirm_window, 1u);
+  EXPECT_EQ(per_frame.release_misses, 1u);
+  save("temporal:\n  confirm_hits: 3\n  confirm_window: 5\n  max_gap_s: 1.5\n");
+  const auto read = load_temporal_config(path);
+  EXPECT_EQ(read.confirm_hits, 3u);
+  EXPECT_EQ(read.confirm_window, 5u);
+  EXPECT_DOUBLE_EQ(read.max_gap_s, 1.5);
+  save("temporal:\n  confirm_hits: 4\n  confirm_window: 3\n");
+  EXPECT_THROW(load_temporal_config(path), std::invalid_argument);
+  save("temporal: 2\n");
+  EXPECT_THROW(load_temporal_config(path), std::invalid_argument);
+  std::remove(path.c_str());
+}
+
 TEST(Transform, SameFrameDoesNotRequireTfTree) {
   tf2_ros::Buffer buffer(std::make_shared<rclcpp::Clock>(RCL_ROS_TIME));
   PreprocessingConfig c;

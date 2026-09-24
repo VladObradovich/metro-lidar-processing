@@ -101,4 +101,34 @@ struct AlgorithmConfig {
         throw std::invalid_argument("Detection ROI must be inside geometry ROI");
   }
 };
+// Confirmation over frames (G4). The defaults reproduce the per-frame decision exactly.
+struct TemporalConfig {
+  // Hits a track needs within its last `window` frames to be confirmed.
+  std::size_t confirm_hits{1}, confirm_window{1};
+  // Stricter rule for tracks seen only by the gauge channel, which has no history evidence.
+  std::size_t gauge_confirm_hits{1}, gauge_confirm_window{1};
+  // A confirmed track survives this many missed frames minus one, coasting on ego motion.
+  std::size_t release_misses{1};
+  // Association gate: base + fraction of range + object and unknown-ego motion over dt.
+  double gate_base_m{1.0};
+  double gate_range_fraction{0.03};
+  double object_max_speed_mps{4.0};
+  double unknown_ego_speed_mps{20.0};
+  // A longer pause between analysed frames restarts all tracks.
+  double max_gap_s{0.5};
+  std::size_t max_tracks{64};
+  void validate() const {
+    const auto rule_ok = [](std::size_t hits, std::size_t window) {
+      return hits >= 1 && window >= hits && window <= 32;
+    };
+    if (!rule_ok(confirm_hits, confirm_window) ||
+        !rule_ok(gauge_confirm_hits, gauge_confirm_window) || release_misses < 1 ||
+        release_misses > 32 || !std::isfinite(gate_base_m) || gate_base_m <= 0 ||
+        !std::isfinite(gate_range_fraction) || gate_range_fraction < 0 ||
+        !std::isfinite(object_max_speed_mps) || object_max_speed_mps < 0 ||
+        !std::isfinite(unknown_ego_speed_mps) || unknown_ego_speed_mps < 0 ||
+        !std::isfinite(max_gap_s) || max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024)
+      throw std::invalid_argument("Invalid temporal configuration");
+  }
+};
 }  // namespace metro_perception_core

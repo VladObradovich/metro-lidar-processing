@@ -128,7 +128,8 @@ int main(int argc, char** argv) {
                                                 static_cast<std::int64_t>(lookahead_s * 1e9));
 
     metro_perception_core::PerceptionPipeline pipeline(config.algorithm);
-    metro_perception_core::TemporalMonitor monitor;
+    metro_perception_core::TemporalMonitor monitor(
+        metro_perception_ros::load_temporal_config(argc >= 5 ? argv[4] : ""));
     std::uint64_t sequence = 0;
     std::uint64_t session = 0;
     std::optional<std::int64_t> previous_stamp;
@@ -227,6 +228,20 @@ int main(int argc, char** argv) {
         const auto& plane = result.corridor.front().ground_plane;
         output << '[' << plane[0] << ',' << plane[1] << ',' << plane[2] << ',' << plane[3] << ']';
       }
+      output << ",\"tracks\":[";
+      for (std::size_t i = 0; i < assessment.tracks.size(); ++i) {
+        const auto& track = assessment.tracks[i];
+        if (i) output << ',';
+        output << "{\"id\":" << track.id
+               << ",\"confirmed\":" << (track.confirmed ? "true" : "false")
+               << ",\"coasting\":" << (track.coasting ? "true" : "false")
+               << ",\"hits\":" << track.hits << ",\"age\":" << track.age_frames
+               << ",\"distance_m\":" << std::setprecision(17) << track.distance_m << ",\"center\":["
+               << track.center.x << ',' << track.center.y << ',' << track.center.z << "],\"size\":["
+               << track.size.x << ',' << track.size.y << ',' << track.size.z
+               << "],\"channels\":" << static_cast<unsigned>(track.channels) << '}';
+      }
+      output << ']';
       output << ",\"route\":[" << result.route.c1 << ',' << result.route.c2 << ','
              << (result.route.valid ? "true" : "false") << ',' << result.route.max_x << ']';
       output << ",\"processing_status\":" << static_cast<unsigned>(result.status)

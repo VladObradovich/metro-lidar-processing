@@ -30,14 +30,44 @@ bool valid_frame_name(const std::string& frame) {
   return !frame.empty() && frame[0] != '/' && frame != "*";
 }
 
+std::string profile_file(const std::string& path) {
+  return path.empty() ? ament_index_cpp::get_package_share_directory("metro_perception_ros") +
+                            "/config/forward_sector_assumed.yaml"
+                      : path;
+}
+
 }  // namespace
+
+metro_perception_core::TemporalConfig load_temporal_config(const std::string& path) {
+  metro_perception_core::TemporalConfig c;
+  const auto n = YAML::LoadFile(profile_file(path));
+  if (const auto temporal = n["temporal"]) {
+    if (!temporal.IsMap()) throw std::invalid_argument("temporal must be a mapping");
+    auto read_count = [&](const char* key, std::size_t& value) {
+      if (temporal[key]) value = temporal[key].as<std::size_t>();
+    };
+    auto read_double = [&](const char* key, double& value) {
+      if (temporal[key]) value = temporal[key].as<double>();
+    };
+    read_count("confirm_hits", c.confirm_hits);
+    read_count("confirm_window", c.confirm_window);
+    read_count("gauge_confirm_hits", c.gauge_confirm_hits);
+    read_count("gauge_confirm_window", c.gauge_confirm_window);
+    read_count("release_misses", c.release_misses);
+    read_double("gate_base_m", c.gate_base_m);
+    read_double("gate_range_fraction", c.gate_range_fraction);
+    read_double("object_max_speed_mps", c.object_max_speed_mps);
+    read_double("unknown_ego_speed_mps", c.unknown_ego_speed_mps);
+    read_double("max_gap_s", c.max_gap_s);
+    read_count("max_tracks", c.max_tracks);
+  }
+  c.validate();
+  return c;
+}
 
 PreprocessingConfig load_preprocessing(const std::string& path) {
   PreprocessingConfig c;
-  const auto file = path.empty()
-                        ? ament_index_cpp::get_package_share_directory("metro_perception_ros") +
-                              "/config/forward_sector_assumed.yaml"
-                        : path;
+  const auto file = profile_file(path);
   const auto n = YAML::LoadFile(file);
 
   const auto mode = n["source_frame_mode"] ? n["source_frame_mode"].as<std::string>() : "exact";

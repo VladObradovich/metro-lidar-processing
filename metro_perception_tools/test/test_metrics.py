@@ -252,3 +252,18 @@ def test_clean_run_remains_reproducible_without_scoring_hashes(tmp_path):
 def test_unreviewed_annotation_is_rejected():
     with pytest.raises(ValueError):
         quality([frame(0, 'OBSTACLE')], {'reviewed': False, 'time_basis': 'bag_stamp_ns'})
+
+
+def test_confirmed_tracks_decide_object_hits_when_present():
+    roi = {'min': [10.0, -1.0, -1.0], 'max': [11.0, 1.0, 1.0]}
+    event = {'id': 'person', 'label': 'positive', 'start_ns': 0, 'end_ns': S,
+             'reference_frames': [{'bag_stamp_ns': 0, 'distance_m': None,
+                                   'person_roi_assumed_m': roi}]}
+    person = {'center': [10.5, 0.0, 0.0], 'distance_m': 10.3}
+    row = frame(0, 'OBSTACLE', 10.3, [person])
+    row['tracks'] = [{**person, 'confirmed': False}]
+    result = quality([row], annotation([(0, S, 'positive')], [event]))
+    assert result['object']['wrong_object'] == 1  # Only an unconfirmed track in the ROI.
+    row['tracks'] = [{**person, 'confirmed': True}]
+    result = quality([row], annotation([(0, S, 'positive')], [event]))
+    assert result['object']['hits'] == 1

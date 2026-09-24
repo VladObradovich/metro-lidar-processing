@@ -339,3 +339,43 @@ TEST(AssessmentMonitor, UnknownProcessingAgeIsRejectedImmediately) {
   expect_stale(monitor.output(t0 + 501ms), valid);
   EXPECT_TRUE(monitor.on_analysis(frame({.sequence = 3}), t0 + 600ms).accepted);
 }
+
+TEST(AssessmentMonitor, TracksAreConfirmedOverFramesAndClearedWhenStale) {
+  metro_perception_core::TemporalConfig rule;
+  rule.confirm_hits = rule.gauge_confirm_hits = 2;
+  rule.confirm_window = rule.gauge_confirm_window = 3;
+  AssessmentMonitor monitor(0.5, rule);
+  auto first = frame({.sequence = 1, .candidates = {{30.0, true}}});
+  first.candidates[0].reasons = {"GAUGE"};
+  first.ego_motion_valid = true;
+  first.ego_speed_mps = 0.0;
+  ASSERT_TRUE(monitor.on_analysis(first, t0).accepted);
+  auto out = monitor.output(t0);
+  EXPECT_EQ(out.state, PathAssessment::UNKNOWN);
+  EXPECT_EQ(out.reason, "CANDIDATE_UNCONFIRMED");
+  expect_no_distance(out);
+  ASSERT_EQ(out.tracks.size(), 1u);
+  const auto id = out.tracks.front().track_id;
+  EXPECT_FALSE(out.tracks.front().confirmed);
+  EXPECT_EQ(out.tracks.front().reasons, std::vector<std::string>{"GAUGE"});
+  EXPECT_DOUBLE_EQ(out.tracks.front().bbox.center.position.x, 30.0);
+
+  // A repeated message is rejected by the gate and must not count as a second hit.
+  EXPECT_FALSE(monitor.on_analysis(first, t0 + 10ms).accepted);
+  EXPECT_EQ(monitor.output(t0 + 10ms).state, PathAssessment::UNKNOWN);
+
+  auto second = first;
+  second.frame_sequence = 2;
+  second.header.stamp.nanosec = 100000000;
+  ASSERT_TRUE(monitor.on_analysis(second, t0 + 100ms).accepted);
+  out = monitor.output(t0 + 100ms);
+  ASSERT_EQ(out.state, PathAssessment::OBSTACLE) << out.reason;
+  EXPECT_DOUBLE_EQ(out.distance_m, 30.0);
+  ASSERT_EQ(out.tracks.size(), 1u);
+  EXPECT_EQ(out.tracks.front().track_id, id);
+  EXPECT_TRUE(out.tracks.front().confirmed);
+
+  out = monitor.output(t0 + 700ms);
+  EXPECT_TRUE(out.stale);
+  EXPECT_TRUE(out.tracks.empty());
+}

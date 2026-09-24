@@ -14,11 +14,13 @@ string reason
 # Trust used for this observation. ASSUMED may never prove a clear path.
 uint8 calibration_trust
 # All candidates of the fresh, successfully analysed frame this decision is based on,
-# including candidates without a usable distance. Not confirmed over time (that is G4).
+# including candidates without a usable distance. Per frame; confirmation is in `tracks`.
 ObstacleCandidate[] reported_objects
 # Corridor of the same frame, in header.frame_id. Empty on analysis failure or stale output.
 CorridorSegment[] corridor
-# Nearest usable candidate distance; NaN whenever distance_valid is false.
+# Candidates followed over frames; OBSTACLE comes from confirmed tracks. Empty when stale.
+ObstacleTrack[] tracks
+# Distance of the nearest confirmed track; NaN whenever distance_valid is false.
 float64 distance_m
 bool distance_valid
 bool evaluation_region_valid

@@ -135,6 +135,33 @@ class Visualizer : public rclcpp::Node {
         dot.color.a = 1.0;
         output.markers.push_back(dot);
       }
+      // Confirmed tracks (G4): label with id and distance; a coasting track, not measured in
+      // this frame, is drawn as a faint box at its predicted place.
+      for (const auto& track : assessment.tracks) {
+        if (!track.confirmed) continue;
+        const auto id = static_cast<std::int32_t>(track.track_id);
+        Marker text = base(assessment, "track_label", id, Marker::TEXT_VIEW_FACING);
+        text.pose.position = track.bbox.center.position;
+        text.pose.position.z += track.bbox.size.z / 2 + 0.4;
+        text.scale.z = 0.4;
+        text.color.r = text.color.g = text.color.b = text.color.a = 1.0;
+        std::ostringstream name;
+        name << '#' << track.track_id << ' ' << std::fixed << std::setprecision(1)
+             << track.distance_m << " m" << (track.coasting ? " (predicted)" : "");
+        text.text = name.str();
+        output.markers.push_back(text);
+        if (!track.coasting) continue;
+        Marker ghost = base(assessment, "track_coasting", id, Marker::CUBE);
+        ghost.pose = track.bbox.center;
+        ghost.scale = track.bbox.size;
+        ghost.scale.x = std::max(ghost.scale.x, 0.05);
+        ghost.scale.y = std::max(ghost.scale.y, 0.05);
+        ghost.scale.z = std::max(ghost.scale.z, 0.05);
+        ghost.color.r = 1.0;
+        ghost.color.g = 0.5;
+        ghost.color.a = 0.2;
+        output.markers.push_back(ghost);
+      }
     }
     publisher_->publish(output);
   }

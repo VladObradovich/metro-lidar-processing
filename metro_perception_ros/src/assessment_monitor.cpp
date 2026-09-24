@@ -12,7 +12,9 @@ namespace {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 }
 
-AssessmentMonitor::AssessmentMonitor(double timeout_s) : timeout_ms_(timeout_s * 1000) {
+AssessmentMonitor::AssessmentMonitor(double timeout_s,
+                                     metro_perception_core::TemporalConfig temporal)
+    : timeout_ms_(timeout_s * 1000), monitor_(temporal) {
   if (!std::isfinite(timeout_s) || timeout_s <= 0) {
     throw std::invalid_argument("timeout_s must be positive");
   }
@@ -48,11 +50,22 @@ GateDecision AssessmentMonitor::on_analysis(const FrameAnalysis& frame, Clock::t
   result.calibration_trust = decode_calibration_trust(frame.calibration_trust);
   result.evaluation_region_valid = frame.evaluation_region_valid;
   result.evaluated_range_m = frame.evaluated_range_m;
+  result.ego_motion_valid = frame.ego_motion_valid;
+  result.ego_speed_mps = frame.ego_speed_mps;
   for (const auto& item : frame.candidates) {
     metro_perception_core::ObstacleCandidate candidate;
     candidate.id = item.candidate_id;
+    candidate.center = {item.bbox.center.position.x, item.bbox.center.position.y,
+                        item.bbox.center.position.z};
+    candidate.size = {item.bbox.size.x, item.bbox.size.y, item.bbox.size.z};
+    candidate.nearest_point = {item.nearest_point.x, item.nearest_point.y, item.nearest_point.z};
     candidate.distance_m = item.distance_m;
     candidate.distance_valid = item.distance_valid;
+    for (const auto& reason : item.reasons) {
+      if (reason == "MOTION")
+        candidate.channels |= metro_perception_core::ObstacleCandidate::kMotion;
+      if (reason == "GAUGE") candidate.channels |= metro_perception_core::ObstacleCandidate::kGauge;
+    }
     result.candidates.push_back(candidate);
   }
   const auto assessment = monitor_.update(result, *stamp);
@@ -70,6 +83,27 @@ GateDecision AssessmentMonitor::on_analysis(const FrameAnalysis& frame, Clock::t
   // Objects and corridor always come from the frame the decision was made on.
   output_.reported_objects = analysed ? frame.candidates : decltype(frame.candidates){};
   output_.corridor = analysed ? frame.corridor : decltype(frame.corridor){};
+  output_.tracks.clear();
+  for (const auto& track : assessment.tracks) {
+    auto& item = output_.tracks.emplace_back();
+    item.track_id = track.id;
+    item.confirmed = track.confirmed;
+    item.coasting = track.coasting;
+    item.hits = track.hits;
+    item.age_frames = track.age_frames;
+    item.bbox.center.position.x = track.center.x;
+    item.bbox.center.position.y = track.center.y;
+    item.bbox.center.position.z = track.center.z;
+    item.bbox.center.orientation.w = 1.0;
+    item.bbox.size.x = track.size.x;
+    item.bbox.size.y = track.size.y;
+    item.bbox.size.z = track.size.z;
+    item.distance_m = track.distance_m;
+    if (track.channels & metro_perception_core::ObstacleCandidate::kMotion)
+      item.reasons.push_back("MOTION");
+    if (track.channels & metro_perception_core::ObstacleCandidate::kGauge)
+      item.reasons.push_back("GAUGE");
+  }
   output_.evaluation_region_valid = analysed && frame.evaluation_region_valid;
   output_.evaluated_range_m = analysed ? frame.evaluated_range_m : 0.0;
   output_.stale = false;
@@ -97,6 +131,7 @@ void AssessmentMonitor::expire() {
   output_.distance_m = kNaN;
   output_.reported_objects.clear();
   output_.corridor.clear();
+  output_.tracks.clear();
   output_.evaluation_region_valid = false;
   output_.evaluated_range_m = 0.0;
 }

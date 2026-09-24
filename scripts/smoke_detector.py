@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check geometric B0 through ROS topics, markers and sequential bag evaluation."""
+"""Check the detector and G4 confirmation through ROS topics, markers and bag evaluation."""
 import json
 import math
 import os
@@ -28,7 +28,7 @@ STATE_NAMES = {
 }
 
 
-def cloud(kind, stamp_sec):
+def cloud(kind, stamp):
     """Build a level floor ('clear'), floor and object ('obstacle') or object only."""
     points = []
     if kind != 'unknown':
@@ -46,7 +46,7 @@ def cloud(kind, stamp_sec):
         ]
     msg = PointCloud2()
     msg.header.frame_id = 'synthetic_lidar'
-    msg.header.stamp.sec = stamp_sec
+    msg.header.stamp.sec, msg.header.stamp.nanosec = stamp
     msg.height = 1
     msg.width = len(points)
     msg.point_step = 12
@@ -73,6 +73,10 @@ def same_candidates(reported, analysed):
                 or (math.isnan(a.distance_m) and math.isnan(b.distance_m))):
             return False
     return True
+
+
+def stamp_of(msg):
+    return (msg.header.stamp.sec, msg.header.stamp.nanosec)
 
 
 def main():
@@ -103,6 +107,11 @@ translation_m: null
 rotation_rpy_rad: null
 detector:
   background_history_frames: 0
+temporal:
+  confirm_hits: 2
+  confirm_window: 3
+  gauge_confirm_hits: 2
+  gauge_confirm_window: 3
 """)
         launch = subprocess.Popen([
             'ros2', 'launch', 'metro_perception_bringup',
@@ -121,7 +130,7 @@ detector:
                     )
                 rclpy.spin_once(node, timeout_sec=0.05)
 
-        def evaluate_offline(msg, name):
+        def evaluate_offline(messages, name):
             bag = root / name
             writer = rosbag2_py.SequentialWriter()
             writer.open(
@@ -132,16 +141,16 @@ detector:
                 name='/points', type='sensor_msgs/msg/PointCloud2',
                 serialization_format='cdr'
             ))
-            writer.write(
-                '/points', serialize_message(msg), msg.header.stamp.sec * 10**9
-            )
+            for msg in messages:
+                sec, nanosec = stamp_of(msg)
+                writer.write('/points', serialize_message(msg), sec * 10**9 + nanosec)
             del writer
             output = root / (name + '.jsonl')
             subprocess.run([
                 'ros2', 'run', 'metro_perception_ros', 'evaluate_bag',
                 str(bag), '/points', str(output), str(profile)
             ], check=True)
-            return json.loads(output.read_text())
+            return [json.loads(line) for line in output.read_text().splitlines()]
 
         try:
             wait_until(
@@ -149,27 +158,30 @@ detector:
                 and bool(assessments)
             )
             # Increasing stamps keep one session; the obstacle comes last for the timeout.
+            # With the 2-of-3 rule its first sighting is unconfirmed, the next frame
+            # (0.1 s later) confirms it. Republished copies of a cloud are no new sighting.
             cases = [
-                ('clear', 123, PathAssessment.NO_OBSTACLE_DETECTED,
+                ('clear', (123, 0), PathAssessment.NO_OBSTACLE_DETECTED,
                  'NO_CANDIDATE_IN_EVALUATED_REGION'),
-                ('unknown', 124, PathAssessment.UNKNOWN, 'GROUND_UNSUPPORTED'),
-                ('obstacle', 125, PathAssessment.OBSTACLE, 'OBSTACLE_CANDIDATE'),
+                ('unknown', (124, 0), PathAssessment.UNKNOWN, 'GROUND_UNSUPPORTED'),
+                ('obstacle', (125, 0), PathAssessment.UNKNOWN, 'CANDIDATE_UNCONFIRMED'),
+                ('obstacle', (125, 100000000), PathAssessment.OBSTACLE, 'OBSTACLE_CANDIDATE'),
             ]
-            for kind, stamp_sec, expected_state, expected_reason in cases:
-                msg = cloud(kind, stamp_sec)
+            sequence, track_id = [], None
+            for kind, stamp, expected_state, expected_reason in cases:
+                msg = cloud(kind, stamp)
                 deadline = time.monotonic() + 12
-                while not any(a.header.stamp.sec == stamp_sec for a in analyses):
+                while not any(stamp_of(a) == stamp for a in analyses):
                     if time.monotonic() > deadline:
                         raise RuntimeError(f'No frame analysis for {kind}')
                     publisher.publish(msg)
                     rclpy.spin_once(node, timeout_sec=0.1)
-                analysis = next(a for a in analyses if a.header.stamp.sec == stamp_sec)
 
                 # Any analysis of this cloud may be the first to reach the monitor.
                 def matching():
                     return next((
                         a for a in assessments
-                        if a.header.stamp.sec == stamp_sec and not a.stale
+                        if stamp_of(a) == stamp and not a.stale
                         and any(x.frame_sequence == a.frame_sequence for x in analyses)
                     ), None)
                 wait_until(lambda: matching() is not None)
@@ -192,45 +204,58 @@ detector:
                     assert list(assessment.corridor) == list(analysis.corridor)
                     assert assessment.corridor
                     assert assessment.evaluated_range_m == analysis.evaluated_range_m
-                if kind == 'obstacle':
+                if expected_state == PathAssessment.OBSTACLE:
                     assert assessment.distance_valid
                     assert abs(assessment.distance_m - 20.0) < 0.2
-                    assert assessment.reported_objects
                 else:
                     assert not assessment.distance_valid
                     assert math.isnan(assessment.distance_m)
-                    assert not assessment.reported_objects
+                assert bool(assessment.reported_objects) == (kind == 'obstacle')
+                if kind == 'obstacle':
+                    # One track follows the object; only the second sighting confirms it.
+                    assert len(assessment.tracks) == 1, assessment.tracks
+                    track = assessment.tracks[0]
+                    assert track.confirmed == (expected_state == PathAssessment.OBSTACLE)
+                    assert track_id in (None, track.track_id)
+                    track_id = track.track_id
+                else:
+                    assert not assessment.tracks
 
-                row = evaluate_offline(msg, kind)
+                sequence = sequence + [msg] if kind == 'obstacle' else [msg]
+                row = evaluate_offline(sequence, f'{kind}_{len(sequence)}')[-1]
                 assert row['state'] == STATE_NAMES[assessment.state], (kind, row)
                 assert row['reason'] == assessment.reason, (kind, row)
                 assert row['distance_valid'] == assessment.distance_valid
                 assert row['candidate_count'] == len(analysis.candidates)
                 assert row['evaluation_region_valid'] == analysis.evaluation_region_valid
-                if kind == 'obstacle':
+                assert [t['confirmed'] for t in row['tracks']] == [
+                    t.confirmed for t in assessment.tracks]
+                if expected_state == PathAssessment.OBSTACLE:
                     assert abs(row['distance_m'] - assessment.distance_m) < 0.01
-                    assert row['candidates'][0]['support_points'] > 5
                 else:
                     assert row['distance_m'] is None
+                if kind == 'obstacle':
+                    assert row['candidates'][0]['support_points'] > 5
+                else:
                     assert not row['candidates']
 
             def drawn(array, namespace):
                 return any(m.ns == namespace for m in array.markers)
             wait_until(lambda: any(drawn(a, 'candidate_bbox') and drawn(a, 'corridor')
                                    and drawn(a, 'nearest_point') for a in markers))
-            # Stop publishing: the watchdog must drop the old object and corridor.
-            wait_until(lambda: any(a.stale and a.header.stamp.sec == 125
+            # Stop publishing: the watchdog must drop the old object, corridor and track.
+            wait_until(lambda: any(a.stale and stamp_of(a) == stamp
                                    for a in assessments), seconds=5)
-            stale = next(a for a in assessments if a.stale and a.header.stamp.sec == 125)
+            stale = next(a for a in assessments if a.stale and stamp_of(a) == stamp)
             # The heartbeat keeps the key of the last accepted analysis of that frame.
-            last = max((a for a in analyses if a.header.stamp.sec == 125),
+            last = max((a for a in analyses if stamp_of(a) == stamp),
                        key=lambda a: a.frame_sequence)
             assert stale.frame_sequence == last.frame_sequence
             assert stale.state == PathAssessment.UNKNOWN
             assert stale.reason == 'INPUT_PAUSED_OR_STOPPED'
             assert stale.header.stamp == last.header.stamp
             assert not stale.distance_valid and math.isnan(stale.distance_m)
-            assert not stale.reported_objects and not stale.corridor
+            assert not stale.reported_objects and not stale.corridor and not stale.tracks
             assert not stale.evaluation_region_valid
             markers.clear()
             wait_until(lambda: any(
@@ -241,8 +266,8 @@ detector:
             assert not drawn(stale_markers, 'corridor')
             assert stale_markers.markers[0].action == stale_markers.markers[0].DELETEALL
             print(
-                'PASS: B0 clear/unknown/obstacle online and offline agree; objects and '
-                'corridor follow the frame; timeout clears them'
+                'PASS: clear/unknown/unconfirmed/confirmed obstacle online and offline agree; '
+                'objects and corridor follow the frame; timeout clears them and the track'
             )
         finally:
             if launch.poll() is None:

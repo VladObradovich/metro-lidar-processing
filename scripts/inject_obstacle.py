@@ -348,9 +348,12 @@ def report(args):
                 continue
             lo = np.array(entry['lo']) - 0.5
             hi = np.array(entry['hi']) + 0.5
+            # Confirmed tracks decide since G4; older runs only have candidates.
+            objects = ([t for t in row['tracks'] if t['confirmed']] if 'tracks' in row
+                       else row['candidates'])
             hit = row['state'] == 'OBSTACLE' and any(
                 np.all((np.array(c['center']) >= lo) & (np.array(c['center']) <= hi))
-                for c in row['candidates'])
+                for c in objects)
             bins[key][0] += hit
             bins[key][1] += 1
             if hit and first_hit is None:

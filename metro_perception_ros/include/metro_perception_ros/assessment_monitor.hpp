@@ -18,7 +18,7 @@ class AssessmentMonitor {
   using FrameAnalysis = metro_perception_interfaces::msg::FrameAnalysis;
   using PathAssessment = metro_perception_interfaces::msg::PathAssessment;
 
-  explicit AssessmentMonitor(double timeout_s);
+  explicit AssessmentMonitor(double timeout_s, metro_perception_core::TemporalConfig temporal = {});
 
   // Accepted analyses replace the published result; rejected ones only update diagnostics.
   GateDecision on_analysis(const FrameAnalysis& frame, Clock::time_point now);

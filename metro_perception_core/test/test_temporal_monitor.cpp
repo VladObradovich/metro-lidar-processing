@@ -169,3 +169,200 @@ TEST(TemporalMonitorTable, TimeoutIsUnknownWithoutDistance) {
   EXPECT_FALSE(a.distance_valid);
   EXPECT_TRUE(std::isnan(a.distance_m));
 }
+
+namespace {
+struct Seen {
+  double x, y;
+  std::uint8_t channels{ObstacleCandidate::kMotion};
+};
+FrameResult tracked_frame(const std::vector<Seen>& seen, double ego_speed = 0.0,
+                          bool ego_valid = true) {
+  FrameResult frame;
+  frame.status = AnalysisStatus::OK;
+  frame.reason = "OK";
+  frame.calibration_trust = CalibrationTrust::VERIFIED;
+  frame.evaluation_region_valid = true;
+  frame.evaluated_range_m = 80;
+  frame.ego_motion_valid = ego_valid;
+  frame.ego_speed_mps = ego_speed;
+  std::uint64_t id = 0;
+  for (const auto& s : seen) {
+    ObstacleCandidate c;
+    c.id = ++id;
+    c.center = {s.x, s.y, 0.0};
+    c.size = {0.5, 0.5, 1.7};
+    c.distance_m = s.x - 0.25;
+    c.distance_valid = true;
+    c.channels = s.channels;
+    frame.candidates.push_back(c);
+  }
+  return frame;
+}
+constexpr std::int64_t kFrameNs = 100000000;  // 10 Hz.
+TemporalConfig rule(std::size_t hits, std::size_t window, std::size_t release = 1) {
+  TemporalConfig config;
+  config.confirm_hits = config.gauge_confirm_hits = hits;
+  config.confirm_window = config.gauge_confirm_window = window;
+  config.release_misses = release;
+  return config;
+}
+}  // namespace
+
+TEST(Tracker, DefaultRuleIsThePerFrameDecisionOverASequence) {
+  const std::vector<std::vector<Seen>> sequence = {
+      {{30, 0}}, {}, {{29, 0.2}, {12, -0.5}}, {{11, -0.5}}, {}, {}, {{40, 0}}, {{5, 0.1}}};
+  TemporalMonitor persistent;
+  for (std::size_t i = 0; i < sequence.size(); ++i) {
+    const auto frame = tracked_frame(sequence[i], 10.0);
+    const auto a = persistent.update(frame, (i + 1) * kFrameNs);
+    const auto fresh = TemporalMonitor().update(frame, 1);
+    SCOPED_TRACE(i);
+    EXPECT_EQ(a.state, fresh.state);
+    EXPECT_EQ(a.reason, fresh.reason);
+    EXPECT_EQ(a.distance_valid, fresh.distance_valid);
+    if (a.distance_valid) EXPECT_DOUBLE_EQ(a.distance_m, fresh.distance_m);
+  }
+}
+
+TEST(Tracker, SingleFrameSpikeIsNeverAnObstacleNorAClearPath) {
+  TemporalMonitor monitor(rule(2, 3));
+  auto a = monitor.update(tracked_frame({{30, 0}}), kFrameNs);
+  EXPECT_EQ(a.state, State::UNKNOWN);
+  EXPECT_EQ(a.reason, "CANDIDATE_UNCONFIRMED");
+  // Recent unconfirmed evidence still forbids a clear path until its window has passed.
+  for (int i = 2; i <= 3; ++i) {
+    a = monitor.update(tracked_frame({}), i * kFrameNs);
+    EXPECT_EQ(a.state, State::UNKNOWN) << i;
+    EXPECT_EQ(a.reason, "CANDIDATE_UNCONFIRMED") << i;
+  }
+  a = monitor.update(tracked_frame({}), 4 * kFrameNs);
+  EXPECT_EQ(a.state, State::NO_OBSTACLE_DETECTED);
+  EXPECT_TRUE(a.tracks.empty());
+}
+
+TEST(Tracker, ObjectFixedInTheWorldIsConfirmedWhileApproaching) {
+  TemporalMonitor monitor(rule(2, 3));
+  const auto first = monitor.update(tracked_frame({{50, 0}}, 10.0), kFrameNs);
+  EXPECT_EQ(first.state, State::UNKNOWN);
+  ASSERT_EQ(first.tracks.size(), 1u);
+  const auto id = first.tracks.front().id;
+  const auto second = monitor.update(tracked_frame({{49, 0.05}}, 10.0), 2 * kFrameNs);
+  ASSERT_EQ(second.state, State::OBSTACLE) << second.reason;
+  EXPECT_EQ(second.reason, "OBSTACLE_CANDIDATE");
+  EXPECT_DOUBLE_EQ(second.distance_m, 48.75);
+  ASSERT_EQ(second.tracks.size(), 1u);
+  EXPECT_EQ(second.tracks.front().id, id);
+  EXPECT_TRUE(second.tracks.front().confirmed);
+}
+
+TEST(Tracker, ObjectCrossingTheRouteKeepsItsTrack) {
+  TemporalMonitor monitor(rule(3, 3));
+  std::uint64_t id = 0;
+  for (int i = 0; i < 3; ++i) {
+    const auto a = monitor.update(tracked_frame({{20, -1.0 + 0.3 * i}}), (i + 1) * kFrameNs);
+    ASSERT_EQ(a.tracks.size(), 1u);
+    if (i == 0) id = a.tracks.front().id;
+    EXPECT_EQ(a.tracks.front().id, id);
+    EXPECT_EQ(a.state, i == 2 ? State::OBSTACLE : State::UNKNOWN) << i;
+  }
+}
+
+TEST(Tracker, ConfirmedObstacleCoastsThenIsReleased) {
+  TemporalMonitor monitor(rule(2, 3, 3));
+  monitor.update(tracked_frame({{40, 0}}, 10.0), kFrameNs);
+  ASSERT_EQ(monitor.update(tracked_frame({{39, 0}}, 10.0), 2 * kFrameNs).state, State::OBSTACLE);
+  for (int miss = 1; miss <= 2; ++miss) {
+    const auto a = monitor.update(tracked_frame({}, 10.0), (2 + miss) * kFrameNs);
+    ASSERT_EQ(a.state, State::OBSTACLE) << miss;
+    EXPECT_EQ(a.reason, "OBSTACLE_COASTING");
+    EXPECT_NEAR(a.distance_m, 38.75 - miss * 1.0, 1e-9);  // Predicted by the ego travel.
+    EXPECT_TRUE(a.tracks.front().coasting);
+  }
+  const auto released = monitor.update(tracked_frame({}, 10.0), 5 * kFrameNs);
+  EXPECT_NE(released.state, State::OBSTACLE);
+  EXPECT_TRUE(released.tracks.empty());
+}
+
+TEST(Tracker, TimeGapBackwardStepAndResetRestartTracks) {
+  for (const int variant : {0, 1, 2}) {
+    SCOPED_TRACE(variant);
+    TemporalMonitor monitor(rule(2, 3, 3));
+    monitor.update(tracked_frame({{40, 0}}), 10 * kFrameNs);
+    ASSERT_EQ(monitor.update(tracked_frame({{40, 0}}), 11 * kFrameNs).state, State::OBSTACLE);
+    std::int64_t next = 12 * kFrameNs;
+    if (variant == 0) next = 30 * kFrameNs;  // 1.8 s pause > max_gap_s.
+    if (variant == 1) next = 5 * kFrameNs;   // Time went backwards.
+    if (variant == 2) monitor.reset();
+    const auto a = monitor.update(tracked_frame({{40, 0}}), next);
+    EXPECT_EQ(a.state, State::UNKNOWN);
+    EXPECT_EQ(a.reason, "CANDIDATE_UNCONFIRMED");
+  }
+}
+
+TEST(Tracker, GaugeOnlyTracksUseTheirOwnRule) {
+  auto config = rule(2, 3);
+  config.gauge_confirm_hits = config.gauge_confirm_window = 3;
+  TemporalMonitor monitor(config);
+  const Seen gauge{30, 0, ObstacleCandidate::kGauge}, motion{15, 1, ObstacleCandidate::kMotion};
+  std::vector<State> states;
+  for (int i = 0; i < 3; ++i) {
+    const auto a = monitor.update(tracked_frame({gauge, motion}), (i + 1) * kFrameNs);
+    std::size_t confirmed_gauge = 0;
+    for (const auto& t : a.tracks)
+      if (t.channels == ObstacleCandidate::kGauge && t.confirmed) ++confirmed_gauge;
+    EXPECT_EQ(confirmed_gauge, i == 2 ? 1u : 0u) << i;
+    states.push_back(a.state);
+  }
+  EXPECT_EQ(states, (std::vector<State>{State::UNKNOWN, State::OBSTACLE, State::OBSTACLE}));
+}
+
+TEST(Tracker, UnknownEgoMotionWidensTheGate) {
+  // The train approaches at 25 m/s but the odometry is invalid: the object seems to move
+  // 2.5 m per frame. With an unknown ego motion it stays one track (gate 4.0 m at 20 m); with
+  // a trusted zero ego speed it does not fit the gate (2.0 m) and is never confirmed.
+  for (const bool ego_valid : {false, true}) {
+    TemporalMonitor monitor(rule(2, 3));
+    State last = State::UNKNOWN;
+    for (int i = 0; i < 3; ++i)
+      last = monitor.update(tracked_frame({{20 - 2.5 * i, 0}}, 0.0, ego_valid), (i + 1) * kFrameNs)
+                 .state;
+    EXPECT_EQ(last == State::OBSTACLE, !ego_valid) << ego_valid;
+  }
+}
+
+TEST(Tracker, FailedFrameDoesNotAgeTracks) {
+  TemporalMonitor monitor(rule(2, 3));
+  monitor.update(tracked_frame({{30, 0}}), kFrameNs);
+  FrameResult failed;
+  failed.status = AnalysisStatus::INVALID_GEOMETRY;
+  failed.reason = "GROUND_UNSUPPORTED";
+  const auto during = monitor.update(failed, 2 * kFrameNs);
+  EXPECT_EQ(during.state, State::UNKNOWN);
+  EXPECT_EQ(during.reason, "GROUND_UNSUPPORTED");
+  ASSERT_EQ(during.tracks.size(), 1u);
+  const auto after = monitor.update(tracked_frame({{30, 0}}), 3 * kFrameNs);
+  EXPECT_EQ(after.state, State::OBSTACLE) << after.reason;
+  EXPECT_EQ(after.tracks.front().id, during.tracks.front().id);
+}
+
+TEST(Tracker, RepeatedMeasurementIsNoNewEvidence) {
+  // A re-delivered cloud has the measurement time of the previous frame: it must not
+  // count as a second sighting.
+  TemporalMonitor monitor(rule(2, 3));
+  monitor.update(tracked_frame({{30, 0}}), kFrameNs);
+  const auto repeat = monitor.update(tracked_frame({{30, 0}}), kFrameNs);
+  EXPECT_EQ(repeat.state, State::UNKNOWN);
+  EXPECT_EQ(repeat.reason, "CANDIDATE_UNCONFIRMED");
+  ASSERT_EQ(repeat.tracks.size(), 1u);
+  EXPECT_EQ(repeat.tracks.front().hits, 1u);
+  EXPECT_EQ(repeat.tracks.front().age_frames, 1u);
+  EXPECT_EQ(monitor.update(tracked_frame({{30, 0}}), 2 * kFrameNs).state, State::OBSTACLE);
+}
+
+TEST(Tracker, InvalidConfigurationIsRejected) {
+  auto config = rule(3, 2);
+  EXPECT_THROW(TemporalMonitor{config}, std::invalid_argument);
+  config = rule(1, 1);
+  config.gate_base_m = 0;
+  EXPECT_THROW(TemporalMonitor{config}, std::invalid_argument);
+}

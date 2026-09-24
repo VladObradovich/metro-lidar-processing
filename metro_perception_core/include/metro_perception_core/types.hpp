@@ -91,6 +91,17 @@ struct FrameResult {
   bool ego_motion_valid{false};
   double ego_speed_mps{0};
 };
+// A candidate followed over frames. Distance is measured when `coasting` is false, otherwise
+// predicted from the last measurement and the ego motion since.
+struct TrackSummary {
+  std::uint64_t id{0};
+  bool confirmed{false}, coasting{false};
+  std::uint32_t hits{0};  // Within the confirmation window.
+  std::uint32_t age_frames{0};
+  double distance_m{0};
+  PointXYZ center, size;
+  std::uint8_t channels{0};
+};
 struct Assessment {
   State state{State::UNKNOWN};
   std::string reason{"NOT_IMPLEMENTED"};
@@ -98,5 +109,6 @@ struct Assessment {
   // NaN unless distance_valid: a missing distance is never reported as zero.
   double distance_m{std::numeric_limits<double>::quiet_NaN()};
   CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
+  std::vector<TrackSummary> tracks;  // Confirmed and tentative, after this frame.
 };
 }  // namespace metro_perception_core

@@ -207,6 +207,8 @@ class PerceptionNode : public rclcpp::Node {
     output.reason = frame.reason;
     output.evaluation_region_valid = frame.evaluation_region_valid;
     output.evaluated_range_m = frame.evaluated_range_m;
+    output.ego_motion_valid = frame.ego_motion_valid;
+    output.ego_speed_mps = frame.ego_speed_mps;
     for (const auto& candidate : frame.candidates) {
       auto& item = output.candidates.emplace_back();
       item.candidate_id = candidate.id;

@@ -2,6 +2,7 @@
 #include <memory>
 
 #include "metro_perception_ros/assessment_monitor.hpp"
+#include "metro_perception_ros/preprocessing.hpp"
 #include "rclcpp/rclcpp.hpp"
 using metro_perception_interfaces::msg::FrameAnalysis;
 using metro_perception_interfaces::msg::PathAssessment;
@@ -9,7 +10,11 @@ using metro_perception_ros::AssessmentMonitor;
 class ObstacleMonitor : public rclcpp::Node {
  public:
   ObstacleMonitor() : Node("obstacle_monitor") {
-    monitor_ = std::make_unique<AssessmentMonitor>(declare_parameter<double>("timeout_s", 0.5));
+    // The confirmation rule comes from the same sensor profile as the detector (G4).
+    const auto profile = declare_parameter<std::string>("sensor_profile", "");
+    monitor_ =
+        std::make_unique<AssessmentMonitor>(declare_parameter<double>("timeout_s", 0.5),
+                                            metro_perception_ros::load_temporal_config(profile));
     publisher_ = create_publisher<PathAssessment>("~/output/assessment", 1);
     subscription_ = create_subscription<FrameAnalysis>(
         "~/input/analysis", 1, [this](FrameAnalysis::ConstSharedPtr frame) {

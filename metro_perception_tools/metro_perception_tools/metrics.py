@@ -90,8 +90,15 @@ def inside_roi(center, roi, margin):
     return all(roi['min'][i] - margin <= center[i] <= roi['max'][i] + margin for i in range(3))
 
 
+def decisive_objects(row):
+    """Objects behind the decision: confirmed tracks (G4 output) or, before G4, candidates."""
+    if 'tracks' in row:
+        return [t for t in row['tracks'] if t['confirmed']]
+    return row.get('candidates') or []
+
+
 def object_checks(rows, events, tolerance_ns, margin):
-    """Match candidates to annotated person ROIs on reference frames."""
+    """Match confirmed tracks (or candidates in older runs) to annotated person ROIs."""
     checks = []
     for event in events:
         if event.get('label') != 'positive':
@@ -110,7 +117,7 @@ def object_checks(rows, events, tolerance_ns, margin):
                 checks.append(check)
                 continue
             check['state'] = nearest['state']
-            matched = [c for c in nearest.get('candidates') or []
+            matched = [c for c in decisive_objects(nearest)
                        if inside_roi(c['center'], roi, margin)]
             if nearest['state'] != 'OBSTACLE':
                 check['result'] = 'miss'
