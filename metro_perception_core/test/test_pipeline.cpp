@@ -497,3 +497,133 @@ TEST(EgoMotion, TooFewComparableShiftsNeverConfirmSpeed) {
     EXPECT_FALSE(frame.ego_motion_valid) << "frame " << i;
   }
 }
+
+namespace {
+// Tunnel bending left on radius `radius` m: floor and walls follow y = x^2 / (2 radius).
+FrameInput curved_tunnel(double radius) {
+  auto input = verified_input();
+  const auto centre = [radius](double x) { return x * x / (2 * radius); };
+  for (int x = 1; x <= 90; ++x)
+    for (int yi = -9; yi <= 9; ++yi)
+      input.points.push_back({double(x), centre(x) + yi * 0.2, -1.0});
+  for (double x = 1; x <= 90; x += 0.25)
+    for (double h = 0.2; h <= 3.0; h += 0.2)
+      for (const double side : {-1.0, 1.0})
+        input.points.push_back({x, centre(x) + side * 2.3, -1.0 + h});
+  return input;
+}
+}  // namespace
+
+TEST(Route, CurvedTunnelIsFollowedAndItsWallsAreNotObstacles) {
+  const auto scene = curved_tunnel(300);
+  const auto frame = PerceptionPipeline(single_frame_config()).process(scene);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  ASSERT_TRUE(frame.route.valid);
+  EXPECT_NEAR(frame.route.c2, 1.0 / 600, 0.2 / 600);
+  EXPECT_NEAR(frame.route.c1, 0.0, 0.01);
+  EXPECT_GT(frame.route.max_x, 60.0);
+  EXPECT_TRUE(frame.candidates.empty()) << frame.candidates.front().distance_m;
+  ASSERT_GT(frame.corridor.size(), 1u);  // Published as a chain along the curve.
+  EXPECT_NEAR(frame.corridor.back().end.y, frame.route.center(frame.corridor.back().end.x), 1e-9);
+
+  auto straight = single_frame_config();
+  straight.route_estimation = false;  // The old straight corridor cuts into the wall.
+  EXPECT_FALSE(PerceptionPipeline(straight).process(scene).candidates.empty());
+}
+
+TEST(Route, ObstacleOnTheCurveIsFoundAndDoesNotBendTheRoute) {
+  auto scene = curved_tunnel(300);
+  const double y = 40.0 * 40.0 / 600;
+  add_box(scene, 40, y - 0.3, y + 0.3, 0.3, 1.7);
+  const auto frame = PerceptionPipeline(single_frame_config()).process(scene);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  ASSERT_TRUE(frame.route.valid);
+  EXPECT_NEAR(frame.route.c2, 1.0 / 600, 0.2 / 600);
+  ASSERT_EQ(frame.candidates.size(), 1u);
+  EXPECT_NEAR(frame.candidates.front().distance_m, 40.0, 0.1);
+}
+
+TEST(Gauge, ObstacleFixedInTheWorldIsFoundWhileApproaching) {
+  // The rolling baseline saw the object at the same place in the tunnel: only the gauge
+  // channel, which has no history, can report it.
+  auto scene = [](int i) {
+    auto input = moving_tunnel(i, 10, false);
+    add_box(input, 60.0 - i, -0.3, 0.3, 0.3, 1.7);  // Fixed in the world, 1 m per frame.
+    return input;
+  };
+  AlgorithmConfig without_gauge;
+  without_gauge.static_channel = false;
+  PerceptionPipeline pipeline, motion_only(without_gauge);
+  FrameResult frame, motion;
+  for (int i = 0; i <= 16; ++i) {
+    frame = pipeline.process(scene(i));
+    motion = motion_only.process(scene(i));
+  }
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  ASSERT_TRUE(frame.route.valid);
+  ASSERT_EQ(frame.candidates.size(), 1u);
+  EXPECT_NEAR(frame.candidates.front().distance_m, 44.0, 0.1);
+  EXPECT_TRUE(frame.candidates.front().channels & ObstacleCandidate::kGauge);
+  EXPECT_TRUE(motion.candidates.empty());  // The failure this channel exists for.
+}
+
+TEST(Gauge, LongStructureInsideTheGaugeIsRejectedShortOneIsNot) {
+  auto scene = [](int i, bool long_structure) {
+    auto input = moving_tunnel(i, 0, false);  // Stationary: the history absorbs both.
+    // Tall, so that only the length decides (low objects off the rails are a separate rule).
+    if (long_structure)
+      for (double x = 30; x < 36; x += 0.5) add_box(input, x, 0.8, 1.0, 0.3, 1.7);
+    else
+      add_box(input, 30, 0.8, 1.0, 0.3, 1.7);
+    return input;
+  };
+  for (const bool long_structure : {true, false}) {
+    PerceptionPipeline pipeline;
+    FrameResult frame;
+    for (int i = 0; i < 12; ++i) frame = pipeline.process(scene(i, long_structure));
+    ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+    ASSERT_TRUE(frame.route.valid);
+    EXPECT_EQ(frame.candidates.empty(), long_structure) << frame.candidates.size();
+    if (!long_structure) {
+      EXPECT_EQ(frame.candidates.front().channels, ObstacleCandidate::kGauge);
+      EXPECT_NEAR(frame.candidates.front().distance_m, 30.0, 0.1);
+    }
+  }
+}
+
+TEST(Ground, DenseWalkwaysAboveASparseFloorAreNotTheFloor) {
+  // A forward-looking lidar sees the floor at grazing angles and the walkways beside it
+  // densely: the floor must win by coverage and by being the lowest surface.
+  FrameInput input;
+  input.context.transform_available = true;
+  input.context.allow_unverified_calibration = true;
+  for (int x = 4; x <= 60; ++x)
+    for (int yi = -7; yi <= 7; ++yi) input.points.push_back({double(x), yi * 0.2, -1.5});
+  for (double x = 4; x <= 60; x += 0.05)
+    for (const double y : {1.7, 1.9, 2.1, 2.3})
+      for (const double side : {-1.0, 1.0}) input.points.push_back({x, side * y, -1.2});
+  AlgorithmConfig config;
+  config.background_history_frames = 0;
+  const auto frame = PerceptionPipeline(config).process(input);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  const auto& plane = frame.corridor.front().ground_plane;
+  EXPECT_NEAR(-plane[3] / plane[2], -1.5, 0.05);
+}
+
+TEST(Candidates, LowObjectsCountOnlyBetweenTheRails) {
+  // Rails (+-0.76 m), the contact rail and cable ducts are low and off-centre; a low object
+  // between the rails or a tall one anywhere in the corridor is an obstacle.
+  auto scene = [](double y0, double y1, double h1) {
+    auto input = verified_input();
+    add_floor(input, 4, 50);
+    add_box(input, 20, y0, y1, 0.3, h1);
+    return input;
+  };
+  const auto config = single_frame_config();
+  const auto between = PerceptionPipeline(config).process(scene(-0.2, 0.2, 0.7));
+  ASSERT_EQ(between.candidates.size(), 1u) << between.reason;
+  EXPECT_NEAR(between.candidates.front().distance_m, 20.0, 0.1);
+  EXPECT_TRUE(PerceptionPipeline(config).process(scene(0.7, 0.85, 0.7)).candidates.empty());
+  EXPECT_TRUE(PerceptionPipeline(config).process(scene(1.45, 1.65, 0.7)).candidates.empty());
+  EXPECT_EQ(PerceptionPipeline(config).process(scene(0.7, 0.85, 1.7)).candidates.size(), 1u);
+}

@@ -45,10 +45,32 @@ class InjectObstacleTests(unittest.TestCase):
         plan, travel = inject.plan_obstacle(rows, 'static', 2.0, 8.0)
         stamps = sorted(plan)
         self.assertAlmostEqual(travel, 20.0)
-        near = [plan[stamp][0][0] for stamp in stamps]
-        np.testing.assert_allclose(np.diff(near), -1.0)  # 10 m/s at 10 Hz
-        self.assertAlmostEqual(near[-1], 8.0 - 0.25)
-        self.assertAlmostEqual(plan[stamps[0]][0][2], -1.9)  # standing on the floor
+        centres = [plan[stamp][0] for stamp in stamps]
+        np.testing.assert_allclose(np.diff(centres), -1.0)  # 10 m/s at 10 Hz
+        self.assertAlmostEqual(centres[-1], 8.0)
+        lo, hi, route = inject.place('static', *plan[stamps[0]], np.zeros((1, 3)))
+        self.assertIsNone(route)  # No walls: straight route.
+        self.assertAlmostEqual(lo[2], -1.9)  # Standing on the floor.
+
+    def test_floor_is_the_lowest_surface_not_the_rails(self):
+        floor = [[x, y, -1.5 + 0.01 * x] for x in np.arange(3, 60, 0.2)
+                 for y in np.arange(-1.1, 1.1, 0.1)]
+        rails = [[x, y, -1.15 + 0.01 * x] for x in np.arange(3, 60, 0.05) for y in (-0.76, 0.76)]
+        plane = inject.estimate_floor(np.array(floor + rails))
+        self.assertAlmostEqual(inject.floor_height(plane, 30.0, 0.0), -1.2, delta=0.05)
+
+    def test_obstacle_is_placed_on_a_curved_route(self):
+        radius = 300.0
+        xs = np.arange(1.0, 90.0, 0.25)
+        heights = np.arange(-0.9, 1.0, 0.3)  # 1.0-2.8 m above the floor at z = -1.9.
+        walls = [[x, x * x / (2 * radius) + side * 2.3, z]
+                 for x in xs for side in (-1.0, 1.0) for z in heights]
+        plane = np.array([0.0, 0.0, 1.0, 1.9])
+        c1, c2 = inject.estimate_route(np.array(walls), plane)
+        self.assertAlmostEqual(c2, 1 / (2 * radius), delta=0.1 / (2 * radius))
+        self.assertAlmostEqual(c1, 0.0, delta=0.01)
+        lo, hi, _ = inject.place('static', 60.0, 0.0, plane, np.array(walls))
+        self.assertAlmostEqual((lo[1] + hi[1]) / 2, 60.0 ** 2 / (2 * radius), delta=0.3)
 
     def test_crossing_stays_inside_the_route_at_walking_speed(self):
         lateral = [inject.box_at('crossing', 50.0, t / 10, -1.9)[0][1] + 0.25

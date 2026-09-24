@@ -28,6 +28,7 @@ struct Cell {
   int az{0}, el{0};
   double range{std::numeric_limits<double>::infinity()};
   std::vector<std::size_t> points;  // Indices into geometry_points.
+  std::uint8_t channels{0};         // ObstacleCandidate::kMotion / kGauge.
 };
 
 // The route floor is searched in the same lateral band as candidates. Wider, a platform,
@@ -96,15 +97,27 @@ void measure_support(const AlgorithmConfig& config, const std::vector<IndexedPoi
 }
 
 Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& frame) {
-  std::vector<const PointXYZ*> seeds;
-  const auto& points = frame.geometry_points;
-  const std::size_t stride = std::max<std::size_t>(1, points.size() / 6000);
-  for (std::size_t i = 0; i < points.size(); i += stride) {
-    const auto& p = points[i].point;
-    if (in_ground_region(config, p)) seeds.push_back(&p);
+  // The route floor is the lowest surface. Seeds are the lowest return of each 1 m x 0.2 m
+  // cell, so walls, walkways and platforms, which a forward-looking lidar sees far more
+  // densely than the grazing floor, cannot outvote it by point count.
+  const double half_width = config.corridor_half_width_m + config.candidate_margin_m;
+  const auto columns = static_cast<std::size_t>(std::ceil(2 * half_width / 0.2)) + 1;
+  const auto rows = static_cast<std::size_t>(std::ceil(kGroundMaxX - kGroundMinX)) + 1;
+  std::vector<const PointXYZ*> lowest(rows * columns, nullptr);
+  for (const auto& indexed : frame.geometry_points) {
+    const auto& p = indexed.point;
+    if (!in_ground_region(config, p)) continue;
+    const auto row = static_cast<std::size_t>(p.x - kGroundMinX);
+    const auto column = static_cast<std::size_t>((p.y + half_width) / 0.2);
+    auto& slot = lowest[std::min(row, rows - 1) * columns + std::min(column, columns - 1)];
+    if (!slot || p.z < slot->z) slot = &p;
   }
+  std::vector<const PointXYZ*> seeds;
+  for (const auto* point : lowest)
+    if (point) seeds.push_back(point);
   if (seeds.size() < config.min_ground_inliers) return {};
-  Plane best;
+  std::vector<Plane> hypotheses;
+  std::size_t most = 0;
   std::uint32_t random = 0x9e3779b9u;
   auto pick = [&] {
     random = random * 1664525u + 1013904223u;
@@ -137,17 +150,130 @@ Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& fr
     }
     // A small patch, rail or platform edge cannot establish the route surface.
     if (inliers < config.min_ground_inliers || along != 3 || across != 3) continue;
-    if (!best.valid || inliers > best.inliers || (inliers == best.inliers && c < best.c)) {
-      best = {a, b, c, inliers, 0, true};
-    }
+    hypotheses.push_back({a, b, c, inliers, 0, true});
+    most = std::max(most, inliers);
   }
-  if (!best.valid) return best;
+  if (hypotheses.empty()) return {};
+  // The best-supported plane is the floor unless a clearly distinct, still well-supported
+  // surface lies below it: a platform or walkway can outnumber the track bed. Planes within
+  // the inlier tolerance of each other are the same surface.
+  const auto height = [](const Plane& plane) { return plane.a * 10 + plane.c; };
+  Plane best;
+  for (const auto& plane : hypotheses)
+    if (plane.inliers == most && (!best.valid || height(plane) < height(best))) best = plane;
+  const double separation = 2 * config.ground_inlier_tolerance_m;
+  Plane lower = best;
+  for (const auto& plane : hypotheses)
+    if (plane.inliers * 10 >= most * 6 && height(plane) < height(best) - separation &&
+        (lower.inliers == best.inliers || plane.inliers > lower.inliers ||
+         (plane.inliers == lower.inliers && height(plane) < height(lower))))
+      lower = plane;
+  best = lower;
   refine_ground(config, seeds, best);
-  measure_support(config, points, best);
+  measure_support(config, frame.geometry_points, best);
   return best;
 }
 
 std::int64_t key(int az, int el) { return std::int64_t(az) * 2048 + el; }
+
+// Route centre from the tunnel walls. Per 1 m slice ahead, the nearest structure on each
+// side of the predicted centre (at least kWallMinM away, 0.5-2.5 m above the floor) is a
+// wall sample; its shift from the near-range wall offset is the centre shift. Slices are
+// followed outwards and gated around the running fit, so niches, columns and obstacles
+// (short along the route) are outliers. A least-squares y = c1 x + c2 x^2 through the
+// accepted slices, refitted without the worst residuals, is the route.
+RouteEstimate estimate_route(const AlgorithmConfig& config, const PreprocessedFrame& frame,
+                             const Plane& ground) {
+  RouteEstimate route;
+  if (!config.route_estimation) return route;
+  constexpr double kMinX = 3, kNearMaxX = 8, kBinM = 1, kWallMinM = 1.0, kWallMaxM = 6.0;
+  constexpr std::size_t kMinSlices = 10;
+  const double max_x = std::min(config.detection_roi.max[0], 150.0);
+  if (max_x <= kNearMaxX) return route;
+  const auto bins = static_cast<std::size_t>(std::ceil((max_x - kMinX) / kBinM));
+  std::vector<std::vector<float>> lateral(bins);
+  for (const auto& indexed : frame.geometry_points) {
+    const auto& p = indexed.point;
+    if (p.x < kMinX || p.x >= max_x || std::abs(p.y) > 12) continue;
+    const double height = ground.height(p);
+    if (height < 0.5 || height > 2.5) continue;
+    lateral[static_cast<std::size_t>((p.x - kMinX) / kBinM)].push_back(static_cast<float>(p.y));
+  }
+  auto nearest_walls = [&](std::size_t bin, double centre) {
+    double left = INFINITY, right = -INFINITY;
+    for (const float y : lateral[bin]) {
+      if (y >= centre + kWallMinM && y <= centre + kWallMaxM) left = std::min<double>(left, y);
+      if (y <= centre - kWallMinM && y >= centre - kWallMaxM) right = std::max<double>(right, y);
+    }
+    return std::pair<double, double>{left, right};
+  };
+  auto median = [](std::vector<double> values) {
+    if (values.size() < 3) return double(NAN);
+    std::nth_element(values.begin(), values.begin() + values.size() / 2, values.end());
+    return values[values.size() / 2];
+  };
+  std::vector<double> near_left, near_right;
+  for (std::size_t bin = 0; kMinX + (bin + 1) * kBinM <= kNearMaxX; ++bin) {
+    const auto [left, right] = nearest_walls(bin, 0.0);
+    if (std::isfinite(left)) near_left.push_back(left);
+    if (std::isfinite(right)) near_right.push_back(right);
+  }
+  const double left0 = median(near_left), right0 = median(near_right);
+  if (!std::isfinite(left0) && !std::isfinite(right0)) return route;
+
+  const double c2_limit = 1.0 / (2.0 * config.route_min_radius_m);
+  struct Slice {
+    double x, shift;
+  };
+  std::vector<Slice> slices;
+  double c1 = 0, c2 = 0;
+  // Least squares without intercept: the route passes the lidar (profile assumption).
+  auto fit = [&](const std::vector<Slice>& use, double& a, double& b) {
+    double s2 = 0, s3 = 0, s4 = 0, sy1 = 0, sy2 = 0;
+    for (const auto& s : use) {
+      const double x2 = s.x * s.x;
+      s2 += x2, s3 += x2 * s.x, s4 += x2 * x2, sy1 += s.x * s.shift, sy2 += x2 * s.shift;
+    }
+    const double det = s2 * s4 - s3 * s3;
+    if (use.size() < 3 || std::abs(det) < 1e-9) return false;
+    a = (sy1 * s4 - sy2 * s3) / det;
+    b = (s2 * sy2 - s3 * sy1) / det;
+    return true;
+  };
+  for (std::size_t bin = 0; bin < bins; ++bin) {
+    const double x = kMinX + (bin + 0.5) * kBinM;
+    const double predicted = c1 * x + c2 * x * x;
+    const auto [left, right] = nearest_walls(bin, predicted);
+    const double gate = 0.3 + 0.01 * x;
+    double sum = 0;
+    int count = 0;
+    if (std::isfinite(left0) && std::isfinite(left) && std::abs(left - left0 - predicted) <= gate)
+      sum += left - left0, ++count;
+    if (std::isfinite(right0) && std::isfinite(right) &&
+        std::abs(right - right0 - predicted) <= gate)
+      sum += right - right0, ++count;
+    if (!count) continue;
+    slices.push_back({x, sum / count});
+    if (slices.size() >= 5) fit(slices, c1, c2);
+  }
+  if (slices.size() < kMinSlices || slices.back().x < 20) return route;
+  // Refit without the worst tenth of residuals: a gated outlier can still bend the curve.
+  fit(slices, c1, c2);
+  std::vector<double> residuals;
+  for (const auto& s : slices) residuals.push_back(std::abs(s.shift - (c1 * s.x + c2 * s.x * s.x)));
+  auto sorted = residuals;
+  std::sort(sorted.begin(), sorted.end());
+  const double cutoff = sorted[sorted.size() * 9 / 10];
+  std::vector<Slice> kept;
+  for (std::size_t i = 0; i < slices.size(); ++i)
+    if (residuals[i] <= cutoff) kept.push_back(slices[i]);
+  if (!fit(kept, c1, c2) || std::abs(c1) > 0.05 || std::abs(c2) > c2_limit) return route;
+  route.c1 = c1;
+  route.c2 = c2;
+  route.valid = true;
+  route.max_x = kept.back().x + kBinM / 2;
+  return route;
+}
 
 struct DisjointSet {
   std::vector<std::size_t> parent;
@@ -355,17 +481,28 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   geometry_failures_ = 0;
   if (config.background_history_frames && config.ego_motion_compensation)
     estimate_motion(config, frame, {ground.a, ground.b, ground.c}, measurement_time_ns, result);
-  CorridorSegment segment;
-  segment.start = {config.detection_roi.min[0], 0, ground.c};
-  segment.end = {end_x, 0, ground.a * end_x + ground.c};
-  segment.width_m = 2.0 * config.corridor_half_width_m;
-  segment.height_m = config.corridor_height_m;
+  // Without a route estimate the corridor is the straight line y = 0, as before.
+  const auto route = estimate_route(config, frame, ground);
+  result.route = route;
   const double norm = std::sqrt(1 + ground.a * ground.a + ground.b * ground.b);
-  segment.ground_plane = {-ground.a / norm, -ground.b / norm, 1 / norm, -ground.c / norm};
-  segment.ground_inliers = static_cast<std::uint32_t>(ground.inliers);
-  segment.geometry_valid = true;
-  segment.coverage_valid = true;
-  result.corridor.push_back(segment);
+  auto route_point = [&](double x) {
+    const double y = route.center(x);
+    return PointXYZ{x, y, ground.a * x + ground.b * y + ground.c};
+  };
+  // A curved route is published as a chain of short straight segments.
+  const double segment_m = route.valid ? 5.0 : end_x - config.detection_roi.min[0];
+  for (double x0 = config.detection_roi.min[0]; x0 < end_x - 1e-6; x0 += segment_m) {
+    CorridorSegment segment;
+    segment.start = route_point(x0);
+    segment.end = route_point(std::min(end_x, x0 + segment_m));
+    segment.width_m = 2.0 * config.corridor_half_width_m;
+    segment.height_m = config.corridor_height_m;
+    segment.ground_plane = {-ground.a / norm, -ground.b / norm, 1 / norm, -ground.c / norm};
+    segment.ground_inliers = static_cast<std::uint32_t>(ground.inliers);
+    segment.geometry_valid = true;
+    segment.coverage_valid = true;
+    result.corridor.push_back(segment);
+  }
   result.evaluated_range_m = end_x;
   result.evaluation_region_valid = true;
 
@@ -400,8 +537,8 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     for (const auto index : frame.detection_indices) {
       const auto& p = frame.geometry_points[index].point;
       const double height = ground.height(p);
-      if (p.x < config.detection_roi.min[0] || std::abs(p.y) > band_half_width || height < -0.5 ||
-          height > config.corridor_height_m)
+      if (p.x < config.detection_roi.min[0] || std::abs(route.offset(p)) > band_half_width ||
+          height < -0.5 || height > config.corridor_height_m)
         continue;
       const auto [az, el] = angular_cell(p);
       const auto found = current.try_emplace(key(az, el), p);
@@ -414,7 +551,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       result.reason = "BASELINE_WARMUP";
       result.evaluation_region_valid = false;
       result.evaluated_range_m = 0;
-      result.corridor.front().coverage_valid = false;
+      for (auto& segment : result.corridor) segment.coverage_valid = false;
       return;
     }
   }
@@ -479,25 +616,37 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   };
   std::unordered_map<std::int64_t, std::size_t> lookup;
   std::vector<Cell> cells;
+  // Gauge channel: anything inside the narrow route gauge, independent of the history.
+  const bool gauge_on = config.static_channel && route.valid;
+  const double gauge_half_width =
+      std::min(config.static_half_width_m, config.corridor_half_width_m);
+  const double gauge_max_height = std::min(config.static_max_height_m, config.corridor_height_m);
   for (const auto index : frame.detection_indices) {
     const auto& p = frame.geometry_points[index].point;
+    if (p.x > end_x || p.x < config.detection_roi.min[0]) continue;
     const double height = ground.height(p);
-    if (p.x > end_x || p.x < config.detection_roi.min[0] || std::abs(p.y) > band_half_width ||
-        height < config.obstacle_min_height_m || height > config.corridor_height_m)
-      continue;
+    const double offset = std::abs(route.offset(p));
+    const bool in_band = offset <= band_half_width && height >= config.obstacle_min_height_m &&
+                         height <= config.corridor_height_m;
+    const bool in_gauge = gauge_on && p.x <= route.max_x && offset <= gauge_half_width &&
+                          height >= config.static_min_height_m && height <= gauge_max_height;
+    if (!in_band && !in_gauge) continue;
     const double range = sensor_range(p);
     if (!(range > 0)) continue;
     const auto [az, el] = angular_cell(p);
     const auto cell_key = key(az, el);
-    if (!foreground(cell_key)) continue;
+    std::uint8_t channels = in_gauge ? ObstacleCandidate::kGauge : 0;
+    if (in_band && foreground(cell_key)) channels |= ObstacleCandidate::kMotion;
+    if (!channels) continue;
     const auto found = lookup.find(cell_key);
     if (found == lookup.end()) {
       lookup.emplace(cell_key, cells.size());
-      cells.push_back({az, el, range, {index}});
+      cells.push_back({az, el, range, {index}, channels});
     } else {
       auto& cell = cells[found->second];
       cell.range = std::min(cell.range, range);
       cell.points.push_back(index);
+      cell.channels |= channels;
     }
   }
   DisjointSet groups(cells.size());
@@ -522,11 +671,25 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     PointXYZ nearest;
     double distance = INFINITY, inside_low = INFINITY, inside_high = -INFINITY;
     std::size_t support = 0, inside_cells = 0;
+    std::uint8_t channels = 0;
+    // Extent along the route of all gauge returns, including those behind the nearest
+    // surface of each cell: a structure parallel to the route is seen at a grazing angle
+    // and falls into few angular cells, so the per-cell nearest layer would look short.
+    double gauge_lo_x = INFINITY, gauge_hi_x = -INFINITY;
+    double inside_top = -INFINITY, inside_offset = 0;
     for (const auto cell_index : entry.second) {
       const auto& cell = cells[cell_index];
+      channels |= cell.channels;
       bool cell_inside = false;
       for (const auto point_index : cell.points) {
         const auto& p = frame.geometry_points[point_index].point;
+        if (gauge_on && std::abs(route.offset(p)) <= gauge_half_width) {
+          const double height = ground.height(p);
+          if (height >= config.static_min_height_m && height <= gauge_max_height) {
+            gauge_lo_x = std::min(gauge_lo_x, p.x);
+            gauge_hi_x = std::max(gauge_hi_x, p.x);
+          }
+        }
         if (sensor_range(p) > cell.range + 0.5) continue;
         lo.x = std::min(lo.x, p.x);
         lo.y = std::min(lo.y, p.y);
@@ -534,8 +697,10 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
         hi.x = std::max(hi.x, p.x);
         hi.y = std::max(hi.y, p.y);
         hi.z = std::max(hi.z, p.z);
-        if (std::abs(p.y) > config.corridor_half_width_m) continue;
+        if (std::abs(route.offset(p)) > config.corridor_half_width_m) continue;
         cell_inside = true;
+        inside_top = std::max(inside_top, ground.height(p));
+        inside_offset += route.offset(p);
         inside_low = std::min(inside_low, p.z);
         inside_high = std::max(inside_high, p.z);
         if (p.x - origin.x < distance) {
@@ -546,9 +711,17 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       }
       inside_cells += cell_inside;
     }
-    // The bbox spans the margin band; acceptance uses only returns inside.
+    // The bbox spans the margin band; acceptance uses only returns inside. Gauge-only
+    // evidence has no history to tell a wall from an obstacle: long structures along the
+    // route are rejected, and its returns already start above static_min_height_m.
+    const bool gauge_only = channels == ObstacleCandidate::kGauge;
+    const double min_extent = gauge_only ? 0.1 : config.obstacle_min_height_m;
     if (inside_cells < config.min_candidate_cells || support < config.min_candidate_points ||
-        inside_high - inside_low < config.obstacle_min_height_m)
+        inside_high - inside_low < min_extent ||
+        (gauge_only && gauge_hi_x - gauge_lo_x > config.static_max_length_m))
+      continue;
+    if (inside_top < config.low_object_height_m &&
+        std::abs(inside_offset / double(support)) > config.low_object_half_width_m)
       continue;
     ObstacleCandidate candidate;
     candidate.center = {(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2};
@@ -557,6 +730,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     candidate.distance_m = distance;
     candidate.distance_valid = std::isfinite(distance) && distance >= 0;
     candidate.support_points = static_cast<std::uint32_t>(support);
+    candidate.channels = channels;
     if (candidate.distance_valid) result.candidates.push_back(candidate);
   }
   std::sort(result.candidates.begin(), result.candidates.end(),
@@ -571,7 +745,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     // A stationary object already present in history can disappear from the
     // foreground. Differencing alone cannot certify a clear path.
     result.evaluation_region_valid = false;
-    result.corridor.front().coverage_valid = false;
+    for (auto& segment : result.corridor) segment.coverage_valid = false;
     history_.pop_front();
     history_.push_back(make_history(current, origin));
   }

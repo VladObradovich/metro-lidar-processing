@@ -210,7 +210,8 @@ int main(int argc, char** argv) {
                << candidate.distance_m << ",\"support_points\":" << candidate.support_points
                << ",\"center\":[" << candidate.center.x << ',' << candidate.center.y << ','
                << candidate.center.z << "],\"size\":[" << candidate.size.x << ','
-               << candidate.size.y << ',' << candidate.size.z << "]}";
+               << candidate.size.y << ',' << candidate.size.z
+               << "],\"channels\":" << static_cast<unsigned>(candidate.channels) << '}';
       }
       output << "]";
       output << ",\"evaluation_region_valid\":"
@@ -226,6 +227,8 @@ int main(int argc, char** argv) {
         const auto& plane = result.corridor.front().ground_plane;
         output << '[' << plane[0] << ',' << plane[1] << ',' << plane[2] << ',' << plane[3] << ']';
       }
+      output << ",\"route\":[" << result.route.c1 << ',' << result.route.c2 << ','
+             << (result.route.valid ? "true" : "false") << ',' << result.route.max_x << ']';
       output << ",\"processing_status\":" << static_cast<unsigned>(result.status)
              << ",\"calibration_trust\":" << static_cast<unsigned>(result.calibration_trust)
              << ",\"transform_applied\":"

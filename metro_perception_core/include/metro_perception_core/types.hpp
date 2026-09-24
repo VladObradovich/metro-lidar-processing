@@ -39,11 +39,24 @@ enum class AnalysisStatus : std::uint8_t {
 enum class State : std::uint8_t { UNKNOWN = 0, OBSTACLE = 1, NO_OBSTACLE_DETECTED = 2 };
 enum class CalibrationTrust : std::uint8_t { UNKNOWN = 0, ASSUMED = 1, VERIFIED = 2 };
 struct ObstacleCandidate {
+  // Evidence that produced the candidate: MOTION (new relative to the rolling baseline)
+  // and/or GAUGE (anything inside the narrow route gauge, whatever the history says).
+  static constexpr std::uint8_t kMotion = 1, kGauge = 2;
   std::uint64_t id{0};
   PointXYZ center, size, nearest_point;
   double distance_m{0};
   bool distance_valid{false};
   std::uint32_t support_points{0};
+  std::uint8_t channels{0};
+};
+// Route centre ahead, y = c1 * x + c2 * x^2, estimated from the tunnel walls. Invalid means
+// the straight corridor y = 0 is used and the gauge channel is off.
+struct RouteEstimate {
+  double c1{0}, c2{0};
+  bool valid{false};
+  double max_x{0};  // Farthest wall support; the gauge channel stops here.
+  double center(double x) const { return c1 * x + c2 * x * x; }
+  double offset(const PointXYZ& p) const { return p.y - center(p.x); }
 };
 struct CorridorSegment {
   PointXYZ start, end;
@@ -73,6 +86,7 @@ struct FrameResult {
   bool evaluation_region_valid{false};
   double evaluated_range_m{0};
   CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
+  RouteEstimate route;
   // Lidar-only forward speed used to move the range baseline; diagnostic only.
   bool ego_motion_valid{false};
   double ego_speed_mps{0};

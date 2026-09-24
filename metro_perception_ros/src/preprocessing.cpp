@@ -130,6 +130,17 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("background_margin_m", c.algorithm.background_margin_m);
     read_double("background_relative_margin", c.algorithm.background_relative_margin);
     read_double("candidate_margin_m", c.algorithm.candidate_margin_m);
+    if (detector["route_estimation"])
+      c.algorithm.route_estimation = detector["route_estimation"].as<bool>();
+    read_double("route_min_radius_m", c.algorithm.route_min_radius_m);
+    if (detector["static_channel"])
+      c.algorithm.static_channel = detector["static_channel"].as<bool>();
+    read_double("static_half_width_m", c.algorithm.static_half_width_m);
+    read_double("static_min_height_m", c.algorithm.static_min_height_m);
+    read_double("static_max_height_m", c.algorithm.static_max_height_m);
+    read_double("static_max_length_m", c.algorithm.static_max_length_m);
+    read_double("low_object_height_m", c.algorithm.low_object_height_m);
+    read_double("low_object_half_width_m", c.algorithm.low_object_half_width_m);
     if (detector["ego_motion_compensation"])
       c.algorithm.ego_motion_compensation = detector["ego_motion_compensation"].as<bool>();
     read_double("ego_max_speed_mps", c.algorithm.ego_max_speed_mps);

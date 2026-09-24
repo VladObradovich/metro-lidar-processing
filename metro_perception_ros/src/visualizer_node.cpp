@@ -119,8 +119,11 @@ class Visualizer : public rclcpp::Node {
         box.scale.x = std::max(box.scale.x, 0.05);
         box.scale.y = std::max(box.scale.y, 0.05);
         box.scale.z = std::max(box.scale.z, 0.05);
-        box.color.r = 1.0;
+        // Gauge-only evidence (object fixed in the route) is blue, motion evidence red.
+        const bool gauge_only = object.reasons.size() == 1 && object.reasons.front() == "GAUGE";
+        box.color.r = gauge_only ? 0.2 : 1.0;
         box.color.g = is_nearest ? 0.1 : 0.6;
+        box.color.b = gauge_only ? 1.0 : 0.0;
         box.color.a = is_nearest ? 0.7 : 0.35;
         output.markers.push_back(box);
       }

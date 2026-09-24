@@ -14,6 +14,7 @@ Scenarios:
   crossing  person walking across the route at 1 m/s, fixed longitudinal position
 
   inject_obstacle.py inject BAG TOPIC REFERENCE.jsonl OUTPUT_ROOT --scenario static
+  inject_obstacle.py dataset OUTPUT_ROOT     # dataset.yaml for evaluate_all.py --dataset
   inject_obstacle.py report RUN_DIR OUTPUT_ROOT --output report.json
 """
 import argparse
@@ -105,8 +106,8 @@ def choose_window(stamps, travel, window_s):
     return best
 
 
-def box_at(scenario, x_center, time_s, floor_z):
-    """Return (lo, hi) of the obstacle box in the target frame."""
+def box_at(scenario, x_center, time_s, floor_z, centre=0.0):
+    """Return (lo, hi) of the obstacle box in the target frame, around the route centre."""
     spec = SCENARIOS[scenario]
     sx, sy, sz = spec['size']
     lateral = spec['lateral']
@@ -114,9 +115,52 @@ def box_at(scenario, x_center, time_s, floor_z):
         period = 4 * CROSSING_HALF_WIDTH_M / CROSSING_SPEED_MPS
         phase = (time_s % period) / period
         lateral = CROSSING_HALF_WIDTH_M * (4 * abs(phase - 0.5) - 1)
+    lateral += centre
     lo = np.array([x_center - sx / 2, lateral - sy / 2, floor_z])
     hi = np.array([x_center + sx / 2, lateral + sy / 2, floor_z + sz])
     return lo, hi
+
+
+def estimate_route(points, plane):
+    """
+    Route centre (c1, c2) of y = c1 x + c2 x^2 from the tunnel walls; None when unsupported.
+
+    Independent of the detector: per 2 m slice, the nearest returns at least 1 m left and
+    right of the predicted centre, 0.5-2.5 m above the floor, are walls; their shift from
+    the near-range offsets is the centre shift; slices are gated around the running fit.
+    """
+    x, y = points[:, 0], points[:, 1]
+    height = points[:, 2] - floor_height(plane, x, y)
+    keep = (x >= 3) & (x < 121) & (np.abs(y) < 12) & (height > 0.5) & (height < 2.5)
+    x, y = x[keep], y[keep]
+    edges = np.arange(3.0, 121.0, 2.0)
+    slices = [y[(x >= a) & (x < a + 2.0)] for a in edges]
+
+    def walls(values, centre):
+        left = values[(values >= centre + 1.0) & (values <= centre + 6.0)]
+        right = values[(values <= centre - 1.0) & (values >= centre - 6.0)]
+        return (left.min() if left.size else np.nan, right.max() if right.size else np.nan)
+
+    near = np.array([walls(values, 0.0) for values in slices[:3]])
+    offsets = [np.median(side[np.isfinite(side)]) if np.isfinite(side).sum() >= 2 else np.nan
+               for side in near.T]
+    xs, shifts, coef = [], [], np.zeros(2)
+    for a, values in zip(edges, slices):
+        centre_x = a + 1.0
+        predicted = coef[0] * centre_x + coef[1] * centre_x ** 2
+        found = [wall - offset for wall, offset in zip(walls(values, predicted), offsets)
+                 if np.isfinite(wall) and np.isfinite(offset)
+                 and abs(wall - offset - predicted) <= 0.3 + 0.01 * centre_x]
+        if not found:
+            continue
+        xs.append(centre_x)
+        shifts.append(float(np.mean(found)))
+        if len(xs) >= 4:
+            design = np.stack([xs, np.square(xs)], axis=1)
+            coef = np.linalg.lstsq(design, np.array(shifts), rcond=None)[0]
+    if len(xs) < 6 or xs[-1] < 20:
+        return None
+    return coef
 
 
 def plan_obstacle(rows, scenario, window_s, final_distance_m):
@@ -129,12 +173,47 @@ def plan_obstacle(rows, scenario, window_s, final_distance_m):
     plan = {}
     for i in range(first, last + 1):
         x_center = final_distance_m + (travel[last] - travel[i])
-        plane = rows[i].get('ground_plane') or fallback
-        time_s = (stamps[i] - stamps[first]) / 1e9
-        lo, hi = box_at(scenario, x_center, time_s,
-                        floor_height(plane, x_center, SCENARIOS[scenario]['lateral']))
-        plan[stamps[i]] = (lo, hi)
+        plane = np.asarray(rows[i].get('ground_plane') or fallback, float)
+        plan[stamps[i]] = (x_center, (stamps[i] - stamps[first]) / 1e9, plane)
     return plan, travel[last] - travel[first]
+
+
+def estimate_floor(points):
+    """
+    Floor z = f0 + f1 x as a normalised plane from the lowest returns ahead; None if too few.
+
+    Independent of the detector: per 2 m slice within |y| < 1.2 m, the 10th percentile of z
+    is a floor sample (the bed; rails and obstacles stand above it); a line is fitted and
+    refitted without samples more than 0.2 m off.
+    """
+    band = points[(np.abs(points[:, 1]) < 1.2) & (points[:, 0] >= 3) & (points[:, 0] < 60)]
+    xs, zs = [], []
+    for start in np.arange(3.0, 60.0, 2.0):
+        z = band[(band[:, 0] >= start) & (band[:, 0] < start + 2.0), 2]
+        if z.size >= 20:
+            xs.append(start + 1.0)
+            zs.append(np.percentile(z, 10))
+    if len(xs) < 5:
+        return None
+    xs, zs = np.array(xs), np.array(zs)
+    keep = np.ones(len(xs), bool)
+    for _ in range(3):
+        f1, f0 = np.polyfit(xs[keep], zs[keep], 1)
+        keep = np.abs(zs - (f0 + f1 * xs)) <= 0.2
+        if keep.sum() < 5:
+            return None
+    return np.array([-f1, 0.0, 1.0, -f0])
+
+
+def place(scenario, x_center, time_s, plane, points):
+    """Box on the floor and route centre estimated from this frame; reference plane fallback."""
+    floor = estimate_floor(points)
+    plane = plane if floor is None else floor
+    route = estimate_route(points, plane)
+    centre = 0.0 if route is None else route[0] * x_center + route[1] * x_center ** 2
+    floor_z = floor_height(plane, x_center, centre + SCENARIOS[scenario]['lateral'])
+    lo, hi = box_at(scenario, x_center, time_s, floor_z, centre)
+    return lo, hi, route
 
 
 def xyz_views(msg, buffer):
@@ -177,8 +256,9 @@ def inject(args):
         buffer = bytearray(msg.data)
         x, y, z = xyz_views(msg, buffer)
         sensor = np.stack([x.ravel(), y.ravel(), z.ravel()], axis=1).astype(float)
-        lo, hi = plan[stamp]
-        moved, hidden = occlude(to_target(sensor), lo, hi)
+        target = to_target(sensor)
+        lo, hi, route = place(args.scenario, *plan[stamp], target)
+        moved, hidden = occlude(target, lo, hi)
         back = to_sensor(moved)
         x[...] = back[:, 0].reshape(x.shape)
         y[...] = back[:, 1].reshape(y.shape)
@@ -186,7 +266,8 @@ def inject(args):
         msg.data = bytes(buffer)
         writer.write(topic, serialize_message(msg), stamp)
         log.append({'bag_stamp_ns': stamp, 'lo': lo.tolist(), 'hi': hi.tolist(),
-                    'distance_m': float(lo[0]), 'hidden_points': hidden})
+                    'distance_m': float(lo[0]), 'hidden_points': hidden,
+                    'route': None if route is None else [float(v) for v in route]})
     del writer
     (out_dir / 'injection.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in log))
     visible = [row for row in log if row['hidden_points'] >= MIN_VISIBLE_POINTS
@@ -220,17 +301,28 @@ def inject(args):
             'label': 'positive', 'evidence': 'Raycast synthetic obstacle.',
             'reference_frames': references})
     (out_dir / 'annotations.yaml').write_text(yaml.safe_dump(annotation, sort_keys=False))
-    # Dataset for evaluate_all.py --dataset; paths are valid where this command ran.
-    dataset_path = args.output_root / 'dataset.yaml'
-    dataset = yaml.safe_load(dataset_path.read_text()) if dataset_path.is_file() else {
-        'schema_version': 1, 'data_root': str(args.output_root.resolve()), 'bags': []}
-    dataset['bags'] = [entry for entry in dataset['bags'] if entry['id'] != name] + [{
-        'id': name, 'path': f'{name}/bag', 'input_topic': args.topic, 'storage_id': 'sqlite3',
-        'declared_message_count': len(log),
-        'annotations': str((out_dir / 'annotations.yaml').resolve()),
-        'sensor_profile': 'forward_sector'}]
-    dataset_path.write_text(yaml.safe_dump(dataset, sort_keys=False))
+    (out_dir / 'topic').write_text(args.topic + '\n')
     print(f'{name}: {len(log)} frames, travel {travel:.0f} m, visible {len(visible)} frames')
+
+
+def dataset(args):
+    """Write OUTPUT_ROOT/dataset.yaml for evaluate_all.py --dataset; safe after parallel runs."""
+    bags = []
+    injected = (p for p in args.output_root.iterdir() if (p / 'annotations.yaml').is_file())
+    for bag_dir in sorted(injected):
+        frames = sum(1 for line in (bag_dir / 'injection.jsonl').read_text().splitlines() if line)
+        bags.append({
+            'id': bag_dir.name, 'path': f'{bag_dir.name}/bag',
+            'input_topic': ((bag_dir / 'topic').read_text().strip()
+                            if (bag_dir / 'topic').is_file() else '/lidar_points'),
+            'storage_id': 'sqlite3',
+            'declared_message_count': frames,
+            'annotations': str((bag_dir / 'annotations.yaml').resolve()),
+            'sensor_profile': 'forward_sector'})
+    text = yaml.safe_dump({'schema_version': 1, 'data_root': str(args.output_root.resolve()),
+                           'bags': bags}, sort_keys=False)
+    (args.output_root / 'dataset.yaml').write_text(text)
+    print(f'{len(bags)} bags in {args.output_root / "dataset.yaml"}')
 
 
 def report(args):
@@ -284,12 +376,14 @@ def main():
     make.add_argument('--scenario', choices=sorted(SCENARIOS), required=True)
     make.add_argument('--window-s', type=float, default=20.0)
     make.add_argument('--final-distance-m', type=float, default=8.0)
+    listing = sub.add_parser('dataset')
+    listing.add_argument('output_root', type=Path)
     score = sub.add_parser('report')
     score.add_argument('run_dir', type=Path)
     score.add_argument('output_root', type=Path)
     score.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    (inject if args.command == 'inject' else report)(args)
+    {'inject': inject, 'dataset': dataset, 'report': report}[args.command](args)
 
 
 if __name__ == '__main__':

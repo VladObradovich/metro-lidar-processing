@@ -223,6 +223,10 @@ class PerceptionNode : public rclcpp::Node {
       item.distance_m = candidate.distance_m;
       item.distance_valid = candidate.distance_valid;
       item.support_points = candidate.support_points;
+      if (candidate.channels & metro_perception_core::ObstacleCandidate::kMotion)
+        item.reasons.push_back("MOTION");
+      if (candidate.channels & metro_perception_core::ObstacleCandidate::kGauge)
+        item.reasons.push_back("GAUGE");
     }
     for (const auto& segment : frame.corridor) {
       auto& item = output.corridor.emplace_back();

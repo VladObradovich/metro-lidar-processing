@@ -17,7 +17,7 @@ from sensor_msgs.msg import PointCloud2, PointField
 from metro_perception_interfaces.msg import FrameAnalysis, PathAssessment
 
 
-def moving_tunnel(index, obstacle=False):
+def moving_tunnel(index, obstacle=False, fixed_obstacle=False):
     travelled = index  # 10 m/s at 10 Hz.
     points = [(float(x), yi * 0.2, -1.0)
               for x in range(1, 101) for yi in range(-12, 13)]
@@ -48,6 +48,12 @@ def moving_tunnel(index, obstacle=False):
             xw += 0.1
         edge += niche[i % len(niche)]
         i += 1
+    if fixed_obstacle:  # Fixed in the world at 60 m: the train approaches it.
+        for xi in range(7):
+            for yi in range(8):
+                for hi in range(18):
+                    points.append((60 - travelled + xi * 0.08, -0.3 + yi * 0.08,
+                                   -0.7 + hi * 0.08))
     if obstacle:
         for xi in range(7):
             for yi in range(11):
@@ -187,7 +193,39 @@ detector:
             control = [json.loads(line) for line in
                        control_output.read_text().splitlines()]
             assert control[15]['candidate_count'] > 0
-            print('PASS: ROS motion-compensated frames and offline parity')
+
+            # An obstacle fixed in the world is absorbed by the rolling baseline; the gauge
+            # channel must still report it while the train approaches.
+            fixed_bag = root / 'fixed_obstacle'
+            writer = rosbag2_py.SequentialWriter()
+            writer.open(rosbag2_py.StorageOptions(uri=str(fixed_bag), storage_id='sqlite3'),
+                        rosbag2_py.ConverterOptions('', ''))
+            writer.create_topic(rosbag2_py.TopicMetadata(
+                name='/points', type='sensor_msgs/msg/PointCloud2',
+                serialization_format='cdr'))
+            for i in range(17):
+                msg = moving_tunnel(i, fixed_obstacle=True)
+                writer.write('/points', serialize_message(msg),
+                             msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec)
+            del writer
+
+            def evaluate(profile_path, name):
+                result = root / name
+                subprocess.run(['ros2', 'run', 'metro_perception_ros', 'evaluate_bag',
+                                str(fixed_bag), '/points', str(result), str(profile_path)],
+                               check=True)
+                return [json.loads(line) for line in result.read_text().splitlines()]
+            fixed = evaluate(profile, 'fixed.jsonl')
+            assert fixed[16]['state'] == 'OBSTACLE', fixed[16]['reason']
+            assert abs(fixed[16]['distance_m'] - 44.0) < 0.2, fixed[16]['distance_m']
+            assert fixed[16]['route'][2], fixed[16]['route']
+            assert any(c['channels'] & 2 for c in fixed[16]['candidates'])
+            motion_profile = root / 'motion_only.yaml'
+            motion_profile.write_text(profile.read_text() + '  static_channel: false\n')
+            motion_only = evaluate(motion_profile, 'motion_only.jsonl')
+            assert motion_only[16]['state'] != 'OBSTACLE', motion_only[16]
+            print('PASS: ROS motion-compensated frames, offline parity, fixed obstacle '
+                  'found by the gauge channel')
         finally:
             if launch.poll() is None:
                 launch.send_signal(signal.SIGINT)

@@ -40,6 +40,23 @@ struct AlgorithmConfig {
   std::size_t background_lag_frames{5};
   double background_margin_m{0.5};
   double background_relative_margin{0.02};
+  // Route centre from the tunnel walls; the corridor follows curves instead of a line.
+  bool route_estimation{true};
+  double route_min_radius_m{150.0};
+  // Gauge channel: returns inside a narrow route gauge are candidates without any history,
+  // so obstacles fixed in the world are found while the train approaches them. Long
+  // gauge-only structures (walls, platform edges) are rejected by length.
+  bool static_channel{true};
+  // Chosen on development data: rails and track-side equipment start around 0.76 m.
+  double static_half_width_m{0.9};
+  double static_min_height_m{0.3};
+  double static_max_height_m{2.5};
+  double static_max_length_m{3.0};
+  // Low candidates (top below low_object_height_m above the bed) count only between the
+  // rails: rails (+-0.76 m), the contact rail (~1.5 m), cable ducts and walkways are low
+  // and lie outside low_object_half_width_m. Tall objects count anywhere in the corridor.
+  double low_object_height_m{1.0};
+  double low_object_half_width_m{0.5};
   // Move the baseline by lidar-only forward odometry before differencing.
   bool ego_motion_compensation{true};
   double ego_max_speed_mps{25.0};
@@ -66,6 +83,13 @@ struct AlgorithmConfig {
         !std::isfinite(candidate_margin_m) || candidate_margin_m < 0 || candidate_margin_m > 2 ||
         !std::isfinite(ego_max_speed_mps) || ego_max_speed_mps <= 0 || ego_max_speed_mps > 60 ||
         !std::isfinite(ego_min_contrast) || ego_min_contrast <= 0 || ego_min_contrast > 0.3 ||
+        !std::isfinite(route_min_radius_m) || route_min_radius_m < 20 ||
+        !std::isfinite(static_half_width_m) || static_half_width_m <= 0 ||
+        !std::isfinite(static_min_height_m) || static_min_height_m <= 0 ||
+        !std::isfinite(static_max_height_m) || static_max_height_m <= static_min_height_m ||
+        !std::isfinite(static_max_length_m) || static_max_length_m <= 0 ||
+        !std::isfinite(low_object_height_m) || low_object_height_m < 0 ||
+        !std::isfinite(low_object_half_width_m) || low_object_half_width_m < 0 ||
         !std::isfinite(background_margin_m) || background_margin_m < 0 ||
         !std::isfinite(background_relative_margin) || background_relative_margin < 0 ||
         background_relative_margin > 0.5)
