@@ -127,6 +127,19 @@ detector:
             wait_for(lambda: publisher.get_subscription_count() > 0 and
                      node.count_subscribers('/ego_smoke/analysis') >= 2 and
                      assessments)
+            # Each sequence frame is published once, so the perception -> monitor chain must be
+            # up first: a single volatile sample can be lost during discovery. The warm-up stamp
+            # is far earlier, so the detector restarts its history before the sequence.
+            warm_up = moving_tunnel(0)
+            warm_up.header.stamp.sec = 100
+            deadline = time.monotonic() + 30
+            while not any(a.header.stamp.sec == 100 for a in assessments):
+                if launch.poll() is not None or time.monotonic() > deadline:
+                    raise RuntimeError('Ego-motion ROS smoke: no warm-up assessment')
+                publisher.publish(warm_up)
+                end = time.monotonic() + 0.3
+                while time.monotonic() < end:
+                    rclpy.spin_once(node, timeout_sec=0.05)
             bag = root / 'moving_tunnel'
             writer = rosbag2_py.SequentialWriter()
             writer.open(rosbag2_py.StorageOptions(uri=str(bag), storage_id='sqlite3'),

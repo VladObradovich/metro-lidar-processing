@@ -165,15 +165,17 @@ detector:
                     rclpy.spin_once(node, timeout_sec=0.1)
                 analysis = next(a for a in analyses if a.header.stamp.sec == stamp_sec)
 
+                # Any analysis of this cloud may be the first to reach the monitor.
                 def matching():
                     return next((
                         a for a in assessments
-                        if a.header.stamp.sec == stamp_sec
-                        and a.frame_sequence == analysis.frame_sequence
-                        and not a.stale
+                        if a.header.stamp.sec == stamp_sec and not a.stale
+                        and any(x.frame_sequence == a.frame_sequence for x in analyses)
                     ), None)
                 wait_until(lambda: matching() is not None)
                 assessment = matching()
+                analysis = next(a for a in analyses
+                                if a.frame_sequence == assessment.frame_sequence)
                 assert assessment.state == expected_state, (kind, assessment.reason)
                 assert assessment.reason == expected_reason, (kind, assessment.reason)
                 assert assessment.source_instance_id == analysis.source_instance_id
