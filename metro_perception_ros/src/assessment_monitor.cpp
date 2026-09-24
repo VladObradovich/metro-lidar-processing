@@ -61,6 +61,7 @@ GateDecision AssessmentMonitor::on_analysis(const FrameAnalysis& frame, Clock::t
     candidate.nearest_point = {item.nearest_point.x, item.nearest_point.y, item.nearest_point.z};
     candidate.distance_m = item.distance_m;
     candidate.distance_valid = item.distance_valid;
+    candidate.support_points = item.support_points;
     for (const auto& reason : item.reasons) {
       if (reason == "MOTION")
         candidate.channels |= metro_perception_core::ObstacleCandidate::kMotion;

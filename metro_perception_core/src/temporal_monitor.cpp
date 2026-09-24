@@ -51,6 +51,7 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
 
   // Prediction: fixed in the world, so the train's own travel brings it closer.
   const bool ego = frame.ego_motion_valid && std::isfinite(frame.ego_speed_mps);
+  const bool still = ego && std::abs(frame.ego_speed_mps) < config_.still_speed_mps;
   const double travel = ego ? std::max(0.0, frame.ego_speed_mps) * dt : 0.0;
   for (auto& track : tracks_) {
     track.center.x -= travel;
@@ -83,6 +84,7 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
     track.size = candidate.size;
     track.distance_m = candidate.distance_m;
     track.channels |= candidate.channels;
+    track.support = candidate.support_points;
     track.history |= 1u;
     track.misses = 0;
   };
@@ -113,6 +115,11 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
     const auto window = gauge_only ? config_.gauge_confirm_window : config_.confirm_window;
     const auto needed = gauge_only ? config_.gauge_confirm_hits : config_.confirm_hits;
     if (!track.confirmed && hits_in(track.history, window) >= needed) track.confirmed = true;
+    // Standing still, the background difference has no odometry or disocclusion error:
+    // new MOTION evidence is a real change and is confirmed when it is first seen.
+    if (!track.confirmed && still && (track.history & 1u) &&
+        (track.channels & ObstacleCandidate::kMotion) && track.support >= config_.still_min_points)
+      track.confirmed = true;
   }
   auto finished = [&](const Track& track) {
     return !(track.distance_m > 0) ||

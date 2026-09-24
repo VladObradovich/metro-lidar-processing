@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cmath>
+#include <functional>
+
 #include "metro_perception_core/pipeline.hpp"
 #include "metro_perception_core/temporal_monitor.hpp"
 using namespace metro_perception_core;
@@ -628,6 +632,20 @@ TEST(Candidates, LowObjectsCountOnlyBetweenTheRails) {
   EXPECT_EQ(PerceptionPipeline(config).process(scene(0.7, 0.85, 1.7)).candidates.size(), 1u);
 }
 
+TEST(Candidates, RejectedComponentsAreRecordedOnlyOnRequest) {
+  auto input = verified_input();
+  add_floor(input, 4, 50);
+  add_box(input, 20, 0.7, 0.85, 0.3, 0.7);  // Low and off the rails.
+  auto config = single_frame_config();
+  EXPECT_TRUE(PerceptionPipeline(config).process(input).rejected.empty());
+  config.record_rejected = true;
+  const auto frame = PerceptionPipeline(config).process(input);
+  EXPECT_TRUE(frame.candidates.empty());
+  ASSERT_EQ(frame.rejected.size(), 1u);
+  EXPECT_EQ(frame.rejected.front().reason, "LOW_OFF_CENTRE");
+  EXPECT_NEAR(frame.rejected.front().center.x, 20.25, 0.3);
+}
+
 TEST(Gauge, TrackLineCrossingTheRailBoundaryIsNotSliced) {
   // A low line along the track (a rail seen with a small lateral error of the route) drifts
   // across low_object_half_width_m. The part between the rails must not survive as a short
@@ -645,6 +663,61 @@ TEST(Gauge, TrackLineCrossingTheRailBoundaryIsNotSliced) {
   ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
   ASSERT_TRUE(frame.route.valid);
   EXPECT_TRUE(frame.candidates.empty()) << frame.candidates.front().center.x;
+}
+
+TEST(Candidates, LongStructureBesideTheGaugeIsNotAnObstacle) {
+  // New returns at the corridor edge that run along the route (odometry error, disocclusion)
+  // are a wall or a platform edge. A compact object there, and anything reaching into the
+  // gauge, stay candidates.
+  auto run = [](const std::function<void(FrameInput&)>& add) {
+    PerceptionPipeline pipeline;
+    FrameResult frame;
+    for (int i = 0; i <= 11; ++i) {
+      auto input = moving_tunnel(i, 0, false);
+      if (i == 11) add(input);
+      frame = pipeline.process(input);
+    }
+    return frame;
+  };
+  // Near enough that the grazing wall stays one component (farther it breaks into pieces).
+  auto wall = [](FrameInput& input) {
+    for (double x = 5; x < 11; x += 0.5) add_box(input, x, 1.7, 1.9, 0.3, 1.7);
+  };
+  const auto long_edge = run(wall);
+  ASSERT_EQ(long_edge.status, AnalysisStatus::OK) << long_edge.reason;
+  EXPECT_TRUE(long_edge.candidates.empty()) << long_edge.candidates.front().size.x;
+  const auto compact = run([](FrameInput& input) { add_box(input, 20, 1.6, 1.9, 0.3, 1.7); });
+  ASSERT_EQ(compact.candidates.size(), 1u);
+  EXPECT_EQ(compact.candidates.front().channels, ObstacleCandidate::kMotion);
+  const auto reaching = run([&](FrameInput& input) {
+    wall(input);
+    add_box(input, 8, 0.5, 1.7, 0.3, 1.7);
+  });
+  // The object reaching into the gauge keeps the component (the wall is merged into it).
+  EXPECT_TRUE(std::any_of(reaching.candidates.begin(), reaching.candidates.end(),
+                          [](const auto& c) { return c.center.y - c.size.y / 2 < 1.0; }));
+}
+
+TEST(Candidates, OutsideTheVehicleEnvelopeCountsOnlyStandingStill) {
+  // Between the vehicle envelope and the corridor edge the train passes by. While it moves,
+  // new returns that stay there are not candidates; reaching into the envelope they are, and
+  // standing still the whole corridor counts.
+  auto run = [](double speed, double y0) {
+    PerceptionPipeline pipeline;
+    FrameResult frame;
+    for (int i = 0; i <= 12; ++i) {
+      auto input = moving_tunnel(i, speed, false);
+      if (i >= 11) add_box(input, 30.0 - speed * 0.1 * (i - 11), y0, 1.9, 0.3, 1.7);
+      frame = pipeline.process(input);
+    }
+    return frame;
+  };
+  const auto moving = run(10, 1.6);
+  ASSERT_EQ(moving.status, AnalysisStatus::OK) << moving.reason;
+  ASSERT_TRUE(moving.ego_motion_valid);
+  EXPECT_TRUE(moving.candidates.empty()) << moving.candidates.front().center.y;
+  EXPECT_EQ(run(10, 1.2).candidates.size(), 1u);
+  EXPECT_EQ(run(0, 1.6).candidates.size(), 1u);
 }
 
 TEST(Gauge, ObstacleBesideTrackEquipmentIsNotMergedWithIt) {

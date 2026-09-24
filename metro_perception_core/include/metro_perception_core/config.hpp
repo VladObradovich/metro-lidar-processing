@@ -15,6 +15,8 @@ struct Bounds {
 };
 struct AlgorithmConfig {
   std::size_t max_points{2000000};
+  // Diagnostics only: keep rejected components and their reasons in FrameResult.
+  bool record_rejected{false};
   double blind_radius_m{0.5};  // Sensor coordinates, before translation.
   Bounds geometry_roi;
   Bounds detection_roi{{0, -5, -3}, {120, 5, 5}};
@@ -57,6 +59,11 @@ struct AlgorithmConfig {
   // and lie outside low_object_half_width_m. Tall objects count anywhere in the corridor.
   double low_object_height_m{1.0};
   double low_object_half_width_m{0.5};
+  // Vehicle half-width with margin (a metro car is ~1.35-1.4 m). While the train moves at
+  // envelope_min_speed_mps or more, evidence without the gauge channel that stays farther
+  // from the route is not a candidate; standing still, the whole corridor counts.
+  double envelope_half_width_m{1.5};
+  double envelope_min_speed_mps{1.0};
   // Move the baseline by lidar-only forward odometry before differencing.
   bool ego_motion_compensation{true};
   double ego_max_speed_mps{25.0};
@@ -90,6 +97,8 @@ struct AlgorithmConfig {
         !std::isfinite(static_max_length_m) || static_max_length_m <= 0 ||
         !std::isfinite(low_object_height_m) || low_object_height_m < 0 ||
         !std::isfinite(low_object_half_width_m) || low_object_half_width_m < 0 ||
+        !std::isfinite(envelope_half_width_m) || envelope_half_width_m < 0 ||
+        !std::isfinite(envelope_min_speed_mps) || envelope_min_speed_mps < 0 ||
         !std::isfinite(background_margin_m) || background_margin_m < 0 ||
         !std::isfinite(background_relative_margin) || background_relative_margin < 0 ||
         background_relative_margin > 0.5)
@@ -114,6 +123,11 @@ struct TemporalConfig {
   double gate_range_fraction{0.03};
   double object_max_speed_mps{4.0};
   double unknown_ego_speed_mps{20.0};
+  // Below this valid ego speed a track with MOTION evidence is confirmed on its first hit
+  // (standing still, differencing needs no odometry); 0 disables.
+  double still_speed_mps{0.0};
+  // Returns inside the corridor such a track needs in that frame (not a sparse flicker).
+  std::uint32_t still_min_points{50};
   // A longer pause between analysed frames restarts all tracks.
   double max_gap_s{0.5};
   std::size_t max_tracks{64};
@@ -127,7 +141,8 @@ struct TemporalConfig {
         !std::isfinite(gate_range_fraction) || gate_range_fraction < 0 ||
         !std::isfinite(object_max_speed_mps) || object_max_speed_mps < 0 ||
         !std::isfinite(unknown_ego_speed_mps) || unknown_ego_speed_mps < 0 ||
-        !std::isfinite(max_gap_s) || max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024)
+        !std::isfinite(still_speed_mps) || still_speed_mps < 0 || !std::isfinite(max_gap_s) ||
+        max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024)
       throw std::invalid_argument("Invalid temporal configuration");
   }
 };

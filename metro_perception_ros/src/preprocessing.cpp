@@ -58,6 +58,9 @@ metro_perception_core::TemporalConfig load_temporal_config(const std::string& pa
     read_double("gate_range_fraction", c.gate_range_fraction);
     read_double("object_max_speed_mps", c.object_max_speed_mps);
     read_double("unknown_ego_speed_mps", c.unknown_ego_speed_mps);
+    read_double("still_speed_mps", c.still_speed_mps);
+    if (temporal["still_min_points"])
+      c.still_min_points = temporal["still_min_points"].as<std::uint32_t>();
     read_double("max_gap_s", c.max_gap_s);
     read_count("max_tracks", c.max_tracks);
   }
@@ -169,6 +172,8 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("static_min_height_m", c.algorithm.static_min_height_m);
     read_double("static_max_height_m", c.algorithm.static_max_height_m);
     read_double("static_max_length_m", c.algorithm.static_max_length_m);
+    read_double("envelope_half_width_m", c.algorithm.envelope_half_width_m);
+    read_double("envelope_min_speed_mps", c.algorithm.envelope_min_speed_mps);
     read_double("low_object_height_m", c.algorithm.low_object_height_m);
     read_double("low_object_half_width_m", c.algorithm.low_object_half_width_m);
     if (detector["ego_motion_compensation"])

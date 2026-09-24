@@ -39,10 +39,13 @@ detector:
   ego_min_contrast: 0.005
 
 # G4 confirmation, chosen on development data: an object is an obstacle after 2 sightings
-# in 3 frames (one extra frame of latency) and is kept through one missed frame.
+# in 3 frames (one extra frame of latency) and is kept through one missed frame. Standing
+# still, new motion evidence of at least still_min_points returns is confirmed at once.
 temporal:
   confirm_hits: 2
   confirm_window: 3
   gauge_confirm_hits: 2
   gauge_confirm_window: 3
   release_misses: 2
+  still_speed_mps: 0.5
+  still_min_points: 50

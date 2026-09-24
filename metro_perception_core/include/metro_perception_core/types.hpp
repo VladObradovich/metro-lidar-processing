@@ -77,6 +77,13 @@ struct PreprocessedFrame {
   std::size_t invalid_points{0}, blind_points{0}, outside_roi_points{0};
   bool transform_applied{false};
 };
+// A component that did not become a candidate and the rule that rejected it (diagnostics).
+struct RejectedComponent {
+  std::string reason;
+  PointXYZ center, size;
+  std::uint32_t cells{0}, points{0};
+  std::uint8_t channels{0};
+};
 struct FrameResult {
   PreprocessedFrame preprocessed;
   AnalysisStatus status{AnalysisStatus::NOT_IMPLEMENTED};
@@ -87,6 +94,7 @@ struct FrameResult {
   double evaluated_range_m{0};
   CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
   RouteEstimate route;
+  std::vector<RejectedComponent> rejected;  // Only with AlgorithmConfig::record_rejected.
   // Lidar-only forward speed used to move the range baseline; diagnostic only.
   bool ego_motion_valid{false};
   double ego_speed_mps{0};

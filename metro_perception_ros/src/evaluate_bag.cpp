@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -105,6 +106,8 @@ int main(int argc, char** argv) {
     if (argc >= 6) config.algorithm.max_points = parse_limit(argv[5], "MAX_POINTS");
     if (argc >= 7) max_cloud_bytes = parse_limit(argv[6], "MAX_CLOUD_BYTES");
     metro_perception_ros::validate_pointcloud_limits(config.algorithm.max_points, max_cloud_bytes);
+    // Diagnostics: rejected components and their reasons in every row.
+    config.algorithm.record_rejected = std::getenv("METRO_DEBUG_COMPONENTS") != nullptr;
     config.algorithm.validate();
 
     double lookahead_s = 0.05;
@@ -242,6 +245,18 @@ int main(int argc, char** argv) {
                << "],\"channels\":" << static_cast<unsigned>(track.channels) << '}';
       }
       output << ']';
+      if (config.algorithm.record_rejected) {
+        output << ",\"rejected\":[";
+        for (std::size_t i = 0; i < result.rejected.size(); ++i) {
+          const auto& item = result.rejected[i];
+          output << (i ? "," : "") << "{\"reason\":" << json_string(item.reason) << ",\"center\":["
+                 << item.center.x << ',' << item.center.y << ',' << item.center.z << "],\"size\":["
+                 << item.size.x << ',' << item.size.y << ',' << item.size.z
+                 << "],\"cells\":" << item.cells << ",\"points\":" << item.points
+                 << ",\"channels\":" << static_cast<unsigned>(item.channels) << '}';
+        }
+        output << ']';
+      }
       output << ",\"route\":[" << result.route.c1 << ',' << result.route.c2 << ','
              << (result.route.valid ? "true" : "false") << ',' << result.route.max_x << ']';
       output << ",\"processing_status\":" << static_cast<unsigned>(result.status)

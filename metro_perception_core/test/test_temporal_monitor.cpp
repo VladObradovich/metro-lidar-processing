@@ -174,6 +174,7 @@ namespace {
 struct Seen {
   double x, y;
   std::uint8_t channels{ObstacleCandidate::kMotion};
+  std::uint32_t points{100};
 };
 FrameResult tracked_frame(const std::vector<Seen>& seen, double ego_speed = 0.0,
                           bool ego_valid = true) {
@@ -194,6 +195,7 @@ FrameResult tracked_frame(const std::vector<Seen>& seen, double ego_speed = 0.0,
     c.distance_m = s.x - 0.25;
     c.distance_valid = true;
     c.channels = s.channels;
+    c.support_points = s.points;
     frame.candidates.push_back(c);
   }
   return frame;
@@ -359,10 +361,34 @@ TEST(Tracker, RepeatedMeasurementIsNoNewEvidence) {
   EXPECT_EQ(monitor.update(tracked_frame({{30, 0}}), 2 * kFrameNs).state, State::OBSTACLE);
 }
 
+TEST(Tracker, MotionIsConfirmedAtOnceOnlyWhileStandingStill) {
+  auto config = rule(2, 3);
+  config.still_speed_mps = 0.5;
+  const Seen motion{20, 1.9, ObstacleCandidate::kMotion}, gauge{20, 0, ObstacleCandidate::kGauge};
+  EXPECT_EQ(TemporalMonitor(config).update(tracked_frame({motion}, 0.1), kFrameNs).state,
+            State::OBSTACLE);
+  // Moving, gauge-only, sparse or without ego motion, the N-of-M rule applies.
+  const Seen sparse{20, 1.9, ObstacleCandidate::kMotion, 10};
+  EXPECT_EQ(TemporalMonitor(config).update(tracked_frame({sparse}, 0.1), kFrameNs).state,
+            State::UNKNOWN);
+  EXPECT_EQ(TemporalMonitor(config).update(tracked_frame({motion}, 10.0), kFrameNs).state,
+            State::UNKNOWN);
+  EXPECT_EQ(TemporalMonitor(config).update(tracked_frame({gauge}, 0.1), kFrameNs).state,
+            State::UNKNOWN);
+  EXPECT_EQ(TemporalMonitor(config).update(tracked_frame({motion}, 0.0, false), kFrameNs).state,
+            State::UNKNOWN);
+  // Disabled by default.
+  EXPECT_EQ(TemporalMonitor(rule(2, 3)).update(tracked_frame({motion}, 0.1), kFrameNs).state,
+            State::UNKNOWN);
+}
+
 TEST(Tracker, InvalidConfigurationIsRejected) {
   auto config = rule(3, 2);
   EXPECT_THROW(TemporalMonitor{config}, std::invalid_argument);
   config = rule(1, 1);
   config.gate_base_m = 0;
+  EXPECT_THROW(TemporalMonitor{config}, std::invalid_argument);
+  config = rule(1, 1);
+  config.still_speed_mps = -1;
   EXPECT_THROW(TemporalMonitor{config}, std::invalid_argument);
 }

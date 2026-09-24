@@ -569,6 +569,8 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       moved = moved || shifts.back() > 0;
     }
   }
+  const bool moving =
+      result.ego_motion_valid && result.ego_speed_mps >= config.envelope_min_speed_mps;
   std::unordered_map<std::int64_t, bool> foreground_cache;
   auto foreground = [&](std::int64_t cell_key) {
     if (!config.background_history_frames) return true;
@@ -686,6 +688,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     // surface of each cell: a structure parallel to the route is seen at a grazing angle
     // and falls into few angular cells, so the per-cell nearest layer would look short.
     double gauge_lo_x = INFINITY, gauge_hi_x = -INFINITY;
+    double closest_offset = INFINITY;  // Of the evidence, from the route centre.
     std::vector<PointXYZ> structure;
     double inside_top = -INFINITY, inside_offset = 0;
     std::size_t inside_points = 0;
@@ -711,6 +714,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
           structure.push_back(p);
           continue;
         }
+        closest_offset = std::min(closest_offset, offset);
         lo.x = std::min(lo.x, p.x);
         lo.y = std::min(lo.y, p.y);
         lo.z = std::min(lo.z, p.z);
@@ -734,14 +738,42 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     // route are rejected, and its returns already start above static_min_height_m.
     const bool gauge_only = channels == ObstacleCandidate::kGauge;
     const double min_extent = gauge_only ? 0.1 : config.obstacle_min_height_m;
-    if (inside_cells < config.min_candidate_cells || support < config.min_candidate_points ||
-        inside_high - inside_low < min_extent ||
-        (gauge_only && gauge_hi_x - gauge_lo_x > config.static_max_length_m))
+    const char* rejected = nullptr;
+    if (inside_cells < config.min_candidate_cells) {
+      rejected = "FEW_CELLS";
+    } else if (support < config.min_candidate_points) {
+      rejected = "FEW_POINTS";
+    } else if (inside_high - inside_low < min_extent) {
+      rejected = "LOW_EXTENT";
+    } else if (gauge_only && gauge_hi_x - gauge_lo_x > config.static_max_length_m) {
+      rejected = "LONG_GAUGE_STRUCTURE";
+    } else if (closest_offset > gauge_half_width && hi.x - lo.x > config.static_max_length_m) {
+      // Beside the gauge, a surface long along the route is a wall, a platform edge or a
+      // cable seen as new through odometry error or disocclusion; an obstacle is compact.
+      rejected = "LONG_EDGE_STRUCTURE";
+    } else if (moving && !(channels & ObstacleCandidate::kGauge) &&
+               closest_offset > config.envelope_half_width_m) {
+      // Between the vehicle envelope and the corridor edge the train passes by: while it
+      // moves, new returns there (platform, equipment, odometry error) are not in its way.
+      rejected = "OUTSIDE_ENVELOPE";
+    } else if (inside_top < config.low_object_height_m &&
+               std::abs(inside_offset / double(inside_points)) > config.low_object_half_width_m) {
+      // A low component centred off the rails is track structure as a whole.
+      rejected = "LOW_OFF_CENTRE";
+    }
+    if (rejected) {
+      if (config.record_rejected && std::isfinite(lo.x)) {
+        RejectedComponent item;
+        item.reason = rejected;
+        item.center = {(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2};
+        item.size = {hi.x - lo.x, hi.y - lo.y, hi.z - lo.z};
+        item.cells = static_cast<std::uint32_t>(entry.second.size());
+        item.points = static_cast<std::uint32_t>(support);
+        item.channels = channels;
+        result.rejected.push_back(item);
+      }
       continue;
-    // A low component centred off the rails is track structure as a whole.
-    if (inside_top < config.low_object_height_m &&
-        std::abs(inside_offset / double(inside_points)) > config.low_object_half_width_m)
-      continue;
+    }
     // Structure returns complete the box only alongside the evidence (the low part of a tall
     // object at the corridor edge), never extend it along the route.
     for (const auto& p : structure) {

@@ -34,6 +34,7 @@ class TemporalMonitor {
     std::uint32_t history{0};  // Bit 0 = this frame.
     std::uint32_t age_frames{0}, misses{0};
     std::uint8_t channels{0};
+    std::uint32_t support{0};  // Of the last measurement.
     bool confirmed{false};
   };
   bool update_tracks(const FrameResult& frame, std::int64_t measurement_time_ns);

@@ -7,6 +7,10 @@ notes:
   - Validation bags were inspected and compared during G2 work; this is post-hoc validation, not a blind test.
   - The only positive bag is in development, so independent positive recall is unavailable.
   - new_data is excluded from the current annotation and evaluation scope at the user's request.
+  - From 2026-09-24 (after G4) false-alarm classes were reviewed on development and validation together
+    ("two halves", at the user's request); every rule adopted since is physically motivated and had to
+    improve both halves separately without losing the positive object or synthetic recall. Validation
+    figures after that date are not an independent estimate; the hidden control bags are.
 development: [doubleT_obstacle, doubleT_platform, roundT_pressureGate_roundT]
 validation: [roundT_doubleT, roundT_squareT_pressureGate_squareT, squareT_platform_squareT_switch]
 holdout: []
