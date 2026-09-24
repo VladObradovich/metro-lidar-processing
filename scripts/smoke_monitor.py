@@ -4,6 +4,7 @@ import math
 import os
 import signal
 import subprocess
+import tempfile
 import time
 
 from metro_perception_interfaces.msg import (
@@ -47,12 +48,17 @@ def main():
     received = []
     node.create_subscription(PathAssessment, '/monitor_smoke/assessment', received.append, 50)
     publisher = node.create_publisher(FrameAnalysis, '/monitor_smoke/analysis', 10)
+    # The gating contract is checked with the per-frame decision (G4 confirmation is 1 of 1).
+    profile = tempfile.NamedTemporaryFile('w', suffix='.yaml', prefix='metro-monitor-')
+    profile.write('temporal:\n  confirm_hits: 1\n  confirm_window: 1\n'
+                  '  gauge_confirm_hits: 1\n  gauge_confirm_window: 1\n  release_misses: 1\n')
+    profile.flush()
     monitor = subprocess.Popen([
         'ros2', 'run', 'metro_perception_ros', 'obstacle_monitor_node', '--ros-args',
         '-r', '__node:=monitor_smoke_node',
         '-r', '~/input/analysis:=/monitor_smoke/analysis',
         '-r', '~/output/assessment:=/monitor_smoke/assessment',
-        '-p', 'timeout_s:=3.0',
+        '-p', 'timeout_s:=3.0', '-p', f'sensor_profile:={profile.name}',
     ], start_new_session=True)
 
     def spin_until(predicate, seconds=10):
@@ -146,6 +152,7 @@ def main():
         except subprocess.TimeoutExpired:
             os.killpg(monitor.pid, signal.SIGKILL)
             monitor.wait()
+        profile.close()
         node.destroy_node()
         rclpy.shutdown()
 
