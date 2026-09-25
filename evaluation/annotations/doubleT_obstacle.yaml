@@ -3,31 +3,27 @@ bag_id: doubleT_obstacle
 reviewed: true
 time_basis: bag_stamp_ns
 review_method: owner_ground_truth_depth_video_and_raw_pointcloud_review_all_positive_frames
-review_limits: Ground truth from the data owner - the only obstacle in this bag is one person, who appears in the
-  cloud at about +13 s beside the cab and runs forward along the track to the end of the bag. The depth video
-  shows the person entering from the right edge at about +13.5 s and moving to the route centre by +16..17 s.
-  Negative until +13.086 s (first frame with the person); uncertain while the person stands beside the cab, almost
-  entirely outside |y| <= 2 m (+13.086 to +14.607 s); positive from the first frame with a substantial part of the
-  person inside the corridor ahead of the lidar. ROIs from +14.61 to +16.90 s are the raw foreground blob against
-  the empty control frame +10 s, padded by 0.1 m; ROIs from +17.00 s follow the manually reviewed trajectory
-  with a fixed 0.7 m longitudinal width and are not a tight fit to every point. All ROIs are independent of
-  detector candidates. Vehicle axes and track clearance are not independently calibrated. Only two late frames
-  have measured lidar-derived longitudinal ranges; these are not surveyed vehicle distances.
+review_limits: Ground truth from the data owner names one person, who appears in the cloud at about +13 s beside
+  the cab and runs forward along the track to the end of the bag; the depth video shows that person
+  entering from the right edge at about +13.5 s and moving to the route centre by +16..17 s. A raw
+  point cloud review on 2026-09-25 found a second person on the track 54.5-57 m ahead in every
+  frame (about 1.6 m tall, 0.5 m wide, standing on the track bed), walking across the track to y =
+  -1.75 m and back to +0.95 m until +12 s, then standing still at y = +0.8 m to the end; the user
+  confirmed it in RViz. It was missed earlier because the empty control frame +10 s already held
+  that person standing still, and on the depth video it is only 2-3 pixels wide. Hence the whole
+  bag is positive. ROIs of the near person from +14.61 to +16.90 s are the raw foreground blob
+  against the control frame +10 s, padded by 0.1 m; from +17.00 s they follow the manually reviewed
+  trajectory with a fixed 0.7 m longitudinal width and are not a tight fit to every point. ROIs of
+  the far person are the raw foreground blob within 1 m of its track against a person-free
+  background built from every frame, padded by 0.1 m. All ROIs are independent of detector
+  candidates. Vehicle axes and track clearance are not independently calibrated. Only two late
+  frames have measured lidar-derived longitudinal ranges; these are not surveyed vehicle distances.
 reviewed_intervals:
 - start_ns: 1788354623110040384
-  end_ns: 1788354636196438963
-  label: negative
-  evidence: Owner ground truth - no obstacle before the person appears at about +13 s.
-- start_ns: 1788354636196438963
-  end_ns: 1788354637717340992
-  label: uncertain
-  evidence: Person is in the cloud beside the cab at x -0.7..1.4 m, y 1.7..2.6 m, above the track bed; not yet on
-    the route ahead of the lidar.
-- start_ns: 1788354637717340992
   end_ns: 1788354643502070680
   label: positive
-  evidence: Person occupies the corridor ahead of the lidar (22-90% of its points within |y| <= 2 m) and runs
-    forward through the end of the bag.
+  evidence: A second person is on the track 54.5-57 m ahead in every frame (75-100% of its points within |y| <=
+    2 m); from +14.61 s the owner-described person also occupies the corridor ahead of the lidar.
 events:
 - id: person_enters_track_01
   start_ns: 1788354637717340992
@@ -428,3 +424,1417 @@ events:
     person_roi_assumed_m:
       min: [16.0, 1.6, -1.9]
       max: [16.7, 2.4, 0.5]
+- id: person_on_track_far_02
+  start_ns: 1788354623110040384
+  end_ns: 1788354643502070680
+  label: positive
+  evidence: Second person on the track 54.5-57 m ahead, found in the raw PointCloud2 on every frame and
+    confirmed by the user in RViz; not named by the data owner.
+  reference_frames:
+  - bag_stamp_ns: 1788354623110040384
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.41, -0.14, -2.63]
+      max: [55.93, 0.62, -0.93]   # +0.00 s, 113 pts
+  - bag_stamp_ns: 1788354623210133818
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.37, -0.16, -2.63]
+      max: [55.93, 0.62, -0.93]   # +0.10 s, 112 pts
+  - bag_stamp_ns: 1788354623301011132
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.33, -0.24, -2.63]
+      max: [55.91, 0.60, -0.93]   # +0.19 s, 115 pts
+  - bag_stamp_ns: 1788354623393736917
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.31, -0.43, -2.49]
+      max: [55.92, 0.42, -0.93]   # +0.28 s, 114 pts
+  - bag_stamp_ns: 1788354623493171874
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.30, -0.43, -2.63]
+      max: [55.93, 0.40, -0.93]   # +0.38 s, 121 pts
+  - bag_stamp_ns: 1788354623592582162
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.34, -0.53, -2.63]
+      max: [55.94, 0.31, -0.93]   # +0.48 s, 112 pts
+  - bag_stamp_ns: 1788354623694205255
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.33, -0.53, -2.63]
+      max: [55.92, 0.21, -0.93]   # +0.58 s, 101 pts
+  - bag_stamp_ns: 1788354623794177870
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.40, -0.63, -2.63]
+      max: [55.92, 0.11, -0.93]   # +0.68 s, 88 pts
+  - bag_stamp_ns: 1788354623895983304
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.41, -0.82, -2.62]
+      max: [55.93, 0.04, -1.08]   # +0.79 s, 105 pts
+  - bag_stamp_ns: 1788354624000304661
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.37, -0.91, -2.63]
+      max: [55.96, 0.02, -0.94]   # +0.89 s, 117 pts
+  - bag_stamp_ns: 1788354624096687234
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.37, -1.01, -2.63]
+      max: [55.98, -0.06, -0.94]   # +0.99 s, 124 pts
+  - bag_stamp_ns: 1788354624196840376
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.37, -1.30, -2.49]
+      max: [56.03, -0.08, -0.94]   # +1.09 s, 130 pts
+  - bag_stamp_ns: 1788354624305537930
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.44, -1.31, -2.62]
+      max: [56.05, -0.16, -1.08]   # +1.20 s, 121 pts
+  - bag_stamp_ns: 1788354624405331031
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.43, -1.31, -2.63]
+      max: [56.07, -0.26, -0.94]   # +1.30 s, 122 pts
+  - bag_stamp_ns: 1788354624505599273
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.44, -1.31, -2.63]
+      max: [56.09, -0.35, -1.08]   # +1.40 s, 121 pts
+  - bag_stamp_ns: 1788354624601901346
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.47, -1.40, -2.49]
+      max: [56.05, -0.43, -0.94]   # +1.49 s, 117 pts
+  - bag_stamp_ns: 1788354624709686516
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.47, -1.41, -2.63]
+      max: [56.07, -0.52, -0.93]   # +1.60 s, 120 pts
+  - bag_stamp_ns: 1788354624803121202
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.47, -1.44, -2.49]
+      max: [56.12, -0.50, -0.93]   # +1.69 s, 134 pts
+  - bag_stamp_ns: 1788354624895623930
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.49, -1.54, -2.49]
+      max: [56.09, -0.65, -0.94]   # +1.79 s, 127 pts
+  - bag_stamp_ns: 1788354624996868725
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.53, -1.55, -2.49]
+      max: [56.11, -0.67, -0.94]   # +1.89 s, 118 pts
+  - bag_stamp_ns: 1788354625096075341
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.56, -1.64, -2.50]
+      max: [56.16, -0.75, -0.94]   # +1.99 s, 120 pts
+  - bag_stamp_ns: 1788354625198532267
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, -1.65, -2.49]
+      max: [56.15, -0.77, -0.94]   # +2.09 s, 116 pts
+  - bag_stamp_ns: 1788354625300141499
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.64, -1.70, -2.50]
+      max: [56.21, -0.85, -0.94]   # +2.19 s, 119 pts
+  - bag_stamp_ns: 1788354625400689306
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.65, -1.80, -2.63]
+      max: [56.25, -0.87, -0.94]   # +2.29 s, 129 pts
+  - bag_stamp_ns: 1788354625493345046
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.67, -1.90, -2.63]
+      max: [56.27, -0.95, -0.94]   # +2.38 s, 142 pts
+  - bag_stamp_ns: 1788354625595133098
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.70, -1.99, -2.63]
+      max: [56.27, -0.96, -0.94]   # +2.49 s, 147 pts
+  - bag_stamp_ns: 1788354625699054533
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.71, -2.09, -2.63]
+      max: [56.29, -1.06, -1.08]   # +2.59 s, 144 pts
+  - bag_stamp_ns: 1788354625796947029
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.67, -2.18, -2.50]
+      max: [56.30, -1.06, -1.08]   # +2.69 s, 146 pts
+  - bag_stamp_ns: 1788354625896938022
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.63, -2.30, -2.50]
+      max: [56.33, -1.16, -1.30]   # +2.79 s, 133 pts
+  - bag_stamp_ns: 1788354625996831513
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.59, -2.39, -2.50]
+      max: [56.33, -1.16, -1.30]   # +2.89 s, 139 pts
+  - bag_stamp_ns: 1788354626093138170
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.58, -2.39, -2.50]
+      max: [56.34, -1.21, -1.45]   # +2.98 s, 123 pts
+  - bag_stamp_ns: 1788354626196003597
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.57, -2.30, -2.64]
+      max: [56.36, -1.21, -1.45]   # +3.09 s, 120 pts
+  - bag_stamp_ns: 1788354626296154050
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.56, -2.39, -2.64]
+      max: [56.35, -1.21, -1.57]   # +3.19 s, 111 pts
+  - bag_stamp_ns: 1788354626393924846
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.58, -2.39, -2.64]
+      max: [56.35, -1.21, -1.57]   # +3.28 s, 111 pts
+  - bag_stamp_ns: 1788354626501597902
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.58, -2.29, -2.64]
+      max: [56.35, -1.28, -1.57]   # +3.39 s, 105 pts
+  - bag_stamp_ns: 1788354626598062969
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.58, -2.29, -2.64]
+      max: [56.31, -1.21, -1.57]   # +3.49 s, 104 pts
+  - bag_stamp_ns: 1788354626705148268
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, -2.29, -2.64]
+      max: [56.31, -1.28, -1.57]   # +3.60 s, 104 pts
+  - bag_stamp_ns: 1788354626799879030
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, -2.30, -2.64]
+      max: [56.38, -1.21, -1.45]   # +3.69 s, 115 pts
+  - bag_stamp_ns: 1788354626911171857
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, -2.30, -2.64]
+      max: [56.35, -1.21, -1.45]   # +3.80 s, 113 pts
+  - bag_stamp_ns: 1788354627001804449
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, -2.30, -2.64]
+      max: [56.38, -1.21, -1.45]   # +3.89 s, 123 pts
+  - bag_stamp_ns: 1788354627093602677
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, -2.30, -2.64]
+      max: [56.38, -1.21, -1.45]   # +3.98 s, 122 pts
+  - bag_stamp_ns: 1788354627192226664
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, -2.38, -2.50]
+      max: [56.37, -1.21, -1.45]   # +4.08 s, 123 pts
+  - bag_stamp_ns: 1788354627295473141
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.59, -2.30, -2.64]
+      max: [56.39, -1.24, -1.45]   # +4.19 s, 120 pts
+  - bag_stamp_ns: 1788354627396976830
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, -2.28, -2.50]
+      max: [56.38, -1.21, -1.45]   # +4.29 s, 114 pts
+  - bag_stamp_ns: 1788354627495136583
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.61, -2.30, -2.64]
+      max: [56.43, -1.21, -1.45]   # +4.39 s, 121 pts
+  - bag_stamp_ns: 1788354627593591679
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.62, -2.30, -2.64]
+      max: [56.42, -1.21, -1.30]   # +4.48 s, 120 pts
+  - bag_stamp_ns: 1788354627692169296
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.64, -2.19, -2.50]
+      max: [56.41, -1.21, -1.20]   # +4.58 s, 121 pts
+  - bag_stamp_ns: 1788354627792731455
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.68, -2.19, -2.50]
+      max: [56.35, -1.21, -1.20]   # +4.68 s, 125 pts
+  - bag_stamp_ns: 1788354627893372133
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.71, -2.16, -2.64]
+      max: [56.46, -1.16, -1.09]   # +4.78 s, 137 pts
+  - bag_stamp_ns: 1788354627994041865
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.77, -2.09, -2.50]
+      max: [56.41, -1.06, -1.09]   # +4.88 s, 138 pts
+  - bag_stamp_ns: 1788354628094830536
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.82, -2.07, -2.65]
+      max: [56.43, -1.04, -1.09]   # +4.98 s, 135 pts
+  - bag_stamp_ns: 1788354628192914799
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.77, -1.97, -2.65]
+      max: [56.42, -0.96, -0.94]   # +5.08 s, 137 pts
+  - bag_stamp_ns: 1788354628297324366
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.89, -1.78, -2.64]
+      max: [56.43, -0.94, -1.09]   # +5.19 s, 125 pts
+  - bag_stamp_ns: 1788354628398010925
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.93, -1.74, -2.65]
+      max: [56.49, -0.87, -0.95]   # +5.29 s, 124 pts
+  - bag_stamp_ns: 1788354628491463800
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.98, -1.74, -2.65]
+      max: [56.51, -0.85, -0.95]   # +5.38 s, 116 pts
+  - bag_stamp_ns: 1788354628593664598
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.01, -1.74, -2.65]
+      max: [56.54, -0.85, -0.95]   # +5.48 s, 120 pts
+  - bag_stamp_ns: 1788354628700558430
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.02, -1.66, -2.66]
+      max: [56.57, -0.81, -0.95]   # +5.59 s, 121 pts
+  - bag_stamp_ns: 1788354628799061996
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.06, -1.65, -2.66]
+      max: [56.64, -0.62, -0.95]   # +5.69 s, 137 pts
+  - bag_stamp_ns: 1788354628905030815
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.06, -1.65, -2.66]
+      max: [56.66, -0.52, -0.95]   # +5.79 s, 142 pts
+  - bag_stamp_ns: 1788354629002680323
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.07, -1.55, -2.66]
+      max: [56.70, -0.42, -0.95]   # +5.89 s, 146 pts
+  - bag_stamp_ns: 1788354629111054194
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.09, -1.55, -2.66]
+      max: [56.71, -0.41, -0.95]   # +6.00 s, 139 pts
+  - bag_stamp_ns: 1788354629200948241
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.12, -1.55, -2.66]
+      max: [56.76, -0.41, -1.09]   # +6.09 s, 133 pts
+  - bag_stamp_ns: 1788354629300149307
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.17, -1.45, -2.66]
+      max: [56.73, -0.41, -1.09]   # +6.19 s, 123 pts
+  - bag_stamp_ns: 1788354629398569181
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.17, -1.45, -2.66]
+      max: [56.73, -0.29, -1.09]   # +6.29 s, 121 pts
+  - bag_stamp_ns: 1788354629496818993
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.17, -1.37, -2.81]
+      max: [56.80, -0.19, -1.09]   # +6.39 s, 116 pts
+  - bag_stamp_ns: 1788354629592190996
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.20, -1.22, -2.66]
+      max: [56.74, -0.09, -1.09]   # +6.48 s, 122 pts
+  - bag_stamp_ns: 1788354629696899340
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.21, -1.00, -2.66]
+      max: [56.80, -0.03, -1.09]   # +6.59 s, 116 pts
+  - bag_stamp_ns: 1788354629798360526
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.22, -0.77, -2.67]
+      max: [56.87, 0.06, -1.09]   # +6.69 s, 112 pts
+  - bag_stamp_ns: 1788354629899055745
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.24, -0.73, -2.67]
+      max: [56.90, 0.16, -1.09]   # +6.79 s, 116 pts
+  - bag_stamp_ns: 1788354629994818410
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.27, -0.67, -2.82]
+      max: [56.95, 0.31, -1.09]   # +6.88 s, 112 pts
+  - bag_stamp_ns: 1788354630095821178
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.30, -0.67, -2.82]
+      max: [56.95, 0.32, -1.09]   # +6.99 s, 115 pts
+  - bag_stamp_ns: 1788354630194133820
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.36, -0.67, -2.82]
+      max: [56.98, 0.40, -1.09]   # +7.08 s, 116 pts
+  - bag_stamp_ns: 1788354630296996392
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.41, -0.57, -2.82]
+      max: [56.99, 0.50, -1.10]   # +7.19 s, 118 pts
+  - bag_stamp_ns: 1788354630394940789
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.44, -0.44, -2.82]
+      max: [56.99, 0.60, -0.95]   # +7.28 s, 112 pts
+  - bag_stamp_ns: 1788354630493799379
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.45, -0.34, -2.82]
+      max: [56.97, 0.60, -1.10]   # +7.38 s, 117 pts
+  - bag_stamp_ns: 1788354630591626858
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.46, -0.07, -2.68]
+      max: [56.98, 0.67, -0.95]   # +7.48 s, 107 pts
+  - bag_stamp_ns: 1788354630696326248
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.48, -0.08, -2.82]
+      max: [56.99, 0.77, -1.10]   # +7.59 s, 126 pts
+  - bag_stamp_ns: 1788354630797650350
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.49, -0.08, -2.82]
+      max: [57.00, 0.80, -0.95]   # +7.69 s, 115 pts
+  - bag_stamp_ns: 1788354630897725111
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.50, 0.01, -2.82]
+      max: [57.05, 0.87, -1.10]   # +7.79 s, 109 pts
+  - bag_stamp_ns: 1788354631000213390
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.49, 0.02, -2.82]
+      max: [57.01, 0.90, -1.09]   # +7.89 s, 102 pts
+  - bag_stamp_ns: 1788354631115218199
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.50, 0.11, -2.82]
+      max: [57.00, 0.93, -1.09]   # +8.01 s, 98 pts
+  - bag_stamp_ns: 1788354631208720604
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.49, 0.12, -2.68]
+      max: [57.03, 1.00, -1.09]   # +8.10 s, 103 pts
+  - bag_stamp_ns: 1788354631313328790
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.49, 0.32, -2.68]
+      max: [56.99, 1.06, -1.09]   # +8.20 s, 112 pts
+  - bag_stamp_ns: 1788354631413160101
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.52, 0.32, -2.68]
+      max: [57.04, 1.08, -1.09]   # +8.30 s, 114 pts
+  - bag_stamp_ns: 1788354631496154844
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.54, 0.33, -2.68]
+      max: [57.05, 1.12, -1.09]   # +8.39 s, 120 pts
+  - bag_stamp_ns: 1788354631589843246
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.55, 0.36, -2.69]
+      max: [57.12, 1.20, -0.95]   # +8.48 s, 124 pts
+  - bag_stamp_ns: 1788354631692162431
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.54, 0.43, -2.68]
+      max: [57.00, 1.30, -1.09]   # +8.58 s, 126 pts
+  - bag_stamp_ns: 1788354631793435594
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.55, 0.45, -2.68]
+      max: [57.02, 1.33, -0.95]   # +8.68 s, 133 pts
+  - bag_stamp_ns: 1788354631894424675
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.55, 0.52, -2.68]
+      max: [57.00, 1.40, -1.10]   # +8.78 s, 121 pts
+  - bag_stamp_ns: 1788354631996829041
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.53, 0.52, -2.69]
+      max: [57.14, 1.42, -0.95]   # +8.89 s, 134 pts
+  - bag_stamp_ns: 1788354632097485674
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.54, 0.53, -2.68]
+      max: [56.99, 1.42, -1.10]   # +8.99 s, 117 pts
+  - bag_stamp_ns: 1788354632195572255
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.58, 0.55, -2.69]
+      max: [57.12, 1.42, -0.95]   # +9.09 s, 122 pts
+  - bag_stamp_ns: 1788354632301212111
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.57, 0.58, -2.68]
+      max: [56.98, 1.42, -1.09]   # +9.19 s, 112 pts
+  - bag_stamp_ns: 1788354632396441589
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.55, 0.53, -2.68]
+      max: [56.99, 1.42, -1.10]   # +9.29 s, 116 pts
+  - bag_stamp_ns: 1788354632495301151
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.53, 0.53, -2.68]
+      max: [56.96, 1.40, -1.09]   # +9.39 s, 116 pts
+  - bag_stamp_ns: 1788354632592468237
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.52, 0.53, -2.68]
+      max: [56.93, 1.40, -1.09]   # +9.48 s, 119 pts
+  - bag_stamp_ns: 1788354632692980930
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.47, 0.51, -2.67]
+      max: [56.91, 1.40, -1.09]   # +9.58 s, 128 pts
+  - bag_stamp_ns: 1788354632794511920
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.39, 0.51, -2.67]
+      max: [56.89, 1.40, -1.09]   # +9.68 s, 121 pts
+  - bag_stamp_ns: 1788354632892327663
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.33, 0.51, -2.67]
+      max: [56.90, 1.40, -1.09]   # +9.78 s, 123 pts
+  - bag_stamp_ns: 1788354633005622029
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.32, 0.51, -2.67]
+      max: [56.88, 1.32, -1.09]   # +9.90 s, 117 pts
+  - bag_stamp_ns: 1788354633105858961
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.28, 0.51, -2.67]
+      max: [56.87, 1.40, -1.09]   # +10.00 s, 115 pts
+  - bag_stamp_ns: 1788354633200899337
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.25, 0.51, -2.53]
+      max: [56.87, 1.32, -1.09]   # +10.09 s, 112 pts
+  - bag_stamp_ns: 1788354633317625775
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.21, 0.51, -2.65]
+      max: [56.83, 1.40, -1.09]   # +10.21 s, 114 pts
+  - bag_stamp_ns: 1788354633404356991
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.20, 0.51, -2.65]
+      max: [56.81, 1.40, -1.09]   # +10.29 s, 113 pts
+  - bag_stamp_ns: 1788354633518699003
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.19, 0.51, -2.65]
+      max: [56.75, 1.40, -1.09]   # +10.41 s, 113 pts
+  - bag_stamp_ns: 1788354633602082651
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.13, 0.50, -2.65]
+      max: [56.71, 1.39, -1.09]   # +10.49 s, 118 pts
+  - bag_stamp_ns: 1788354633697101078
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.10, 0.52, -2.65]
+      max: [56.62, 1.39, -1.09]   # +10.59 s, 109 pts
+  - bag_stamp_ns: 1788354633796711774
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.05, 0.52, -2.68]
+      max: [57.00, 1.41, -1.08]   # +10.69 s, 116 pts
+  - bag_stamp_ns: 1788354633893223388
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [56.02, 0.55, -2.65]
+      max: [56.45, 1.41, -1.08]   # +10.78 s, 113 pts
+  - bag_stamp_ns: 1788354633993749966
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.96, 0.55, -2.68]
+      max: [56.91, 1.41, -1.08]   # +10.88 s, 115 pts
+  - bag_stamp_ns: 1788354634092681784
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.91, 0.54, -2.65]
+      max: [56.36, 1.41, -1.08]   # +10.98 s, 116 pts
+  - bag_stamp_ns: 1788354634193330157
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.82, 0.54, -2.50]
+      max: [56.27, 1.43, -1.08]   # +11.08 s, 117 pts
+  - bag_stamp_ns: 1788354634294636954
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.78, 0.54, -2.63]
+      max: [56.24, 1.40, -1.08]   # +11.18 s, 118 pts
+  - bag_stamp_ns: 1788354634396724683
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.71, 0.52, -2.65]
+      max: [56.25, 1.40, -1.08]   # +11.29 s, 119 pts
+  - bag_stamp_ns: 1788354634495612551
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.64, 0.50, -2.64]
+      max: [56.21, 1.38, -1.08]   # +11.39 s, 117 pts
+  - bag_stamp_ns: 1788354634593919922
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.60, 0.50, -2.64]
+      max: [56.17, 1.38, -1.07]   # +11.48 s, 120 pts
+  - bag_stamp_ns: 1788354634692295342
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.54, 0.50, -2.64]
+      max: [56.04, 1.30, -1.07]   # +11.58 s, 119 pts
+  - bag_stamp_ns: 1788354634793760356
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.50, 0.42, -2.63]
+      max: [55.96, 1.30, -1.07]   # +11.68 s, 130 pts
+  - bag_stamp_ns: 1788354634893199392
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.39, 0.42, -2.77]
+      max: [55.88, 1.37, -1.07]   # +11.78 s, 127 pts
+  - bag_stamp_ns: 1788354634991978229
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.33, 0.42, -2.63]
+      max: [55.82, 1.38, -0.93]   # +11.88 s, 127 pts
+  - bag_stamp_ns: 1788354635095124717
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.07, 0.42, -2.85]
+      max: [55.78, 1.37, -1.07]   # +11.99 s, 126 pts
+  - bag_stamp_ns: 1788354635194268456
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.92, 0.42, -2.84]
+      max: [55.75, 1.37, -1.07]   # +12.08 s, 133 pts
+  - bag_stamp_ns: 1788354635302491542
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.06, 0.42, -2.84]
+      max: [55.74, 1.37, -1.07]   # +12.19 s, 127 pts
+  - bag_stamp_ns: 1788354635405205582
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.04, 0.42, -2.84]
+      max: [55.70, 1.37, -1.07]   # +12.30 s, 132 pts
+  - bag_stamp_ns: 1788354635517143684
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.04, 0.42, -2.84]
+      max: [55.65, 1.37, -0.92]   # +12.41 s, 142 pts
+  - bag_stamp_ns: 1788354635606765321
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [55.04, 0.42, -2.84]
+      max: [55.53, 1.29, -0.92]   # +12.50 s, 139 pts
+  - bag_stamp_ns: 1788354635715054106
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.95, 0.41, -2.84]
+      max: [55.41, 1.37, -0.92]   # +12.61 s, 142 pts
+  - bag_stamp_ns: 1788354635805086583
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.88, 0.40, -2.84]
+      max: [55.33, 1.36, -0.92]   # +12.70 s, 144 pts
+  - bag_stamp_ns: 1788354635901216440
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.79, 0.40, -2.84]
+      max: [55.31, 1.29, -0.92]   # +12.79 s, 139 pts
+  - bag_stamp_ns: 1788354635996726321
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.79, 0.39, -2.84]
+      max: [55.29, 1.27, -0.92]   # +12.89 s, 146 pts
+  - bag_stamp_ns: 1788354636099177826
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.76, 0.32, -2.84]
+      max: [55.25, 1.27, -0.92]   # +12.99 s, 141 pts
+  - bag_stamp_ns: 1788354636196438963
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.73, 0.30, -2.84]
+      max: [55.22, 1.17, -0.92]   # +13.09 s, 141 pts
+  - bag_stamp_ns: 1788354636298638887
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.67, 0.30, -2.84]
+      max: [55.17, 1.17, -0.92]   # +13.19 s, 145 pts
+  - bag_stamp_ns: 1788354636393576067
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.62, 0.22, -2.83]
+      max: [55.11, 1.17, -0.92]   # +13.28 s, 148 pts
+  - bag_stamp_ns: 1788354636493480963
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.60, 0.22, -2.83]
+      max: [55.09, 1.09, -0.92]   # +13.38 s, 139 pts
+  - bag_stamp_ns: 1788354636602180431
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.58, 0.22, -2.83]
+      max: [55.07, 1.09, -0.92]   # +13.49 s, 141 pts
+  - bag_stamp_ns: 1788354636705038075
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.22, -2.83]
+      max: [55.05, 1.07, -0.92]   # +13.59 s, 139 pts
+  - bag_stamp_ns: 1788354636802502406
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.22, -2.83]
+      max: [55.04, 1.09, -0.92]   # +13.69 s, 141 pts
+  - bag_stamp_ns: 1788354636900805497
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.22, -2.83]
+      max: [55.02, 1.17, -0.92]   # +13.79 s, 139 pts
+  - bag_stamp_ns: 1788354637101902990
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.59, 0.30, -2.83]
+      max: [55.03, 1.17, -0.92]   # +13.99 s, 141 pts
+  - bag_stamp_ns: 1788354637196482970
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.58, 0.30, -2.83]
+      max: [55.04, 1.17, -0.92]   # +14.09 s, 141 pts
+  - bag_stamp_ns: 1788354637297634667
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.32, -2.83]
+      max: [55.03, 1.19, -0.92]   # +14.19 s, 134 pts
+  - bag_stamp_ns: 1788354637394372339
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.32, -2.83]
+      max: [55.01, 1.19, -0.92]   # +14.28 s, 137 pts
+  - bag_stamp_ns: 1788354637501966194
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.58, 0.32, -2.83]
+      max: [55.01, 1.26, -0.92]   # +14.39 s, 140 pts
+  - bag_stamp_ns: 1788354637602803651
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.59, 0.39, -2.83]
+      max: [55.01, 1.26, -0.91]   # +14.49 s, 143 pts
+  - bag_stamp_ns: 1788354637717340992
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +14.61 s, 143 pts
+  - bag_stamp_ns: 1788354637807651771
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.58, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +14.70 s, 148 pts
+  - bag_stamp_ns: 1788354637915034756
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +14.80 s, 144 pts
+  - bag_stamp_ns: 1788354638003697063
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +14.89 s, 146 pts
+  - bag_stamp_ns: 1788354638093130492
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.03, 1.26, -0.92]   # +14.98 s, 148 pts
+  - bag_stamp_ns: 1788354638196813644
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +15.09 s, 149 pts
+  - bag_stamp_ns: 1788354638292303932
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +15.18 s, 141 pts
+  - bag_stamp_ns: 1788354638395202688
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +15.29 s, 143 pts
+  - bag_stamp_ns: 1788354638500315949
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [54.99, 1.26, -0.92]   # +15.39 s, 148 pts
+  - bag_stamp_ns: 1788354638595212814
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +15.49 s, 147 pts
+  - bag_stamp_ns: 1788354638695472832
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +15.59 s, 141 pts
+  - bag_stamp_ns: 1788354638795683703
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +15.69 s, 147 pts
+  - bag_stamp_ns: 1788354638897009445
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -0.91]   # +15.79 s, 142 pts
+  - bag_stamp_ns: 1788354638994563138
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [54.99, 1.26, -0.92]   # +15.88 s, 147 pts
+  - bag_stamp_ns: 1788354639098437804
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.01, 1.26, -0.92]   # +15.99 s, 147 pts
+  - bag_stamp_ns: 1788354639196173756
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.02, 1.26, -0.92]   # +16.09 s, 145 pts
+  - bag_stamp_ns: 1788354639301705724
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +16.19 s, 141 pts
+  - bag_stamp_ns: 1788354639405517045
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +16.30 s, 145 pts
+  - bag_stamp_ns: 1788354639503939119
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [54.99, 1.26, -0.92]   # +16.39 s, 136 pts
+  - bag_stamp_ns: 1788354639599906134
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +16.49 s, 147 pts
+  - bag_stamp_ns: 1788354640012489297
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +16.90 s, 140 pts
+  - bag_stamp_ns: 1788354640110141925
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +17.00 s, 144 pts
+  - bag_stamp_ns: 1788354640206198987
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [54.99, 1.26, -1.05]   # +17.10 s, 141 pts
+  - bag_stamp_ns: 1788354640296447019
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.01, 1.26, -0.91]   # +17.19 s, 143 pts
+  - bag_stamp_ns: 1788354640399745532
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [54.99, 1.26, -1.05]   # +17.29 s, 146 pts
+  - bag_stamp_ns: 1788354640501092399
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +17.39 s, 142 pts
+  - bag_stamp_ns: 1788354640597366947
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.57, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +17.49 s, 146 pts
+  - bag_stamp_ns: 1788354640698064057
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.01, 1.26, -1.05]   # +17.59 s, 140 pts
+  - bag_stamp_ns: 1788354640794260094
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +17.68 s, 141 pts
+  - bag_stamp_ns: 1788354640893813142
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [54.98, 1.26, -1.05]   # +17.78 s, 141 pts
+  - bag_stamp_ns: 1788354640992597501
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +17.88 s, 144 pts
+  - bag_stamp_ns: 1788354641098111292
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +17.99 s, 141 pts
+  - bag_stamp_ns: 1788354641198693492
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +18.09 s, 148 pts
+  - bag_stamp_ns: 1788354641297882476
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [54.99, 1.26, -0.92]   # +18.19 s, 142 pts
+  - bag_stamp_ns: 1788354641399742591
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [54.99, 1.26, -0.91]   # +18.29 s, 143 pts
+  - bag_stamp_ns: 1788354641498160180
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +18.39 s, 144 pts
+  - bag_stamp_ns: 1788354641605360896
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.91]   # +18.50 s, 146 pts
+  - bag_stamp_ns: 1788354641704828786
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +18.59 s, 141 pts
+  - bag_stamp_ns: 1788354641834137859
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [54.99, 1.26, -0.92]   # +18.72 s, 146 pts
+  - bag_stamp_ns: 1788354641898380113
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +18.79 s, 144 pts
+  - bag_stamp_ns: 1788354641995296444
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.01, 1.26, -0.92]   # +18.89 s, 143 pts
+  - bag_stamp_ns: 1788354642093806987
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +18.98 s, 141 pts
+  - bag_stamp_ns: 1788354642196401076
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -1.05]   # +19.09 s, 141 pts
+  - bag_stamp_ns: 1788354642299390141
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +19.19 s, 141 pts
+  - bag_stamp_ns: 1788354642396856686
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +19.29 s, 142 pts
+  - bag_stamp_ns: 1788354642493439857
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +19.38 s, 144 pts
+  - bag_stamp_ns: 1788354642598632156
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +19.49 s, 143 pts
+  - bag_stamp_ns: 1788354642697424325
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.56, 0.39, -2.83]
+      max: [54.99, 1.26, -0.92]   # +19.59 s, 141 pts
+  - bag_stamp_ns: 1788354642795528417
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [54.98, 1.26, -1.05]   # +19.69 s, 138 pts
+  - bag_stamp_ns: 1788354642892978639
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [54.99, 1.26, -0.92]   # +19.78 s, 141 pts
+  - bag_stamp_ns: 1788354642995860694
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.54, 0.39, -2.83]
+      max: [54.98, 1.26, -0.92]   # +19.89 s, 147 pts
+  - bag_stamp_ns: 1788354643092442368
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +19.98 s, 145 pts
+  - bag_stamp_ns: 1788354643194303262
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +20.08 s, 141 pts
+  - bag_stamp_ns: 1788354643298794875
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.01, 1.26, -0.92]   # +20.19 s, 145 pts
+  - bag_stamp_ns: 1788354643400819161
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [55.00, 1.26, -0.92]   # +20.29 s, 140 pts
+  - bag_stamp_ns: 1788354643502070680
+    distance_m: null
+    uncertainty_m: null
+    method: raw_pointcloud_foreground_blob_vs_person_free_background
+    person_roi_assumed_m:
+      min: [54.55, 0.39, -2.83]
+      max: [54.99, 1.26, -0.91]   # +20.39 s, 145 pts

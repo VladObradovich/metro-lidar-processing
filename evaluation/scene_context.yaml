@@ -13,10 +13,12 @@ bags:
     description: Train moves through a double tunnel.
   doubleT_obstacle:
     track_obstacle_reported: true
-    description: Train is stationary in a double tunnel; a person enters the tracks near the end.
+    description: >-
+      Train is stationary in a double tunnel; a person enters the tracks near the end. A second
+      person stands and walks on the track about 55 m ahead for the whole recording (found in the
+      raw point cloud on 2026-09-25; the owner's report names one person).
     event_interval:
-      uncertain_start_ns: 1788354635095124717
-      positive_start_ns: 1788354640110141925
+      positive_start_ns: 1788354623110040384
       positive_end_ns: 1788354643502070680
       time_basis: bag_stamp_ns
       source: evaluation/annotations/doubleT_obstacle.yaml
