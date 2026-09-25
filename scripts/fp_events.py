@@ -10,14 +10,21 @@ runs before G4) gets a descriptive class:
   -long    longer than 3 m along the route
   -M / -G  evidence channels MOTION / GAUGE
 
-The classes describe the data for review; they are not detector parameters.
+The classes describe the data for review; they are not detector parameters. Each event also
+carries what points at its cause: frames without a valid ego speed or with a held
+(unconfirmed) one, the time since the last frame without a valid speed, the number of
+confirmed tracks behind it, the largest distance one of them moves along the track in the world
+(x plus the lidar odometry integrated from the reported speeds; about zero for a fixed object),
+their signed offset from the route and their height range above the reported ground plane
+(sensor z when there is none).
 
   fp_events.py RUN_DIR [--dataset evaluation/dataset.yaml] [--output events.json]
 """
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 import yaml
@@ -34,12 +41,19 @@ LONG_M = 3.0
 MOTION, GAUGE = 1, 2
 
 
-def route_offset(obj, route):
+def route_offset(obj, route, signed=False):
     """Lateral offset of an object centre from the route y = c1 x + c2 x^2 (or y = 0)."""
     x, y = obj['center'][0], obj['center'][1]
-    if route and route[2]:
-        return abs(y - (route[0] * x + route[1] * x * x))
-    return abs(y)
+    offset = y - (route[0] * x + route[1] * x * x) if route and route[2] else y
+    return offset if signed else abs(offset)
+
+
+def height_above_ground(x, y, z, plane):
+    """Height above the plane a x + b y + c z + d = 0 (c > 0); z itself without a plane."""
+    if not plane or len(plane) != 4 or not all(math.isfinite(v) for v in plane):
+        return z
+    a, b, c, d = plane
+    return (a * x + b * y + c * z + d) / math.sqrt(a * a + b * b + c * c)
 
 
 def object_class(obj, route):
@@ -57,11 +71,31 @@ def object_class(obj, route):
     return name
 
 
+def odometry(rows):
+    """Travelled distance per row from the reported speeds; an invalid speed holds the last one."""
+    travelled, speed, previous, result = 0.0, 0.0, None, []
+    for row in rows:
+        stamp = row.get('measurement_stamp_ns', row['bag_stamp_ns'])
+        if row.get('ego_motion_valid'):
+            speed = row['ego_speed_mps']
+        if previous is not None:
+            travelled += speed * max(0.0, (stamp - previous) / 1e9)
+        previous = stamp
+        result.append(travelled)
+    return result
+
+
+def span(values, digits=1):
+    return [round(min(values), digits), round(max(values), digits)] if values else None
+
+
 def fp_events(rows, annotation, gap_s=metrics.DEFAULT_EVENT_GAP_S):
     """False-alarm events of one bag with frame counts, distances, ego speed and classes."""
     rows = sorted(rows, key=lambda row: row['bag_stamp_ns'])
     if not rows:
         return []
+    travelled = dict(zip((row['bag_stamp_ns'] for row in rows), odometry(rows)))
+    breaks = [row['bag_stamp_ns'] for row in rows if not row.get('ego_motion_valid')]
     intervals = annotation.get('reviewed_intervals') or []
     negative = [row for row in rows
                 if metrics.frame_label(row['bag_stamp_ns'], intervals) == 'negative']
@@ -77,13 +111,22 @@ def fp_events(rows, annotation, gap_s=metrics.DEFAULT_EVENT_GAP_S):
     events = []
     for group in groups:
         classes = Counter()
-        distances = []
+        distances, offsets, bottoms, tops = [], [], [], []
+        world_x = defaultdict(list)
         for row in group:
             for obj in metrics.decisive_objects(row):
                 classes[object_class(obj, row.get('route'))] += 1
                 if obj.get('distance_m') is not None:
                     distances.append(obj['distance_m'])
+                world_x[obj.get('id')].append(obj['center'][0] + travelled[row['bag_stamp_ns']])
+                offsets.append(route_offset(obj, row.get('route'), signed=True))
+                x, y, z = obj['center']
+                plane = row.get('ground_plane')
+                bottoms.append(height_above_ground(x, y, z - obj['size'][2] / 2, plane))
+                tops.append(height_above_ground(x, y, z + obj['size'][2] / 2, plane))
         speeds = [row['ego_speed_mps'] for row in group if row.get('ego_motion_valid')]
+        start = group[0]['bag_stamp_ns']
+        last_break = max((stamp for stamp in breaks if stamp <= start), default=None)
         events.append({
             'start_s': round((group[0]['bag_stamp_ns'] - t0) / 1e9, 2),
             'end_s': round((group[-1]['bag_stamp_ns'] - t0) / 1e9, 2),
@@ -94,6 +137,16 @@ def fp_events(rows, annotation, gap_s=metrics.DEFAULT_EVENT_GAP_S):
                            if distances else None),
             'ego_speed_mps': round(sorted(speeds)[len(speeds) // 2], 1) if speeds else None,
             'classes': dict(classes.most_common()),
+            'ego_invalid_frames': sum(not row.get('ego_motion_valid') for row in group),
+            'ego_held_frames': sum(bool((row.get('motion') or {}).get('unconfirmed_s'))
+                                   for row in group),
+            'since_ego_break_s': (round((start - last_break) / 1e9, 1)
+                                  if last_break is not None else None),
+            'tracks': len(world_x),
+            'world_x_travel_m': (round(max(max(x) - min(x) for x in world_x.values()), 1)
+                                 if world_x else None),
+            'route_offset_m': span(offsets),
+            'height_m': [round(min(bottoms), 1), round(max(tops), 1)] if tops else None,
         })
     return events
 
@@ -132,7 +185,10 @@ def format_events(result):
             lines.append(
                 f"  {event['start_s']:6.1f}-{event['end_s']:6.1f} s  {event['frames']:3d} frames"
                 f" ({event['coasting_frames']} coasting)  {distance} m"
-                f"  ego {event['ego_speed_mps']}  {event['classes']}")
+                f"  ego {event['ego_speed_mps']} (invalid {event['ego_invalid_frames']},"
+                f" held {event['ego_held_frames']}, break {event['since_ego_break_s']} s ago)"
+                f"  tracks {event['tracks']}  world x travel {event['world_x_travel_m']} m"
+                f"  offset {event['route_offset_m']}  height {event['height_m']}  {event['classes']}")
     return '\n'.join(lines)
 
 

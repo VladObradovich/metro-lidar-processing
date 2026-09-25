@@ -58,6 +58,46 @@ class FpEventTests(unittest.TestCase):
         rows = [row(1.0, tracks=[track(10, 0.0, confirmed=False), track(20, 2.0)])]
         self.assertEqual(fp_events.fp_events(rows, ANNOTATION)[0]['classes'], {'edge-M': 1})
 
+    def test_cause_features_of_an_event(self):
+        # 10 m/s for 1 s: a fixed object closes in by 1 m per 0.1 s, an artefact that keeps
+        # its range moves with the train in the world.
+        rows = []
+        for i in range(8):
+            r = row(1.0 + 0.1 * i, tracks=[dict(track(30 - i, 0.2), id=1),
+                                           dict(track(20, 1.8), id=2)])
+            r['measurement_stamp_ns'] = r['bag_stamp_ns']
+            r['ego_speed_mps'] = 10.0
+            r['motion'] = {'unconfirmed_s': 0.1 if i >= 6 else 0.0}
+            rows.append(r)
+        rows[0]['ego_motion_valid'] = False
+        events = fp_events.fp_events([row(0.5, state='UNKNOWN')] + rows, ANNOTATION)
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(event['ego_invalid_frames'], 1)
+        self.assertEqual(event['ego_held_frames'], 2)
+        self.assertEqual(event['since_ego_break_s'], 0.0)
+        self.assertEqual(event['tracks'], 2)
+        # The fixed object stays put; the artefact moves 7 m with the train in 0.7 s.
+        self.assertEqual(event['world_x_travel_m'], 7.0)
+        self.assertEqual(event['route_offset_m'], [0.2, 1.8])
+        self.assertEqual(event['height_m'], [-0.8, 0.8])
+        # Heights are taken above the reported ground plane, 1.5 m below the sensor.
+        for r in rows:
+            r['ground_plane'] = [0.0, 0.0, 1.0, 1.5]
+        event = fp_events.fp_events(rows, ANNOTATION)[0]
+        self.assertEqual(event['height_m'], [0.8, 2.2])
+
+    def test_a_fixed_object_stays_put_in_the_world(self):
+        rows = []
+        for i in range(5):
+            r = row(1.0 + 0.1 * i, tracks=[dict(track(30 - i, 0.0), id=1)])
+            r['measurement_stamp_ns'] = r['bag_stamp_ns']
+            r['ego_speed_mps'] = 10.0
+            rows.append(r)
+        event = fp_events.fp_events(rows, ANNOTATION)[0]
+        self.assertEqual(event['world_x_travel_m'], 0.0)
+        self.assertIsNone(event['since_ego_break_s'])
+
 
 if __name__ == '__main__':
     unittest.main()
