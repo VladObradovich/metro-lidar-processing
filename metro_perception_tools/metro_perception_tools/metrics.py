@@ -15,11 +15,27 @@ Matching rules (docs/evaluation-metrics.md):
 - object-level checks use reference frames with an annotated person ROI: a hit
   needs OBSTACLE and a candidate center inside the ROI (+ margin); OBSTACLE
   without such a candidate is a wrong-object alarm;
-- distance error is computed only for object hits with a measured reference.
+- distance error is computed only for object hits with a measured reference;
+- object checks are also grouped by object distance (the measured reference
+  distance, else the near face of the ROI) in DISTANCE_BINS_M;
+- the working range of a run is the far end of the detection ROI of the bag's
+  sensor profile as the run had it (recorded in the manifest; for older
+  manifests read from the profile only while its hash still matches), none if
+  that profile makes the detector stop for unverified calibration (or
+  --working-range-m): state and object recall
+  over the reference frames within it are reported apart from the totals, which
+  also count objects the profile cannot reach;
+- events labelled negative with ROIs are annotated objects whose class should
+  raise no alarm (e.g. the organizers' outside/above objects). A frame alarms on
+  one when it is OBSTACLE and a decisive object lies in its ROI (+ margin); this
+  is counted on every labelled frame, also where another object makes the frame
+  positive and the frame-level FP cannot see it. Whether such an alarm is an
+  error depends on the envelope that defines the class.
 Empty samples give None (N/A), never a perfect score; precision is N/A
 without positive frames.
 """
 import argparse
+import bisect
 from collections import Counter
 import hashlib
 import json
@@ -33,6 +49,8 @@ LABELS = ('positive', 'negative', 'uncertain', 'unlabeled')
 DEFAULT_EVENT_GAP_S = 0.5
 DEFAULT_STAMP_TOLERANCE_S = 0.05
 DEFAULT_ROI_MARGIN_M = 0.5
+# Same bins as the synthetic benchmark report (scripts/inject_obstacle.py); the last is open.
+DISTANCE_BINS_M = (0, 20, 40, 60, 80, 100, 120, 150, 200)
 
 
 def summarize(rows):
@@ -97,8 +115,21 @@ def decisive_objects(row):
     return row.get('candidates') or []
 
 
+def nearest_row(rows, stamps, stamp):
+    """Row closest in bag time (the earlier one on a tie); stamps are the sorted row stamps."""
+    i = bisect.bisect_left(stamps, stamp)
+    return min(rows[max(i - 1, 0):i + 1], key=lambda row: abs(row['bag_stamp_ns'] - stamp))
+
+
+def object_distance(reference, roi):
+    """Measured reference distance, else the near face of the annotated ROI."""
+    distance = reference.get('distance_m')
+    return distance if distance is not None else roi['min'][0]
+
+
 def object_checks(rows, events, tolerance_ns, margin):
     """Match confirmed tracks (or candidates in older runs) to annotated person ROIs."""
+    stamps = [row['bag_stamp_ns'] for row in rows]
     checks = []
     for event in events:
         if event.get('label') != 'positive':
@@ -108,9 +139,10 @@ def object_checks(rows, events, tolerance_ns, margin):
             if not roi or not rows:
                 continue
             stamp = reference['bag_stamp_ns']
-            nearest = min(rows, key=lambda row: abs(row['bag_stamp_ns'] - stamp))
+            nearest = nearest_row(rows, stamps, stamp)
             check = {'event_id': event['id'], 'bag_stamp_ns': stamp,
                      'reference_m': reference.get('distance_m'),
+                     'object_m': object_distance(reference, roi),
                      'uncertainty_m': reference.get('uncertainty_m'), 'state': None,
                      'result': 'no_frame', 'reported_m': None, 'error_m': None}
             if abs(nearest['bag_stamp_ns'] - stamp) > tolerance_ns:
@@ -130,6 +162,62 @@ def object_checks(rows, events, tolerance_ns, margin):
                     check['error_m'] = reported - check['reference_m']
             checks.append(check)
     return checks
+
+
+def by_distance(checks, bins=DISTANCE_BINS_M):
+    """Object checks per object-distance bin; closer than the first edge counts in the first."""
+    edges = list(bins) + [None]
+    result = []
+    for low, high in zip(edges, edges[1:]):
+        inside = [check for check in checks
+                  if max(check['object_m'], bins[0]) >= low and
+                  (high is None or check['object_m'] < high)]
+        if not inside:
+            continue
+        hits = sum(check['result'] == 'hit' for check in inside)
+        result.append({'range_m': [low, high], 'frames': len(inside),
+                       'obstacle': sum(check['state'] == 'OBSTACLE' for check in inside),
+                       'hits': hits, 'recall': ratio(hits, len(inside))})
+    return result
+
+
+def negative_object_checks(rows, events, intervals, tolerance_ns, margin):
+    """Alarms on annotated objects that must not raise one, on every labelled frame."""
+    stamps = [row['bag_stamp_ns'] for row in rows]
+    checks = []
+    for event in events:
+        if event.get('label') != 'negative':
+            continue
+        for reference in event.get('reference_frames') or []:
+            roi = reference.get('person_roi_assumed_m')
+            if not roi or not rows:
+                continue
+            nearest = nearest_row(rows, stamps, reference['bag_stamp_ns'])
+            if abs(nearest['bag_stamp_ns'] - reference['bag_stamp_ns']) > tolerance_ns:
+                continue
+            alarm = nearest['state'] == 'OBSTACLE' and any(
+                inside_roi(obj['center'], roi, margin) for obj in decisive_objects(nearest))
+            checks.append({'event_id': event['id'], 'class': event.get('organizer_class'),
+                           'bag_stamp_ns': nearest['bag_stamp_ns'], 'alarm': alarm,
+                           'label': frame_label(nearest['bag_stamp_ns'], intervals)})
+    per_event = {}
+    for check in checks:
+        item = per_event.setdefault(check['event_id'], {
+            'class': check['class'], 'frames': 0, 'alarm_frames': 0, 'positive_frames': 0,
+            'alarm_frames_on_positive': 0})
+        item['frames'] += 1
+        item['alarm_frames'] += check['alarm']
+        if check['label'] == 'positive':
+            item['positive_frames'] += 1
+            item['alarm_frames_on_positive'] += check['alarm']
+    alarms = {check['bag_stamp_ns'] for check in checks if check['alarm']}
+    return {
+        'reference_frames': len({check['bag_stamp_ns'] for check in checks}),
+        'alarm_frames': len(alarms),
+        'alarm_frames_on_negative': len({check['bag_stamp_ns'] for check in checks
+                                        if check['alarm'] and check['label'] == 'negative'}),
+        'events': per_event,
+    }
 
 
 def coverage(rows):
@@ -153,8 +241,21 @@ def coverage(rows):
     }
 
 
+def within_range(checks, working_range_m):
+    """State and object recall over the reference frames within a working range."""
+    if working_range_m is None:
+        return None
+    near = [check for check in checks if check['object_m'] <= working_range_m]
+    obstacle = sum(check['state'] == 'OBSTACLE' for check in near)
+    hits = sum(check['result'] == 'hit' for check in near)
+    return {'range_m': working_range_m, 'reference_frames': len(near),
+            'beyond_frames': len(checks) - len(near), 'obstacle': obstacle, 'hits': hits,
+            'state_recall': ratio(obstacle, len(near)), 'object_recall': ratio(hits, len(near))}
+
+
 def quality(rows, annotation, event_gap_s=DEFAULT_EVENT_GAP_S,
-            stamp_tolerance_s=DEFAULT_STAMP_TOLERANCE_S, roi_margin_m=DEFAULT_ROI_MARGIN_M):
+            stamp_tolerance_s=DEFAULT_STAMP_TOLERANCE_S, roi_margin_m=DEFAULT_ROI_MARGIN_M,
+            working_range_m=None):
     """Score one bag's frames against its reviewed annotation."""
     if not annotation.get('reviewed'):
         raise ValueError('Annotation is not reviewed')
@@ -201,6 +302,8 @@ def quality(rows, annotation, event_gap_s=DEFAULT_EVENT_GAP_S,
 
     objects = object_checks(rows, annotation.get('events') or [],
                             int(stamp_tolerance_s * 1e9), roi_margin_m)
+    negative_objects = negative_object_checks(rows, annotation.get('events') or [], intervals,
+                                              int(stamp_tolerance_s * 1e9), roi_margin_m)
     results = Counter(check['result'] for check in objects)
     hits = [check for check in objects if check['result'] == 'hit']
     errors = [abs(check['error_m']) for check in hits if check['error_m'] is not None]
@@ -249,15 +352,18 @@ def quality(rows, annotation, event_gap_s=DEFAULT_EVENT_GAP_S,
             'hits': results['hit'], 'misses': results['miss'],
             'wrong_object': results['wrong_object'], 'no_frame': results['no_frame'],
             'recall': ratio(results['hit'], len(objects)),
+            'by_distance': by_distance(objects),
             'checks': objects,
         },
+        'working_range': within_range(objects, working_range_m),
+        'negative_objects': negative_objects,
         'distance': {
             'matched': len(errors),
             'mean_abs_error_m': float(np.mean(errors)) if errors else None,
             'max_abs_error_m': float(np.max(errors)) if errors else None,
         },
         'rules': {'event_gap_s': event_gap_s, 'stamp_tolerance_s': stamp_tolerance_s,
-                  'roi_margin_m': roi_margin_m},
+                  'roi_margin_m': roi_margin_m, 'working_range_m': working_range_m},
     }
 
 
@@ -318,11 +424,39 @@ def aggregate(bags):
         total['object_hits'] += q['object']['hits']
         total['object_wrong'] += q['object']['wrong_object']
         total['negative_duration_s'] += q['false_alarms']['negative_duration_s']
+        negative = q.get('negative_objects') or {}
+        total['negative_object_frames'] += negative.get('reference_frames', 0)
+        total['negative_object_alarm_frames'] += negative.get('alarm_frames', 0)
+        total['negative_object_alarm_frames_on_negative'] += negative.get(
+            'alarm_frames_on_negative', 0)
     count_keys = ('positive_frames', 'negative_frames', 'uncertain_frames', 'tp', 'fn',
                   'fp', 'unknown_on_positive', 'positive_events', 'detected_events',
                   'fp_events', 'object_reference_frames', 'object_hits', 'object_wrong',
-                  'negative_duration_s')
+                  'negative_duration_s', 'negative_object_frames',
+                  'negative_object_alarm_frames', 'negative_object_alarm_frames_on_negative')
     result = {key: total[key] for key in count_keys}
+    ranged = [bag['quality'].get('working_range') for bag in bags.values()]
+    ranged = [item for item in ranged if item]
+    if bags:
+        counts = {key: sum(item[key] for item in ranged)
+                  for key in ('reference_frames', 'beyond_frames', 'obstacle', 'hits')}
+        result['working_range'] = {
+            'range_m': sorted({item['range_m'] for item in ranged}), **counts,
+            'bags': len(ranged), 'bags_without_range': len(bags) - len(ranged),
+            'state_recall': ratio(counts['obstacle'], counts['reference_frames']),
+            'object_recall': ratio(counts['hits'], counts['reference_frames'])}
+    else:
+        result['working_range'] = None
+    bins = {}
+    for bag in bags.values():
+        for item in bag['quality']['object'].get('by_distance', []):
+            counts = bins.setdefault(tuple(item['range_m']),
+                                     {'frames': 0, 'obstacle': 0, 'hits': 0})
+            for key in counts:
+                counts[key] += item[key]
+    result['object_by_distance'] = [
+        {'range_m': list(key), **counts, 'recall': ratio(counts['hits'], counts['frames'])}
+        for key, counts in sorted(bins.items())]
     result.update(
         frame_recall=ratio(total['tp'], total['positive_frames']),
         frame_precision=(ratio(total['tp'], total['tp'] + total['fp'])
@@ -355,7 +489,42 @@ def find_results(run_dir, bag_id):
     return None
 
 
-def evaluate_run(run_dir, dataset_path, splits_path, root, **rules):
+def profile_range(root, profile):
+    """
+    Far end of the detection ROI of a sensor profile the detector runs with, or None.
+
+    A profile without verified calibration that does not allow unverified calibration makes
+    PerceptionPipeline stop before detection (CALIBRATION_UNVERIFIED in pipeline.cpp), so it
+    has no working range; the flag defaults to false as in preprocessing.cpp.
+    """
+    path = root / profile if profile else None
+    if path is None or not path.is_file():
+        return None
+    config = yaml.safe_load(path.read_text()) or {}
+    if not config.get('calibration_verified') and not config.get('allow_unverified_calibration'):
+        return None
+    maximum = (config.get('detection_roi') or {}).get('max')
+    return float(maximum[0]) if maximum else None
+
+
+def run_working_range(root, bag, config_sha256):
+    """
+    Working range a run had for one bag of its manifest, or None.
+
+    evaluate_all.py records it at run time. For an older manifest it is taken from the sensor
+    profile only while the profile still has the hash that manifest recorded: a profile edited
+    after the run would describe another detector configuration.
+    """
+    if 'working_range_m' in bag:
+        return bag['working_range_m']
+    profile = bag.get('sensor_profile')
+    path = root / profile if profile else None
+    if path is None or not path.is_file() or config_sha256.get(profile) != sha256(path):
+        return None
+    return profile_range(root, profile)
+
+
+def evaluate_run(run_dir, dataset_path, splits_path, root, working_range_m=None, **rules):
     """Score every annotated bag of a run directory and group totals by split."""
     dataset = yaml.safe_load(dataset_path.read_text())
     splits = yaml.safe_load(splits_path.read_text()) if splits_path.is_file() else {}
@@ -456,8 +625,12 @@ def evaluate_run(run_dir, dataset_path, splits_path, root, **rules):
             'calibration_verified': any(row.get('calibration_verified') for row in rows),
             'states': summary['states'],
             'processing_ms': summary['processing_ms'],
-            'quality': quality(rows, yaml.safe_load((root / entry['annotations']).read_text()),
-                               **rules),
+            'quality': quality(
+                rows, yaml.safe_load((root / entry['annotations']).read_text()),
+                working_range_m=(working_range_m if working_range_m is not None
+                                 else run_working_range(root, manifest_bags.get(entry['id'], {}),
+                                                        manifest.get('config_sha256') or {})),
+                **rules),
         }
     if manifest:
         for bag in manifest.get('bags', []):
@@ -498,19 +671,22 @@ def main():
     parser.add_argument('--event-gap-s', type=float, default=DEFAULT_EVENT_GAP_S)
     parser.add_argument('--stamp-tolerance-s', type=float, default=DEFAULT_STAMP_TOLERANCE_S)
     parser.add_argument('--roi-margin-m', type=float, default=DEFAULT_ROI_MARGIN_M)
+    parser.add_argument('--working-range-m', type=float,
+                        help='default: the working range each bag had in its run (manifest)')
     args = parser.parse_args()
     rules = {'event_gap_s': args.event_gap_s, 'stamp_tolerance_s': args.stamp_tolerance_s,
              'roi_margin_m': args.roi_margin_m}
     if args.results.is_dir():
         result = evaluate_run(args.results, args.dataset or args.root / 'evaluation/dataset.yaml',
                               args.splits or args.root / 'evaluation/splits.yaml', args.root,
-                              **rules)
+                              working_range_m=args.working_range_m, **rules)
     else:
         rows = read_rows(args.results)
         result = summarize(rows)
         if args.annotations:
             result['quality_metrics'] = quality(
-                rows, yaml.safe_load(args.annotations.read_text()), **rules)
+                rows, yaml.safe_load(args.annotations.read_text()),
+                working_range_m=args.working_range_m, **rules)
             result['quality_note'] = 'Scored against ' + str(args.annotations)
     with args.output.open('x') as output:
         json.dump(result, output, ensure_ascii=False, indent=2, allow_nan=False)

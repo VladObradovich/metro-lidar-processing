@@ -2,6 +2,7 @@
 """Export registered bags into a new output directory and record run provenance."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -9,6 +10,13 @@ import subprocess
 import sys
 
 import yaml
+
+# The scorer of this source tree also gives the working range recorded for each bag.
+_spec = importlib.util.spec_from_file_location(
+    'metrics', Path(__file__).resolve().parents[1] /
+    'metro_perception_tools/metro_perception_tools/metrics.py')
+metrics = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(metrics)
 
 
 def sha256(path):
@@ -142,6 +150,7 @@ def main():
             result_dir.mkdir()
             info = {'id': entry['id'], 'topic': entry['input_topic'], 'status': 'running',
                     'sensor_profile': str(profile.relative_to(root)),
+                    'working_range_m': metrics.profile_range(root, profile.relative_to(root)),
                     'files': {item.name: sha256(item) for item in sorted(bag.iterdir())
                               if item.is_file()}}
             manifest['bags'].append(info)

@@ -57,6 +57,27 @@ def quality_lines(data):
             f"| {s['detected_events']}/{s['positive_events']} "
             f"| {fmt(s['fp_events_per_min'], '.2f')} "
             f"| {s['object_hits']}/{s['object_reference_frames']} |")
+    ranged = [(name, s['working_range']) for name, s in
+              list(data['by_split'].items()) + [('**всего**', data['total'])]
+              if (s.get('working_range') or {}).get('bags')]
+    if ranged:
+        lines += ['', 'В рабочей дальности профиля: только опорные кадры с объектом не дальше '
+                  'конца зоны обнаружения профиля bag (в скобках — кадров дальше неё). '
+                  'Итог выше включает и объекты, которых профиль не достаёт.', '',
+                  '| Split | Дальность, м | Опорных кадров (дальше) | OBSTACLE | Попаданий '
+                  '| Recall кадров ≤ | Объект recall |',
+                  '|---|---|---:|---:|---:|---:|---:|']
+        for name, w in ranged:
+            lines.append(
+                f"| {name} | {', '.join(f'{r:g}' for r in w['range_m'])} "
+                f"| {w['reference_frames']} ({w['beyond_frames']}) | {w['obstacle']} "
+                f"| {w['hits']} | {fmt(w['state_recall'], '.1%')} "
+                f"| {fmt(w['object_recall'], '.1%')} |")
+    missing = (data['total'].get('working_range') or {}).get('bags_without_range')
+    if missing:
+        lines += ['', f'Bag без рабочей дальности ({missing}) в срез рабочей дальности не '
+                  'входят: она не записана в manifest, в профиле нет зоны обнаружения, он '
+                  'запрещает обработку без проверенной калибровки или изменился после прогона.']
     lines += ['', '## По bag', '',
               '| Bag | Split | Кадров (потеряно) | TP/FN | FP-кадров | FP-событий | '
               'FP-событий/мин | Геометрия | Медиана дальности оценки, м | p95, мс |',
@@ -74,7 +95,9 @@ def quality_lines(data):
             f"| {b['processing_ms']['p95']:.1f} |")
     for bag, b in data['bags'].items():
         q = b['quality']
-        if not q['events']['details'] and not q['object']['checks']:
+        negative = q.get('negative_objects') or {}
+        if not q['events']['details'] and not q['object']['checks'] and \
+                not negative.get('events'):
             continue
         lines += ['', f'## {bag}: событие, объект и дальность', '']
         for event in q['events']['details']:
@@ -92,6 +115,33 @@ def quality_lines(data):
             f"- Область объекта размечена на {q['object']['reference_frames']} "
             f"из {q['object']['positive_frames']} положительных кадров."
         )
+        if negative.get('events'):
+            lines.append(
+                '- Тревоги на объектах класса outside/above по разметке (класс организаторов; '
+                'граница габарита в проекте не задана, поэтому это не обязательно ошибка '
+                'алгоритма): подтверждённый трек на объекте при OBSTACLE в '
+                f"{negative['alarm_frames']} из {negative['reference_frames']} кадров; "
+                f"из {q['frame']['fp']} FP-кадров на эти объекты приходится "
+                f"{negative['alarm_frames_on_negative']}.")
+            for name, item in negative['events'].items():
+                line = (f"  - `{name}` ({item['class'] or 'negative'}): {item['alarm_frames']}/"
+                        f"{item['frames']} кадров с тревогой на объекте")
+                if item['positive_frames']:
+                    line += (f"; из них на положительных кадрах другого объекта "
+                             f"{item['alarm_frames_on_positive']}/{item['positive_frames']} "
+                             '(покадровый FP их не видит)')
+                lines.append(line + '.')
+        if q['object'].get('by_distance'):
+            lines += ['', 'Объект по дальности (эталонная дальность, иначе ближняя грань '
+                      'области):', '',
+                      '| Дальность, м | Кадров | OBSTACLE | Попаданий | Доля попаданий |',
+                      '|---|---:|---:|---:|---:|']
+            for item in q['object']['by_distance']:
+                low, high = item['range_m']
+                span = f'{low:g}–{high:g}' if high is not None else f'≥ {low:g}'
+                lines.append(f"| {span} | {item['frames']} | {item['obstacle']} "
+                             f"| {item['hits']} | {fmt(item['recall'], '.0%')} |")
+            lines.append('')
         names = {'hit': 'попадание', 'miss': 'пропуск',
                  'wrong_object': 'тревога на другом объекте', 'no_frame': 'нет кадра'}
         for check in q['object']['checks']:
