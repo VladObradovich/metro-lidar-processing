@@ -459,6 +459,35 @@ TEST(EgoMotion, StationaryTrainReportsZeroSpeed) {
   EXPECT_TRUE(frame.candidates.empty());
 }
 
+TEST(EgoMotion, HistoryFromBeforeABreakWhileMovingIsNotDifferenced) {
+  PerceptionPipeline pipeline;
+  int index = 0;
+  for (; index < 16; ++index) pipeline.process(moving_tunnel(index, 10, false));
+  // 6 s of bare floor: nothing to match, the speed is held for 5 s, then the odometry breaks.
+  FrameResult frame;
+  for (; index < 76; ++index) {
+    auto bare = verified_input();
+    bare.context.calibration_verified = false;
+    bare.context.allow_unverified_calibration = true;
+    bare.context.measurement_time_ns = 1000000000LL + index * 100000000LL;
+    add_floor(bare, 1, 100);
+    frame = pipeline.process(bare);
+  }
+  EXPECT_FALSE(frame.ego_motion_valid);
+  // Back in the tunnel, its posts are not new against the bare floor seen before the break.
+  for (int end = index + 3; index < end; ++index) {
+    frame = pipeline.process(moving_tunnel(index, 10, false));
+    ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+    EXPECT_TRUE(frame.candidates.empty()) << "frame " << index << ": " << frame.candidates.size();
+  }
+  // Once the new odometry chain has its own history, new objects are found again.
+  for (int end = index + 12; index < end; ++index)
+    pipeline.process(moving_tunnel(index, 10, false));
+  frame = pipeline.process(moving_tunnel(index, 10, true));
+  EXPECT_TRUE(frame.ego_motion_valid);
+  EXPECT_FALSE(frame.candidates.empty()) << frame.reason;
+}
+
 TEST(EgoMotion, LongGapAtSpeedStaysInsideSearchRange) {
   PerceptionPipeline pipeline;
   for (int i = 0; i < 12; ++i) pipeline.process(moving_tunnel(i, 10, false));

@@ -93,7 +93,7 @@ struct MotionDiagnostics {
   std::vector<double> errors;
   double median{0};
   int tracked{-1}, global{-1}, candidate{-1};  // Shift in profile steps; -1 when absent.
-  bool adopted{false}, speed_known{false};
+  bool adopted{false}, escaped{false}, speed_known{false};
   double speed_mps{0}, unconfirmed_s{0};
 };
 struct FrameResult {

@@ -294,20 +294,14 @@ struct DisjointSet {
 // 5 cm steps along X, per side and height band, how far the nearest structure
 // protrudes from the frame's mean cross-section (median lateral distance per
 // 10 cm of height). Comparing departures rather than raw distances keeps a
-// curved wall, sampled at sensor-fixed heights, from favouring zero shift. A
-// uniform tunnel yields no clear shift and falls back to the last speed.
-// Periodic lining produces aliases, so the speed is tracked near its last value
-// and changes to a distant shift only after consistent frames.
-constexpr double kProfileMinX = 3, kProfileMaxX = 35, kProfileStepM = 0.05;
+// curved wall, sampled at sensor-fixed heights, from favouring zero shift. The
+// error of each forward shift goes to SpeedTracker, which keeps the speed.
+constexpr double kProfileMinX = 3, kProfileMaxX = 35, kProfileStepM = SpeedTracker::kStepM;
 constexpr std::size_t kProfileBins = 640, kProfileRows = 6;
 constexpr std::size_t kProfileMinPairs = 200;
 constexpr double kProfileMaxError = 0.3;
-constexpr double kMaxAccelerationMps2 = 3.0;
-// An unconfirmed speed drives the odometry for kMotionHoldS and centres the
-// reacquisition window until kMotionForgetS.
-constexpr double kMotionHoldS = 5.0, kMotionForgetS = 10.0;
-constexpr std::size_t kMotionConfirmFrames = 3;
-constexpr double kSpeedGain = 0.5;
+// Below one profile step per frame the train counts as standing still.
+constexpr double kStandstillSpeedMps = 0.5;
 }  // namespace
 
 void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
@@ -352,8 +346,6 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
   const double dt = motion_stamp_ns_ && measurement_time_ns > motion_stamp_ns_
                         ? (measurement_time_ns - motion_stamp_ns_) * 1e-9
                         : 0.0;
-  bool valid = false;
-  double displacement = 0;
   MotionDiagnostics diagnostics;
   diagnostics.recorded = config.record_motion;
   diagnostics.has_previous = !motion_profile_.empty();
@@ -361,10 +353,10 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
   const auto max_shift = std::min<std::size_t>(
       kProfileBins / 2,
       static_cast<std::size_t>(std::ceil(config.ego_max_speed_mps * dt / kProfileStepM)));
+  std::vector<double> errors;
   if (dt > 0 && max_shift >= 4 && !motion_profile_.empty()) {
     // Mean profile difference for each forward shift; a static structure at x in
     // the previous frame is now at x - shift.
-    std::vector<double> errors;
     for (std::size_t shift = 0; shift <= max_shift; ++shift) {
       double sum = 0;
       std::size_t pairs = 0;
@@ -378,93 +370,14 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
         }
       errors.push_back(pairs >= kProfileMinPairs ? sum / double(pairs) : INFINITY);
     }
-    std::vector<double> finite;
-    for (const double error : errors)
-      if (std::isfinite(error)) finite.push_back(error);
-    double median = INFINITY;
-    if (finite.size() >= 4) {
-      std::nth_element(finite.begin(), finite.begin() + finite.size() / 2, finite.end());
-      median = finite[finite.size() / 2];
-    }
-    if (config.record_motion) {
-      diagnostics.errors = errors;
-      diagnostics.median = median;
-    }
-    // Best clear shift within [predicted - window, predicted + window] bins.
-    auto search = [&](double predicted, double window) -> std::optional<std::size_t> {
-      const auto low = static_cast<std::size_t>(std::max(0.0, std::floor(predicted - window)));
-      const auto high =
-          std::min(max_shift, static_cast<std::size_t>(std::ceil(predicted + window)));
-      if (low > high) return std::nullopt;
-      std::size_t best = low;
-      for (std::size_t shift = low; shift <= high; ++shift)
-        if (errors[shift] < errors[best]) best = shift;
-      // Without enough comparable shifts there is no median to stand out from.
-      if (!std::isfinite(median) || !std::isfinite(errors[best]) ||
-          median - errors[best] < config.ego_min_contrast)
-        return std::nullopt;
-      return best;
-    };
-    // A known speed is tracked within two 5 cm steps per frame. Periodic lining
-    // makes aliases, so leaving the track needs persistent evidence.
-    std::optional<std::size_t> tracked;
-    const double predicted = speed_mps_ * dt / kProfileStepM;
-    if (speed_known_) tracked = search(std::round(predicted), 2);
-    // A different shift is adopted only as the best overall, clearly better
-    // than the tracked one and consistent for kMotionConfirmFrames frames.
-    const auto global =
-        static_cast<std::size_t>(std::min_element(errors.begin(), errors.end()) - errors.begin());
-    std::optional<std::size_t> candidate;
-    bool adopted = false;
-    if (!tracked) {
-      candidate = speed_known_
-                      ? search(predicted, 1 + std::ceil(kMaxAccelerationMps2 *
-                                                        (unconfirmed_s_ + dt) * dt / kProfileStepM))
-                      : search(0, double(max_shift));
-      if (candidate && (*candidate > global + 1 || *candidate + 1 < global)) candidate.reset();
-    } else if ((global > *tracked + 1 || global + 1 < *tracked) &&
-               errors[*tracked] - errors[global] > config.ego_min_contrast) {
-      candidate = search(double(global), 0);
-    }
-    if (config.record_motion) {
-      diagnostics.tracked = tracked ? static_cast<int>(*tracked) : -1;
-      diagnostics.global = static_cast<int>(global);
-      diagnostics.candidate = candidate ? static_cast<int>(*candidate) : -1;
-    }
-    if (candidate) {
-      const double speed = *candidate * kProfileStepM / dt;
-      pending_frames_ = std::abs(speed - pending_speed_mps_) <= 1.0 ? pending_frames_ + 1 : 1;
-      pending_speed_mps_ = speed;
-      if (pending_frames_ >= kMotionConfirmFrames) {
-        tracked = candidate;
-        adopted = true;
-        pending_frames_ = 0;
-      }
-      diagnostics.adopted = adopted;
-    } else {
-      pending_frames_ = 0;
-    }
-    if (tracked) {
-      // Shifts are quantised to 5 cm; a tracked speed follows them gradually.
-      const double measured = *tracked * kProfileStepM / dt;
-      speed_mps_ = !adopted && unconfirmed_s_ == 0 && speed_known_
-                       ? speed_mps_ + kSpeedGain * (measured - speed_mps_)
-                       : measured;
-      displacement = speed_mps_ * dt;
-      unconfirmed_s_ = 0;
-      speed_known_ = valid = true;
-    } else if (speed_known_) {
-      unconfirmed_s_ += dt;
-      if (unconfirmed_s_ <= kMotionHoldS) {
-        displacement = speed_mps_ * dt;
-        valid = true;
-      } else if (unconfirmed_s_ > kMotionForgetS) {
-        speed_known_ = false;
-      }
-    }
   }
+  const auto step = speed_.update(errors, dt, config.ego_min_contrast,
+                                  config.record_motion ? &diagnostics : nullptr);
+  const bool valid = step.valid;
+  const double displacement = step.displacement_m;
   if (valid) {
     odometry_m_ += displacement;
+    last_speed_mps_ = speed_.speed_mps();
   } else {
     // History recorded before a break cannot be moved into this frame.
     ++motion_epoch_;
@@ -473,12 +386,7 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
   if (measurement_time_ns) motion_stamp_ns_ = measurement_time_ns;
   result.ego_motion_valid = valid;
   result.ego_speed_mps = valid && dt > 0 ? displacement / dt : 0;
-  if (config.record_motion) {
-    diagnostics.speed_known = speed_known_;
-    diagnostics.speed_mps = speed_mps_;
-    diagnostics.unconfirmed_s = unconfirmed_s_;
-    result.motion = std::move(diagnostics);
-  }
+  if (config.record_motion) result.motion = std::move(diagnostics);
 }
 
 void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& result,
@@ -577,16 +485,22 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   }
   // Each current return is moved back into the baseline frames by the odometry
   // since they were recorded and checked against what their own rays saw there.
-  // Without valid odometry the shift is zero and this is plain differencing.
-  std::vector<double> shifts;
+  // Frames recorded before an odometry break cannot be moved into this one:
+  // compared without a shift they are right only for a train that last stood
+  // still (or whose speed was never known), and are skipped after it moved.
+  // Without ego-motion compensation (B0) the shift is always zero.
+  std::vector<std::pair<std::size_t, double>> baselines;  // History index, shift.
   bool moved = false;
   if (config.background_history_frames) {
+    const bool stood_still = last_speed_mps_ < kStandstillSpeedMps;
     const auto end = history_.size() - config.background_lag_frames;
     for (std::size_t i = 0; i < end; ++i) {
-      shifts.push_back(config.ego_motion_compensation && history_[i].epoch == motion_epoch_
-                           ? odometry_m_ - history_[i].odometry_m
-                           : 0.0);
-      moved = moved || shifts.back() > 0;
+      const bool same_chain = history_[i].epoch == motion_epoch_;
+      if (config.ego_motion_compensation && !same_chain && !stood_still) continue;
+      const double shift =
+          config.ego_motion_compensation && same_chain ? odometry_m_ - history_[i].odometry_m : 0.0;
+      baselines.emplace_back(i, shift);
+      moved = moved || shift > 0;
     }
   }
   const bool moving =
@@ -594,6 +508,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   std::unordered_map<std::int64_t, bool> foreground_cache;
   auto foreground = [&](std::int64_t cell_key) {
     if (!config.background_history_frames) return true;
+    if (baselines.empty()) return false;  // After an odometry break: no evidence yet.
     const auto known = foreground_cache.find(cell_key);
     if (known != foreground_cache.end()) return known->second;
     const auto current_cell = current.find(cell_key);
@@ -604,9 +519,9 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     // parallel to the track, whose range changes steeply within one cell.
     std::vector<double> clearances;
     double reference = 0;
-    for (std::size_t i = 0; i < shifts.size(); ++i) {
+    for (const auto& [i, shift] : baselines) {
       const auto& p = current_cell->second;
-      const PointXYZ past{p.x + shifts[i], p.y, p.z};
+      const PointXYZ past{p.x + shift, p.y, p.z};
       if (past.x > config.detection_roi.max[0]) continue;  // Never inside that baseline.
       const auto [az, el] = angular_cell(past);
       const double range = sensor_range(past);

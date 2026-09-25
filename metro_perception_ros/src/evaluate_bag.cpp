@@ -284,6 +284,7 @@ int main(int argc, char** argv) {
           output << ",\"tracked\":" << motion.tracked << ",\"global\":" << motion.global
                  << ",\"candidate\":" << motion.candidate
                  << ",\"adopted\":" << (motion.adopted ? "true" : "false")
+                 << ",\"escaped\":" << (motion.escaped ? "true" : "false")
                  << ",\"speed_known\":" << (motion.speed_known ? "true" : "false")
                  << ",\"speed_mps\":";
           number(motion.speed_mps);
