@@ -19,8 +19,12 @@ Visualization Manager:
         Depth: 1
       Style: Points
       Size (Pixels): 2
-      Color Transformer: AxisColor
-      Axis: Y
+      Color Transformer: Intensity
+      Channel Name: intensity
+      Use rainbow: true
+      Autocompute Intensity Bounds: false
+      Min Intensity: 0
+      Max Intensity: 80
       Position Transformer: XYZ
 
     - Class: rviz_default_plugins/MarkerArray
