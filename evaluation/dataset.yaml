@@ -71,3 +71,11 @@ bags:
   sensor_profile: forward_sector
   processed_frame_count: 11271
   audit_report: docs/a02-validation.md
+- id: cloud_with_fake_obj
+  path: cloud_with_fake_obj
+  input_topic: /lidar_points
+  storage_id: sqlite3
+  declared_message_count: 1510
+  annotations: evaluation/annotations/cloud_with_fake_obj.yaml
+  audit_status: annotated_from_inserted_returns
+  sensor_profile: forward_sector

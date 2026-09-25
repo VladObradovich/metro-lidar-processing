@@ -3,7 +3,8 @@ source: user_reported_scene_overview_2026-09-23
 time_basis: approximate_elapsed_from_bag_start
 frame_reviewed: false
 notes:
-  - Only doubleT_obstacle was reported to contain an obstacle on the track.
+  - Of the six short bags only doubleT_obstacle was reported to contain an obstacle on the track;
+    cloud_with_fake_obj (delivered 2026-09-24) carries ten objects inserted by the organizers.
   - These descriptions are scene context, not reviewed frame labels or measured distances.
   - The new_data timeline is partial; later oncoming trains and platforms are not exhaustively listed.
 bags:
@@ -64,3 +65,32 @@ bags:
       - {at_s: 984, event: stops_at_platform_with_people}
       - {at_s: 1005, event: starts_moving}
       - {at_s: 1021, event: fork_turn_right}
+  cloud_with_fake_obj:
+    track_obstacle_reported: true
+    description: >-
+      Recorded tunnel run with ten objects inserted by the organizers, in this order. The
+      organizers classed each object against the track clearance envelope (inside, outside or
+      above); the envelope itself is not given. Input of scripts/annotate_inserted_objects.py.
+    source: organizer_scene_table_2026-09-24
+    time_basis: depth_video_seconds_from_first_cloud_aligned_by_header_time
+    objects:
+      - {id: box_central_01, organizer_class: inside, video_s: [0.0, 23.0],
+         description: 'large, centre'}
+      - {id: box_center_left_02, organizer_class: inside, video_s: [35.1, 36.8],
+         description: 'small, centre'}
+      - {id: low_box_right_03, organizer_class: inside, video_s: [40.5, 42.5],
+         description: 'small, on the rails'}
+      - {id: box_right_route_04, organizer_class: inside, video_s: [45.7, 47.9],
+         description: 'small, at the edge'}
+      - {id: box_left_route_05, organizer_class: outside, video_s: [51.0, 53.2],
+         description: 'small, close to the envelope'}
+      - {id: box_right_edge_06, organizer_class: inside, video_s: [53.2, 58.2],
+         description: 'large, at the edge'}
+      - {id: box_left_edge_07, organizer_class: outside, video_s: [56.5, 63.2],
+         description: 'large, beside the track'}
+      - {id: box_overhead_08, organizer_class: above, video_s: [63.3, 68.2],
+         description: 'large, overhead'}
+      - {id: low_box_central_09, organizer_class: inside, video_s: [69.5, 74.4],
+         description: 'long and low, on the rails'}
+      - {id: thin_hanging_strip_10, organizer_class: inside, video_s: [77.5, 80.3],
+         description: 'narrow, hanging from the ceiling; crosses the assumed envelope'}
