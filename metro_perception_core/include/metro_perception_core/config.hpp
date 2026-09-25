@@ -17,6 +17,8 @@ struct AlgorithmConfig {
   std::size_t max_points{2000000};
   // Diagnostics only: keep rejected components and their reasons in FrameResult.
   bool record_rejected{false};
+  // Diagnostics only: keep the odometry shift errors and tracker state in FrameResult.
+  bool record_motion{false};
   double blind_radius_m{0.5};  // Sensor coordinates, before translation.
   Bounds geometry_roi;
   Bounds detection_roi{{0, -5, -3}, {120, 5, 5}};

@@ -354,6 +354,10 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
                         : 0.0;
   bool valid = false;
   double displacement = 0;
+  MotionDiagnostics diagnostics;
+  diagnostics.recorded = config.record_motion;
+  diagnostics.has_previous = !motion_profile_.empty();
+  diagnostics.dt_s = dt;
   const auto max_shift = std::min<std::size_t>(
       kProfileBins / 2,
       static_cast<std::size_t>(std::ceil(config.ego_max_speed_mps * dt / kProfileStepM)));
@@ -381,6 +385,10 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
     if (finite.size() >= 4) {
       std::nth_element(finite.begin(), finite.begin() + finite.size() / 2, finite.end());
       median = finite[finite.size() / 2];
+    }
+    if (config.record_motion) {
+      diagnostics.errors = errors;
+      diagnostics.median = median;
     }
     // Best clear shift within [predicted - window, predicted + window] bins.
     auto search = [&](double predicted, double window) -> std::optional<std::size_t> {
@@ -418,6 +426,11 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
                errors[*tracked] - errors[global] > config.ego_min_contrast) {
       candidate = search(double(global), 0);
     }
+    if (config.record_motion) {
+      diagnostics.tracked = tracked ? static_cast<int>(*tracked) : -1;
+      diagnostics.global = static_cast<int>(global);
+      diagnostics.candidate = candidate ? static_cast<int>(*candidate) : -1;
+    }
     if (candidate) {
       const double speed = *candidate * kProfileStepM / dt;
       pending_frames_ = std::abs(speed - pending_speed_mps_) <= 1.0 ? pending_frames_ + 1 : 1;
@@ -427,6 +440,7 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
         adopted = true;
         pending_frames_ = 0;
       }
+      diagnostics.adopted = adopted;
     } else {
       pending_frames_ = 0;
     }
@@ -459,6 +473,12 @@ void GeometricDetector::estimate_motion(const AlgorithmConfig& config,
   if (measurement_time_ns) motion_stamp_ns_ = measurement_time_ns;
   result.ego_motion_valid = valid;
   result.ego_speed_mps = valid && dt > 0 ? displacement / dt : 0;
+  if (config.record_motion) {
+    diagnostics.speed_known = speed_known_;
+    diagnostics.speed_mps = speed_mps_;
+    diagnostics.unconfirmed_s = unconfirmed_s_;
+    result.motion = std::move(diagnostics);
+  }
 }
 
 void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& result,

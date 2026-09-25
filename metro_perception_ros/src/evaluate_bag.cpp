@@ -108,6 +108,8 @@ int main(int argc, char** argv) {
     metro_perception_ros::validate_pointcloud_limits(config.algorithm.max_points, max_cloud_bytes);
     // Diagnostics: rejected components and their reasons in every row.
     config.algorithm.record_rejected = std::getenv("METRO_DEBUG_COMPONENTS") != nullptr;
+    // Diagnostics: odometry shift errors and speed tracker state in every row.
+    config.algorithm.record_motion = std::getenv("METRO_DEBUG_MOTION") != nullptr;
     config.algorithm.validate();
 
     double lookahead_s = 0.05;
@@ -256,6 +258,39 @@ int main(int argc, char** argv) {
                  << ",\"channels\":" << static_cast<unsigned>(item.channels) << '}';
         }
         output << ']';
+      }
+      if (config.algorithm.record_motion) {
+        const auto& motion = result.motion;
+        const auto number = [&output](double value) {
+          if (std::isfinite(value))
+            output << value;
+          else
+            output << "null";
+        };
+        output << ",\"motion\":";
+        if (!motion.recorded) {
+          output << "null";
+        } else {
+          output << "{\"has_previous\":" << (motion.has_previous ? "true" : "false")
+                 << ",\"dt_s\":";
+          number(motion.dt_s);
+          output << ",\"errors\":[";
+          for (std::size_t i = 0; i < motion.errors.size(); ++i) {
+            if (i) output << ',';
+            number(motion.errors[i]);
+          }
+          output << "],\"median\":";
+          number(motion.median);
+          output << ",\"tracked\":" << motion.tracked << ",\"global\":" << motion.global
+                 << ",\"candidate\":" << motion.candidate
+                 << ",\"adopted\":" << (motion.adopted ? "true" : "false")
+                 << ",\"speed_known\":" << (motion.speed_known ? "true" : "false")
+                 << ",\"speed_mps\":";
+          number(motion.speed_mps);
+          output << ",\"unconfirmed_s\":";
+          number(motion.unconfirmed_s);
+          output << '}';
+        }
       }
       output << ",\"route\":[" << result.route.c1 << ',' << result.route.c2 << ','
              << (result.route.valid ? "true" : "false") << ',' << result.route.max_x << ']';

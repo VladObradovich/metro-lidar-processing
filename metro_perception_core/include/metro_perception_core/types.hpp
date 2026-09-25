@@ -84,6 +84,18 @@ struct RejectedComponent {
   std::uint32_t cells{0}, points{0};
   std::uint8_t channels{0};
 };
+// Lidar odometry of one frame (diagnostics): the mean profile error per forward shift of one
+// profile step (INFINITY without enough comparable pairs) and the shifts the tracker weighed.
+struct MotionDiagnostics {
+  bool recorded{false};
+  bool has_previous{false};  // A previous profile existed: the chain was not just reset.
+  double dt_s{0};
+  std::vector<double> errors;
+  double median{0};
+  int tracked{-1}, global{-1}, candidate{-1};  // Shift in profile steps; -1 when absent.
+  bool adopted{false}, speed_known{false};
+  double speed_mps{0}, unconfirmed_s{0};
+};
 struct FrameResult {
   PreprocessedFrame preprocessed;
   AnalysisStatus status{AnalysisStatus::NOT_IMPLEMENTED};
@@ -98,6 +110,7 @@ struct FrameResult {
   // Lidar-only forward speed used to move the range baseline; diagnostic only.
   bool ego_motion_valid{false};
   double ego_speed_mps{0};
+  MotionDiagnostics motion;  // Only with AlgorithmConfig::record_motion.
 };
 // A candidate followed over frames. Distance is measured when `coasting` is false, otherwise
 // predicted from the last measurement and the ego motion since.
