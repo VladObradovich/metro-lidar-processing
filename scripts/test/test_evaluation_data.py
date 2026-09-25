@@ -42,6 +42,24 @@ class EvaluationDataTest(unittest.TestCase):
                 self.assertEqual(annotation['time_basis'], 'bag_stamp_ns')
                 self.assertIn(bag['id'], assigned, 'an annotated bag is in no split')
 
+    def test_blind_holdout_carries_no_label(self):
+        # Labels or events reaching into the blind holdout would make its frames scored.
+        dataset = {bag['id']: bag for bag in load(EVALUATION / 'dataset.yaml')['bags']}
+        holdout = load(EVALUATION / 'splits.yaml').get('blind_holdout') or []
+        for entry in holdout:
+            with self.subTest(bag=entry['bag']):
+                self.assertIn(entry['bag'], dataset)
+                start = entry['from_bag_stamp_ns']
+                self.assertIsInstance(start, int)
+                path = dataset[entry['bag']].get('annotations')
+                if not path:
+                    continue
+                annotation = load(ROOT / path)
+                for interval in annotation.get('reviewed_intervals') or []:
+                    self.assertLessEqual(interval['end_ns'], start)
+                for event in annotation.get('events') or []:
+                    self.assertLessEqual(event['end_ns'], start)
+
 
 if __name__ == '__main__':
     unittest.main()

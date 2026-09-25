@@ -1,0 +1,17 @@
+schema_version: 1
+bag_id: new_data
+reviewed: true
+time_basis: bag_stamp_ns
+review_method: owner_scene_report
+# Only the first 595 s are labelled: the data owner reports no obstacle on the track in the
+# whole recording (evaluation/scene_context.yaml), so every OBSTACLE frame there is a false
+# alarm. Platforms with people and oncoming trains are outside the track clearance.
+# From 595 s on the recording is the blind holdout of evaluation/splits.yaml: those frames stay
+# unlabeled, are not scored and must not be reviewed; scripts/holdout_alarms.py reports only
+# their total number of alarms.
+reviewed_intervals:
+  - start_ns: 1789642926161078864
+    end_ns: 1789643521161078864
+    label: negative
+    evidence: Owner reports no obstacle on the track in the whole recording.
+events: []
