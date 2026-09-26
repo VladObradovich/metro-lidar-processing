@@ -22,7 +22,8 @@ geometry_msgs::msg::Point point(double x, double y, double z) {
   return p;
 }
 
-// Wireframe box following the corridor centreline from start to end on the ground.
+// The four long edges of the envelope (bottom and top on each side) along one corridor segment;
+// cross ties are left out so the cloud stays readable.
 bool corridor_edges(const CorridorSegment& segment, Marker& marker) {
   const double dx = segment.end.x - segment.start.x, dy = segment.end.y - segment.start.y;
   const double length = std::hypot(dx, dy);
@@ -42,8 +43,7 @@ bool corridor_edges(const CorridorSegment& segment, Marker& marker) {
       }
     }
   }
-  const int edges[12][2] = {{0, 4}, {1, 5}, {2, 6}, {3, 7}, {0, 2}, {4, 6},
-                            {1, 3}, {5, 7}, {0, 1}, {2, 3}, {4, 5}, {6, 7}};
+  const int edges[4][2] = {{0, 4}, {1, 5}, {2, 6}, {3, 7}};
   for (const auto& edge : edges) {
     marker.points.push_back(c[edge[0]]);
     marker.points.push_back(c[edge[1]]);
@@ -103,7 +103,7 @@ class Visualizer : public rclcpp::Node {
       std::int32_t id = 0;
       for (const auto& segment : assessment.corridor) {
         Marker corridor = base(assessment, "corridor", id++, Marker::LINE_LIST);
-        corridor.scale.x = 0.1;
+        corridor.scale.x = 0.03;
         const bool usable = segment.geometry_valid && segment.coverage_valid;
         corridor.color.r = usable ? 0.2 : 1.0;
         corridor.color.g = usable ? 0.9 : 0.8;
