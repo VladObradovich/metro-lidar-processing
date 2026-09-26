@@ -49,6 +49,7 @@ metro_perception_ros/           perception_node, obstacle_monitor_node, visualiz
                                 evaluate_bag (офлайн), профили сенсора (config/)
 metro_perception_bringup/       launch (perception, demo, depth_image), rviz/, config/
 metro_perception_tools/         depth_image (depth-видео), metrics, report, inspect_bag
+metro_perception_rviz/          панель RViz с текстом PathAssessment (собирается, если есть RViz)
 evaluation/                     разметка, splits, описание сцен (без самих облаков)
 scripts/                        сборка/тесты, smoke, оценка, синтетика, desktop, экспорт образов
 docker/                         Dockerfile для разработки и runtime, compose-расширения
@@ -111,20 +112,25 @@ bash scripts/desktop.sh exec ros2 launch metro_perception_bringup perception.lau
 bash scripts/desktop.sh exec ros2 bag play /data/cloud_with_fake_obj
 ```
 
+Для `doubleT_obstacle` детектору нужен её топик:
+`perception.launch.py rviz:=true input_topic:=/sensing/lidar/hesai128/pointcloud`.
+
 С `rviz:=true` запускаются визуализатор, узел depth-видео и RViz с конфигом `rviz/detector.rviz`.
 
-**Слева:**
-- **Depth** — развёртка облака по кольцам лидара и азимуту (±50° вперёд). Серый показывает
-  глубину: чем ближе, тем светлее. Зелёным закрашен коридор (полоса ±1,05 м вдоль оси пути
-  от пола до 3 м), красным — точки препятствий.
-- **Displays** — список топиков.
+**Слева сверху — Depth:** развёртка облака по кольцам лидара и азимуту (±50° вперёд). Серый
+показывает глубину: чем ближе, тем светлее. Зелёным закрашен коридор (полоса ±1,05 м вдоль оси
+пути от пола до 3 м), красным — точки препятствий. Узел держит только последнее облако и
+успевает за 10 Гц.
 
-**Справа** — облако анализируемых точек с той же раскраской и маркеры детектора:
-- надпись состояния `STATE d m: reason`;
-- габарит коридора — четыре тонкие продольные линии (низ и верх с каждой стороны): зелёные,
-  когда геометрия и покрытие пригодны, иначе жёлтые;
-- боксы кандидатов: красные для движения, синие для неподвижных в габарите;
-- ближайшая точка, подписи треков и прогноз трека.
+**Слева снизу — Assessment:** панель RViz из пакета `metro_perception_rviz`, текст топика
+`assessment` в духе `ros2 topic echo`: состояние, дистанция, причина, проверенная дальность,
+калибровка, возраст результата, подтверждённые треки с расстоянием и размером.
+
+**Справа** — облако анализируемых точек с той же раскраской и габарит коридора: четыре тонкие
+продольные линии (низ и верх с каждой стороны), зелёные, когда геометрия и покрытие пригодны,
+иначе жёлтые. Надписей и боксов поверх облака нет. Полный набор маркеров (надпись состояния,
+боксы кандидатов, ближайшая точка, треки) — отображение `Detection`, по умолчанию выключено;
+включается через Panels → Displays.
 
 Облако и маркеры публикуются во фрейме `lidar_assumed`, поэтому TF не нужен.
 
@@ -144,6 +150,7 @@ bash scripts/desktop.sh exec ros2 bag play /data/cloud_with_fake_obj
 | `/metro/analysis` | `FrameAnalysis` | Анализ кадра: кандидаты, коридор, дальность, диагностика |
 | `/metro/assessment` | `PathAssessment` | Решение: состояние, причина, дальность, объекты, треки |
 | `/metro/markers` | `MarkerArray` | Маркеры (с `rviz:=true` или в `demo.launch.py`) |
+| `/metro/corridor_markers` | `MarkerArray` | Только линии коридора, для облака в RViz |
 | `/metro/labelled_points` | `PointCloud2` | Облако с метками и цветом (только с `rviz:=true`) |
 | `/metro/depth_image` | `Image` | Depth-видео с раскраской (только с `rviz:=true`) |
 
@@ -229,7 +236,8 @@ bash scripts/desktop.sh exec ros2 bag play /data/cloud_with_fake_obj
 
 ```text
 PointCloud2 → perception_node → FrameAnalysis → obstacle_monitor_node → PathAssessment
-                    │                                                    └→ visualizer_node → MarkerArray
+                    │                                                    ├→ visualizer_node → MarkerArray
+                    │                                                    └→ RViz, панель Assessment
                     └→ labelled_points (rviz:=true) → depth_image → Image
 rosbag → evaluate_bag → тот же C++ pipeline → frames.jsonl → metrics.py → quality.json
 ```
@@ -241,6 +249,7 @@ rosbag → evaluate_bag → тот же C++ pipeline → frames.jsonl → metric
 | `metro_perception_ros` | Узлы, адаптер PointCloud2, TF, офлайн-оценщик |
 | `metro_perception_bringup` | Launch, конфиги, RViz |
 | `metro_perception_tools` | Depth-видео, метрики, отчёты |
+| `metro_perception_rviz` | Панель RViz с текстом `PathAssessment`; без RViz собирается только форматирование |
 
 Устройство онлайн-режима:
 - `perception_node` работает по схеме latest-only: один кадр в обработке, один в ожидании,
