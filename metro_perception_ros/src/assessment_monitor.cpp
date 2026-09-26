@@ -66,6 +66,7 @@ GateDecision AssessmentMonitor::on_analysis(const FrameAnalysis& frame, Clock::t
       if (reason == "MOTION")
         candidate.channels |= metro_perception_core::ObstacleCandidate::kMotion;
       if (reason == "GAUGE") candidate.channels |= metro_perception_core::ObstacleCandidate::kGauge;
+      if (reason == "EDGE") candidate.edge = true;
     }
     result.candidates.push_back(candidate);
   }

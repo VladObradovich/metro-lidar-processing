@@ -79,13 +79,14 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
   }
   std::sort(pairs.begin(), pairs.end());
   std::vector<bool> track_used(tracks_.size(), false), candidate_used(frame.candidates.size());
+  // An edge measurement keeps the track alive but is no evidence for confirmation.
   auto measure = [](Track& track, const ObstacleCandidate& candidate) {
     track.center = candidate.center;
     track.size = candidate.size;
     track.distance_m = candidate.distance_m;
     track.channels |= candidate.channels;
     track.support = candidate.support_points;
-    track.history |= 1u;
+    if (!candidate.edge) track.history |= 1u;
     track.misses = 0;
   };
   for (auto& track : tracks_) {
@@ -118,7 +119,9 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
     const bool gauge_only = track.channels == ObstacleCandidate::kGauge;
     const auto window = gauge_only ? config_.gauge_confirm_window : config_.confirm_window;
     const auto needed = gauge_only ? config_.gauge_confirm_hits : config_.confirm_hits;
-    const bool far = evaluated > 0 && track.distance_m > evaluated;
+    const bool far =
+        (evaluated > 0 && track.distance_m > evaluated) ||
+        (config_.far_confirm_from_m > 0 && track.distance_m > config_.far_confirm_from_m);
     if (!track.confirmed && hits_in(track.history, window) >= needed &&
         (!far || hits_in(track.history, config_.far_confirm_window) >= config_.far_confirm_hits))
       track.confirmed = true;

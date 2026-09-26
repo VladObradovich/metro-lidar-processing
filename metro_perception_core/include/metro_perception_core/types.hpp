@@ -48,6 +48,9 @@ struct ObstacleCandidate {
   bool distance_valid{false};
   std::uint32_t support_points{0};
   std::uint8_t channels{0};
+  // All of its evidence lies within the route uncertainty of the envelope edge: the object may
+  // be beside the envelope. It is followed but does not count towards confirmation.
+  bool edge{false};
 };
 // Route centre ahead, y = c1 * x + c2 * x^2, estimated from the tunnel walls. Invalid means
 // the straight corridor y = 0 is used and the gauge channel is off.

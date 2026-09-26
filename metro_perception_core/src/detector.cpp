@@ -14,7 +14,8 @@
 namespace metro_perception_core {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
-constexpr double kGroundMinX = 2, kGroundMaxX = 90, kGroundBinM = 5;
+// The floor plane is fitted up to kGroundFitMaxX; its support may be followed further.
+constexpr double kGroundMinX = 2, kGroundFitMaxX = 90, kGroundBinM = 5;
 // Brief ground dropouts keep the range history; longer ones restart it.
 constexpr std::size_t kMaxGeometryFailures = 5;
 struct Plane {
@@ -34,8 +35,8 @@ struct Cell {
 // The route floor is searched in the same lateral band as candidates. Wider, a platform,
 // a parked train or a bench beside the track can outvote the floor and lift the plane,
 // which cuts the lower body of an obstacle off below "ground".
-bool in_ground_region(const AlgorithmConfig& config, const PointXYZ& p) {
-  return p.x >= kGroundMinX && p.x <= kGroundMaxX &&
+bool in_ground_region(const AlgorithmConfig& config, const PointXYZ& p, double max_x) {
+  return p.x >= kGroundMinX && p.x <= max_x &&
          std::abs(p.y) <= config.corridor_half_width_m + config.candidate_margin_m && p.z >= -3 &&
          p.z <= 0.5;
 }
@@ -72,12 +73,13 @@ void refine_ground(const AlgorithmConfig& config, const std::vector<const PointX
 // Isolated far returns do not extend it.
 void measure_support(const AlgorithmConfig& config, const std::vector<IndexedPoint>& points,
                      Plane& plane) {
-  const auto bins = static_cast<std::size_t>(std::ceil((kGroundMaxX - kGroundMinX) / kGroundBinM));
+  const auto bins =
+      static_cast<std::size_t>(std::ceil((config.ground_max_x_m - kGroundMinX) / kGroundBinM));
   std::vector<std::size_t> count(bins, 0);
-  std::vector<double> near(bins, kGroundMaxX), far(bins, 0);
+  std::vector<double> near(bins, config.ground_max_x_m), far(bins, 0);
   for (const auto& indexed : points) {
     const auto& p = indexed.point;
-    if (!in_ground_region(config, p) ||
+    if (!in_ground_region(config, p, config.ground_max_x_m) ||
         std::abs(plane.height(p)) > config.ground_inlier_tolerance_m)
       continue;
     const auto bin =
@@ -89,7 +91,11 @@ void measure_support(const AlgorithmConfig& config, const std::vector<IndexedPoi
   plane.inliers = 0;
   plane.max_supported_x = kGroundMinX;
   for (std::size_t bin = 0; bin < bins; ++bin) {
-    if (count[bin] < config.ground_min_bin_points) continue;
+    // The grazing floor thins out with range; far stretches may need fewer returns.
+    const bool far_bin = config.ground_far_min_bin_points &&
+                         kGroundMinX + bin * kGroundBinM >= config.ground_far_from_m;
+    if (count[bin] < (far_bin ? config.ground_far_min_bin_points : config.ground_min_bin_points))
+      continue;
     if (near[bin] - plane.max_supported_x > config.ground_max_gap_m) break;
     plane.inliers += count[bin];
     plane.max_supported_x = far[bin];
@@ -102,11 +108,13 @@ Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& fr
   // densely than the grazing floor, cannot outvote it by point count.
   const double half_width = config.corridor_half_width_m + config.candidate_margin_m;
   const auto columns = static_cast<std::size_t>(std::ceil(2 * half_width / 0.2)) + 1;
-  const auto rows = static_cast<std::size_t>(std::ceil(kGroundMaxX - kGroundMinX)) + 1;
+  const auto rows = static_cast<std::size_t>(
+                        std::ceil(std::min(kGroundFitMaxX, config.ground_max_x_m) - kGroundMinX)) +
+                    1;
   std::vector<const PointXYZ*> lowest(rows * columns, nullptr);
   for (const auto& indexed : frame.geometry_points) {
     const auto& p = indexed.point;
-    if (!in_ground_region(config, p)) continue;
+    if (!in_ground_region(config, p, std::min(kGroundFitMaxX, config.ground_max_x_m))) continue;
     const auto row = static_cast<std::size_t>(p.x - kGroundMinX);
     const auto column = static_cast<std::size_t>((p.y + half_width) / 0.2);
     auto& slot = lowest[std::min(row, rows - 1) * columns + std::min(column, columns - 1)];
@@ -397,8 +405,19 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     reset();
   if (measurement_time_ns) last_stamp_ns_ = measurement_time_ns;
   const auto& frame = result.preprocessed;
-  const auto ground = estimate_ground(config, frame);
-  const double end_x = std::min(config.detection_roi.max[0], ground.max_supported_x + 3.0);
+  auto ground = estimate_ground(config, frame);
+  double end_x = std::min(config.detection_roi.max[0], ground.max_supported_x + 3.0);
+  // A close object can hide the floor: keep the last floor for a few frames to find it.
+  const bool held = (!ground.valid || end_x < 25.0) && held_ground_valid_ &&
+                    held_ground_age_ < config.ground_hold_frames &&
+                    !frame.detection_indices.empty();
+  if (held) {
+    ground.a = held_ground_[0], ground.b = held_ground_[1], ground.c = held_ground_[2];
+    ground.valid = true;
+    end_x = held_end_x_;
+    ground.max_supported_x = end_x - 3.0;
+    ++held_ground_age_;
+  }
   if (!ground.valid || end_x < 25.0 || frame.detection_indices.empty()) {
     // Skipped frames do not enter the history; it stays usable after a short dropout.
     if (++geometry_failures_ > kMaxGeometryFailures) reset();
@@ -407,10 +426,17 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     return;
   }
   geometry_failures_ = 0;
+  if (!held) {
+    held_ground_ = {ground.a, ground.b, ground.c};
+    held_end_x_ = end_x;
+    held_ground_valid_ = true;
+    held_ground_age_ = 0;
+  }
   if (config.background_history_frames && config.ego_motion_compensation)
     estimate_motion(config, frame, {ground.a, ground.b, ground.c}, measurement_time_ns, result);
   // Without a route estimate the corridor is the straight line y = 0, as before.
   auto route = estimate_route(config, frame, ground);
+  const auto raw_route = route;
   if (route.valid && route_.valid && config.route_smoothing > 0) {
     const double w = config.route_smoothing;
     route.c1 = w * route_.c1 + (1 - w) * route.c1;
@@ -743,6 +769,38 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     }
     return false;
   };
+  // A thin column standing from the floor up past the envelope to the vault is tunnel
+  // structure (the pillars between the tracks of a double tunnel), not an obstacle: an object
+  // on the track ends below the vault, and a suspended one does not reach the floor.
+  constexpr double kPoleMaxFootprintM = 0.8, kPoleMaxGapM = 0.6, kPoleAboveM = 0.8;
+  auto pole = [&](const PointXYZ& lo, const PointXYZ& hi) {
+    if (!config.pole_rejection || hi.x - lo.x > kPoleMaxFootprintM ||
+        hi.y - lo.y > kPoleMaxFootprintM)
+      return false;
+    std::vector<double> heights;
+    for (const auto index : frame.detection_indices) {
+      const auto& p = frame.geometry_points[index].point;
+      if (p.x >= lo.x - 0.2 && p.x <= hi.x + 0.2 && p.y >= lo.y - 0.2 && p.y <= hi.y + 0.2)
+        heights.push_back(ground.height(p));
+    }
+    std::sort(heights.begin(), heights.end());
+    if (heights.empty() || heights.front() > config.obstacle_min_height_m + 0.3) return false;
+    double reach = heights.front();
+    for (const double h : heights) {
+      if (h > reach + kPoleMaxGapM) break;
+      reach = std::max(reach, h);
+    }
+    return reach >= config.corridor_height_m + kPoleAboveM;
+  };
+  // Depth behind the nearest return of a cell over which gauge returns measure a length.
+  constexpr double kGaugeDepthM = 5.0;
+  // How far the route may be off laterally at x (see route_margin_per_m).
+  auto route_margin = [&](double x) {
+    if (config.route_margin_per_m <= 0 || !route.valid) return 0.0;
+    const double jitter = raw_route.valid ? std::abs(raw_route.center(x) - route.center(x)) : 0.0;
+    return std::min(config.route_margin_max_m, config.route_margin_per_m * std::max(0.0, x)) +
+           jitter;
+  };
   for (const auto& entry : components) {
     PointXYZ possible_lo{INFINITY, INFINITY, INFINITY};
     PointXYZ possible_hi{-INFINITY, -INFINITY, -INFINITY};
@@ -793,7 +851,10 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       for (const auto point_index : cell.points) {
         const auto& p = frame.geometry_points[point_index].point;
         const double offset = std::abs(route.offset(p)), height = ground.height(p);
-        if (gauge_on && gauge_point(offset, height)) {
+        // Returns far behind the nearest surface (far floor seen above an extrapolated plane
+        // along the same rays) belong to something else and must not lengthen the object.
+        if (gauge_on && gauge_point(offset, height) &&
+            range_of(point_index) <= cell.range + kGaugeDepthM) {
           gauge_lo_x = std::min(gauge_lo_x, p.x);
           gauge_hi_x = std::max(gauge_hi_x, p.x);
           if (offset <= config.static_inner_half_width_m) {
@@ -834,9 +895,12 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     }
     // The bbox spans the margin band; acceptance uses only returns inside. Gauge-only
     // evidence has no history to tell a wall from an obstacle: long structures along the
-    // route are rejected, and its returns already start above static_min_height_m.
+    // route are rejected, and its returns already start above static_min_height_m. The same
+    // holds whenever gauge evidence is present: a small object seen by a few scan lines, or a
+    // low one whose part above the rail heads is short, is not a flat patch of floor.
     const bool gauge_only = channels == ObstacleCandidate::kGauge;
-    const double min_extent = gauge_only ? 0.1 : config.obstacle_min_height_m;
+    const double min_extent =
+        (channels & ObstacleCandidate::kGauge) ? 0.1 : config.obstacle_min_height_m;
     // A component seen only in the outer strip is judged by its full gauge extent.
     const double gauge_length =
         std::isfinite(inner_lo_x) ? inner_hi_x - inner_lo_x : gauge_hi_x - gauge_lo_x;
@@ -854,6 +918,8 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       rejected = "FAR_WALL_CONTACT";
     } else if (gauge_only && gauge_length > config.static_max_length_m) {
       rejected = "LONG_GAUGE_STRUCTURE";
+    } else if (pole(lo, hi)) {
+      rejected = "POLE_STRUCTURE";
     } else if (closest_offset > gauge_half_width && hi.x - lo.x > config.static_max_length_m) {
       // Beside the gauge, a surface long along the route is a wall, a platform edge or a
       // cable seen as new through odometry error or disocclusion; an obstacle is compact.
@@ -907,6 +973,8 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     candidate.center = {(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2};
     candidate.size = {hi.x - lo.x, hi.y - lo.y, hi.z - lo.z};
     candidate.nearest_point = nearest;
+    candidate.edge = route_margin(nearest.x) > 0 &&
+                     closest_offset > config.corridor_half_width_m - route_margin(nearest.x);
     candidate.distance_m = distance;
     candidate.distance_valid = std::isfinite(distance) && distance >= 0;
     candidate.support_points = static_cast<std::uint32_t>(support);
@@ -1000,6 +1068,15 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   const double gauge_end =
       gauge_on && config.gauge_certifies_clear ? std::min(end_x, route.max_x) : 0.0;
   const bool gauge_clear = gauge_end > config.detection_roi.min[0];
+  if (held && result.candidates.empty()) {
+    // The kept floor may only reveal an object, never certify a clear path.
+    result.status = AnalysisStatus::INVALID_GEOMETRY;
+    result.reason = "GROUND_UNSUPPORTED";
+    result.evaluation_region_valid = false;
+    result.evaluated_range_m = 0;
+    for (auto& segment : result.corridor) segment.coverage_valid = false;
+    return;
+  }
   result.status = AnalysisStatus::OK;
   result.reason = !result.candidates.empty() ? "CANDIDATES_FOUND"
                   : !config.background_history_frames || gauge_clear

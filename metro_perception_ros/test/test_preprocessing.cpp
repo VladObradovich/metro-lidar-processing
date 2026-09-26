@@ -112,6 +112,9 @@ TEST(Profile, TemporalRuleIsReadAndValidated) {
   EXPECT_EQ(shipped.release_misses, 2u);
   EXPECT_TRUE(shipped.assumed_clear);
   EXPECT_DOUBLE_EQ(shipped.assumed_clear_min_range_m, 50.0);
+  EXPECT_DOUBLE_EQ(shipped.far_confirm_from_m, 60.0);
+  EXPECT_EQ(shipped.far_confirm_hits, 4u);
+  EXPECT_EQ(shipped.far_confirm_window, 5u);
   const auto path = std::string("/tmp/metro-temporal-test-") + std::to_string(getpid()) + ".yaml";
   auto save = [&](const std::string& text) { std::ofstream(path) << text; };
   // Without a temporal section the decision stays per frame.
@@ -173,6 +176,10 @@ TEST(Profile, DefaultForwardSectorBindsRuntimeFramePerSession) {
   EXPECT_DOUBLE_EQ(c.algorithm.sensor_height_above_rail_m, 1.075);
   EXPECT_DOUBLE_EQ(c.algorithm.route_smoothing, 0.5);
   EXPECT_DOUBLE_EQ(c.algorithm.far_gauge_max_x_m, 0.0);  // The far gauge is off.
+  EXPECT_DOUBLE_EQ(c.algorithm.route_margin_per_m, 0.005);
+  EXPECT_EQ(c.algorithm.ground_hold_frames, 3u);
+  EXPECT_TRUE(c.algorithm.pole_rejection);
+  EXPECT_DOUBLE_EQ(c.algorithm.ground_max_x_m, 90.0);  // The floor is not followed further.
   EXPECT_DOUBLE_EQ(c.algorithm.low_bump_min_prominence_m, 0.15);
   EXPECT_TRUE(c.algorithm.hanging_channel);
 

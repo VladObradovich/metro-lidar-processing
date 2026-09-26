@@ -55,6 +55,7 @@ metro_perception_core::TemporalConfig load_temporal_config(const std::string& pa
     read_count("gauge_confirm_window", c.gauge_confirm_window);
     read_count("far_confirm_hits", c.far_confirm_hits);
     read_count("far_confirm_window", c.far_confirm_window);
+    read_double("far_confirm_from_m", c.far_confirm_from_m);
     read_count("release_misses", c.release_misses);
     read_double("gate_base_m", c.gate_base_m);
     read_double("gate_range_fraction", c.gate_range_fraction);
@@ -157,6 +158,10 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("ground_inlier_tolerance_m", c.algorithm.ground_inlier_tolerance_m);
     read_double("ground_max_gap_m", c.algorithm.ground_max_gap_m);
     read_count("ground_min_bin_points", c.algorithm.ground_min_bin_points);
+    read_count("ground_hold_frames", c.algorithm.ground_hold_frames);
+    read_count("ground_far_min_bin_points", c.algorithm.ground_far_min_bin_points);
+    read_double("ground_far_from_m", c.algorithm.ground_far_from_m);
+    read_double("ground_max_x_m", c.algorithm.ground_max_x_m);
     read_double("obstacle_min_height_m", c.algorithm.obstacle_min_height_m);
     read_double("angular_cell_deg", c.algorithm.angular_cell_deg);
     read_count("min_ground_inliers", c.algorithm.min_ground_inliers);
@@ -171,6 +176,8 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
       c.algorithm.route_estimation = detector["route_estimation"].as<bool>();
     read_double("route_min_radius_m", c.algorithm.route_min_radius_m);
     read_double("route_smoothing", c.algorithm.route_smoothing);
+    read_double("route_margin_per_m", c.algorithm.route_margin_per_m);
+    read_double("route_margin_max_m", c.algorithm.route_margin_max_m);
     if (detector["static_channel"])
       c.algorithm.static_channel = detector["static_channel"].as<bool>();
     if (detector["gauge_certifies_clear"])
@@ -198,6 +205,8 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("low_bump_min_width_m", c.algorithm.low_bump_min_width_m);
     read_double("low_bump_min_prominence_m", c.algorithm.low_bump_min_prominence_m);
     read_count("low_bump_min_context_points", c.algorithm.low_bump_min_context_points);
+    if (detector["pole_rejection"])
+      c.algorithm.pole_rejection = detector["pole_rejection"].as<bool>();
     if (detector["hanging_channel"])
       c.algorithm.hanging_channel = detector["hanging_channel"].as<bool>();
     read_double("hanging_tip_max_height_m", c.algorithm.hanging_tip_max_height_m);

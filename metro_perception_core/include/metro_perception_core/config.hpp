@@ -30,8 +30,15 @@ struct AlgorithmConfig {
   // Longest unobserved floor stretch before the usable range ends. At least the
   // 5 m support bin, so gaps inside one bin never exceed it.
   double ground_max_gap_m{10.0};
-  // Floor returns needed for a 5 m stretch to count as observed.
+  // A large object close ahead hides the floor. For up to this many frames the last supported
+  // floor is kept to look for it; such a frame is never a clear path. 0 disables.
+  std::size_t ground_hold_frames{0};
+  // Floor returns needed for a 5 m stretch to count as observed; from ground_far_from_m on,
+  // ground_far_min_bin_points (0: the same). The floor is searched up to ground_max_x_m.
   std::size_t ground_min_bin_points{30};
+  std::size_t ground_far_min_bin_points{0};
+  double ground_far_from_m{60.0};
+  double ground_max_x_m{90.0};
   double obstacle_min_height_m{0.25};
   // Candidate extent is measured this far past the corridor edge.
   double candidate_margin_m{0.5};
@@ -51,6 +58,11 @@ struct AlgorithmConfig {
   // from the car barely changes between frames, while a single fit to the walls jitters by
   // about a metre at 60 m; 0 uses each frame's fit alone.
   double route_smoothing{0.0};
+  // Lateral uncertainty of the route at distance x: route_margin_per_m * x, at most
+  // route_margin_max_m, plus the change the smoothing made to this frame's fit at x. A
+  // candidate whose evidence stays within it of the envelope edge is marked `edge`; 0 disables.
+  double route_margin_per_m{0.0};
+  double route_margin_max_m{0.5};
   // Gauge channel: returns inside a narrow route gauge are candidates without any history,
   // so obstacles fixed in the world are found while the train approaches them. Long
   // gauge-only structures (walls, platform edges) are rejected by length.
@@ -98,6 +110,8 @@ struct AlgorithmConfig {
   // A narrow vertical component hanging over the route counts only when its
   // lower tip intrudes into the usable vehicle height.
   bool hanging_channel{false};
+  // Reject thin columns that run from the floor past the envelope up to the vault.
+  bool pole_rejection{false};
   double hanging_tip_max_height_m{3.15};
   double hanging_min_vertical_span_m{0.5};
   double hanging_max_footprint_m{0.25};
@@ -123,7 +137,10 @@ struct AlgorithmConfig {
         ground_max_slope > 0.5 || !std::isfinite(ground_inlier_tolerance_m) ||
         ground_inlier_tolerance_m <= 0 || ground_inlier_tolerance_m > 0.5 ||
         !std::isfinite(ground_max_gap_m) || ground_max_gap_m < 5 || ground_max_gap_m > 50 ||
-        ground_min_bin_points == 0 || !std::isfinite(obstacle_min_height_m) ||
+        ground_min_bin_points == 0 || ground_hold_frames > 10 ||
+        ground_far_min_bin_points > ground_min_bin_points || !std::isfinite(ground_far_from_m) ||
+        ground_far_from_m < 0 || !std::isfinite(ground_max_x_m) || ground_max_x_m < 30 ||
+        ground_max_x_m > 200 || !std::isfinite(obstacle_min_height_m) ||
         obstacle_min_height_m <= 0 || obstacle_min_height_m > corridor_height_m ||
         !std::isfinite(angular_cell_deg) || angular_cell_deg < 0.05 || angular_cell_deg > 1.0 ||
         min_ground_inliers < 3 || min_candidate_cells == 0 || min_candidate_points == 0 ||
@@ -135,6 +152,8 @@ struct AlgorithmConfig {
         !std::isfinite(ego_min_contrast) || ego_min_contrast <= 0 || ego_min_contrast > 0.3 ||
         !std::isfinite(route_min_radius_m) || route_min_radius_m < 20 ||
         !std::isfinite(route_smoothing) || route_smoothing < 0 || route_smoothing >= 1 ||
+        !std::isfinite(route_margin_per_m) || route_margin_per_m < 0 ||
+        !std::isfinite(route_margin_max_m) || route_margin_max_m < 0 ||
         !std::isfinite(static_half_width_m) || static_half_width_m <= 0 ||
         !std::isfinite(static_inner_half_width_m) || static_inner_half_width_m <= 0 ||
         static_inner_half_width_m > static_half_width_m ||
@@ -185,8 +204,10 @@ struct TemporalConfig {
   // Stricter rule for tracks seen only by the gauge channel, which has no history evidence.
   std::size_t gauge_confirm_hits{1}, gauge_confirm_window{1};
   // Also required of a track beyond the evaluated range (the far gauge), where the route and
-  // the floor are extrapolated.
+  // the floor are extrapolated, or beyond far_confirm_from_m (0: only the evaluated range),
+  // where they are least certain.
   std::size_t far_confirm_hits{1}, far_confirm_window{1};
+  double far_confirm_from_m{0.0};
   // A confirmed track survives this many missed frames minus one, coasting on ego motion.
   std::size_t release_misses{1};
   // Association gate: base + fraction of range + object and unknown-ego motion over dt.
@@ -213,13 +234,13 @@ struct TemporalConfig {
     };
     if (!rule_ok(confirm_hits, confirm_window) ||
         !rule_ok(gauge_confirm_hits, gauge_confirm_window) ||
-        !rule_ok(far_confirm_hits, far_confirm_window) || release_misses < 1 ||
-        release_misses > 32 || !std::isfinite(gate_base_m) || gate_base_m <= 0 ||
-        !std::isfinite(gate_range_fraction) || gate_range_fraction < 0 ||
-        !std::isfinite(object_max_speed_mps) || object_max_speed_mps < 0 ||
-        !std::isfinite(unknown_ego_speed_mps) || unknown_ego_speed_mps < 0 ||
-        !std::isfinite(still_speed_mps) || still_speed_mps < 0 || !std::isfinite(max_gap_s) ||
-        max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024 ||
+        !rule_ok(far_confirm_hits, far_confirm_window) || !std::isfinite(far_confirm_from_m) ||
+        far_confirm_from_m < 0 || release_misses < 1 || release_misses > 32 ||
+        !std::isfinite(gate_base_m) || gate_base_m <= 0 || !std::isfinite(gate_range_fraction) ||
+        gate_range_fraction < 0 || !std::isfinite(object_max_speed_mps) ||
+        object_max_speed_mps < 0 || !std::isfinite(unknown_ego_speed_mps) ||
+        unknown_ego_speed_mps < 0 || !std::isfinite(still_speed_mps) || still_speed_mps < 0 ||
+        !std::isfinite(max_gap_s) || max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024 ||
         !std::isfinite(assumed_clear_min_range_m) || assumed_clear_min_range_m <= 0)
       throw std::invalid_argument("Invalid temporal configuration");
   }

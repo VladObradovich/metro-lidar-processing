@@ -268,6 +268,7 @@ class PerceptionNode : public rclcpp::Node {
         item.reasons.push_back("MOTION");
       if (candidate.channels & metro_perception_core::ObstacleCandidate::kGauge)
         item.reasons.push_back("GAUGE");
+      if (candidate.edge) item.reasons.push_back("EDGE");
     }
     for (const auto& segment : frame.corridor) {
       auto& item = output.corridor.emplace_back();

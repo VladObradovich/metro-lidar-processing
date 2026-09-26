@@ -217,7 +217,8 @@ int main(int argc, char** argv) {
                << ",\"center\":[" << candidate.center.x << ',' << candidate.center.y << ','
                << candidate.center.z << "],\"size\":[" << candidate.size.x << ','
                << candidate.size.y << ',' << candidate.size.z
-               << "],\"channels\":" << static_cast<unsigned>(candidate.channels) << '}';
+               << "],\"channels\":" << static_cast<unsigned>(candidate.channels)
+               << ",\"edge\":" << (candidate.edge ? "true" : "false") << '}';
       }
       output << "]";
       output << ",\"evaluation_region_valid\":"

@@ -51,9 +51,18 @@ detector:
   envelope_half_width_m: 1.05
   # The wall fit of the route jitters by about a metre at 60 m between frames on curves.
   route_smoothing: 0.5
+  # Evidence within 0.005 m per metre of range (at most 0.5 m) of the envelope edge, plus the
+  # frame's smoothing correction, may lie beside the envelope: it is followed but confirmed
+  # only once nearer. Most false alarms on curves at 40-80 m were of this kind.
+  route_margin_per_m: 0.005
+  # A close large object hides the floor; the last floor is kept for 3 frames to find it.
+  ground_hold_frames: 3
+  # Thin columns from the floor to the vault (double-track tunnels) are structure.
+  pole_rejection: true
   # Lidar 1.075 m above the rail heads (organizers, 24.09): at stations the floor found is the
   # bottom of a deep trough, whose contents are not obstacles.
   sensor_height_above_rail_m: 1.075
+  rail_head_margin_m: 0.05
   low_bump_max_length_m: 0.6
   low_bump_min_width_m: 0.15
   low_bump_min_prominence_m: 0.15
@@ -79,3 +88,7 @@ temporal:
   # region evaluated at least this far is reported clear, keeping trust ASSUMED.
   assumed_clear: true
   assumed_clear_min_range_m: 50.0
+  # Beyond 60 m the route and floor are least certain: a track needs 4 sightings in 5 frames.
+  far_confirm_from_m: 60.0
+  far_confirm_hits: 4
+  far_confirm_window: 5

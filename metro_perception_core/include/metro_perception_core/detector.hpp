@@ -24,6 +24,8 @@ class GeometricDetector {
     speed_.reset();
     ++motion_epoch_;
     route_ = {};
+    held_ground_valid_ = false;
+    held_ground_age_ = 0;
   }
 
  private:
@@ -54,5 +56,10 @@ class GeometricDetector {
   std::uint64_t motion_epoch_{0};
   // Route of the previous analysed frame, for route_smoothing.
   RouteEstimate route_;
+  // Floor (z = a x + b y + c) and usable range of the last frame with a supported floor.
+  std::array<double, 3> held_ground_{};
+  double held_end_x_{0};
+  bool held_ground_valid_{false};
+  std::size_t held_ground_age_{0};
 };
 }  // namespace metro_perception_core

@@ -450,3 +450,41 @@ TEST(Tracker, TracksBeyondTheEvaluatedRangeAlsoNeedTheFarRule) {
     EXPECT_EQ(far_confirmed, i >= 3) << i;
   }
 }
+
+TEST(Tracker, EdgeMeasurementsKeepATrackButNeverConfirmIt) {
+  TemporalMonitor monitor(rule(2, 3));
+  auto frame_with = [](bool edge, double x) {
+    auto frame = tracked_frame({{x, 0.9, ObstacleCandidate::kGauge}}, 10.0);
+    frame.candidates.front().edge = edge;
+    return frame;
+  };
+  // Approaching at 1 m per frame: at the edge for five frames, then clearly inside.
+  for (int i = 0; i < 5; ++i) {
+    const auto a = monitor.update(frame_with(true, 60.0 - i), (i + 1) * kFrameNs);
+    EXPECT_EQ(a.state, State::UNKNOWN) << i;  // Never a clear path while it is seen.
+    ASSERT_EQ(a.tracks.size(), 1u) << i;
+    EXPECT_FALSE(a.tracks.front().confirmed) << i;
+  }
+  monitor.update(frame_with(false, 55.0), 6 * kFrameNs);
+  const auto a = monitor.update(frame_with(false, 54.0), 7 * kFrameNs);
+  EXPECT_EQ(a.state, State::OBSTACLE) << a.reason;
+  ASSERT_EQ(a.tracks.size(), 1u);  // The same track, now confirmed.
+  EXPECT_TRUE(a.tracks.front().confirmed);
+}
+
+TEST(Tracker, TracksBeyondTheFarDistanceAlsoNeedTheFarRule) {
+  auto config = rule(2, 3);
+  config.far_confirm_hits = 3;
+  config.far_confirm_window = 4;
+  config.far_confirm_from_m = 70;  // Nearer than the evaluated range of 80 m.
+  TemporalMonitor monitor(config);
+  const Seen near{50, 0, ObstacleCandidate::kGauge}, far{75, 0, ObstacleCandidate::kGauge};
+  for (int i = 0; i < 3; ++i) {
+    const auto a = monitor.update(tracked_frame({near, far}), (i + 1) * kFrameNs);
+    bool near_confirmed = false, far_confirmed = false;
+    for (const auto& t : a.tracks)
+      (t.distance_m < 70 ? near_confirmed : far_confirmed) = t.confirmed;
+    EXPECT_EQ(near_confirmed, i >= 1) << i;
+    EXPECT_EQ(far_confirmed, i >= 2) << i;
+  }
+}

@@ -994,3 +994,87 @@ TEST(Candidates, ObjectsInADeepTroughBelowTheRailsAreNotObstacles) {
   ASSERT_EQ(above_rails.candidates.size(), 1u);
   EXPECT_NEAR(above_rails.candidates.front().distance_m, 20.0, 0.1);
 }
+
+TEST(Route, EvidenceWithinTheRouteUncertaintyOfTheEdgeIsMarked) {
+  auto config = single_frame_config();
+  config.corridor_half_width_m = 1.05;  // The organizers' envelope, as in the profile.
+  config.route_margin_per_m = 0.005;    // 0.3 m at 60 m, 0.1 m at 20 m.
+  auto run = [&](double x, double y0, double y1) {
+    auto scene = curved_tunnel(1e9);
+    add_box(scene, x, y0, y1, 0.3, 1.7);
+    const auto frame = PerceptionPipeline(config).process(scene);
+    EXPECT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+    EXPECT_EQ(frame.candidates.size(), 1u) << x << ' ' << y0;
+    return frame.candidates.empty() ? false : frame.candidates.front().edge;
+  };
+  EXPECT_TRUE(run(60, 0.8, 0.95));   // Inside by 0.25 m, the route may be off by 0.3 m.
+  EXPECT_FALSE(run(20, 0.8, 0.95));  // Nearer, the same place is certainly inside.
+  EXPECT_FALSE(run(60, -0.3, 0.3));  // On the route centre.
+  config.route_margin_per_m = 0;     // Disabled: nothing is marked.
+  EXPECT_FALSE(run(60, 0.8, 0.95));
+}
+
+TEST(Ground, KeptFloorRevealsAnObjectThatHidesItButNeverAClearPath) {
+  // Right ahead a large object hides the floor: only 4 m of it are seen.
+  auto hidden = [](bool object) {
+    auto input = verified_input();
+    add_floor(input, 1, 4);
+    // Walls beyond the floor search band, so their lowest row cannot pass for the floor.
+    for (double x = 1; x <= 90; x += 0.25)
+      for (double h = 0.2; h <= 3.0; h += 0.2)
+        for (const double side : {-1.0, 1.0}) input.points.push_back({x, side * 2.7, -1.0 + h});
+    if (object) add_box(input, 5, -1.0, 1.0, 0.3, 2.5);
+    return input;
+  };
+  auto config = single_frame_config();
+  config.ground_hold_frames = 3;
+  PerceptionPipeline kept(config), plain(single_frame_config()), empty(config);
+  for (auto* pipeline : {&kept, &plain, &empty}) pipeline->process(curved_tunnel(1e9));
+
+  const auto found = kept.process(hidden(true));
+  ASSERT_EQ(found.status, AnalysisStatus::OK) << found.reason;
+  ASSERT_FALSE(found.candidates.empty());
+  EXPECT_NEAR(found.candidates.front().distance_m, 5.0, 0.1);
+  EXPECT_EQ(plain.process(hidden(true)).status, AnalysisStatus::INVALID_GEOMETRY);
+
+  const auto nothing = empty.process(hidden(false));
+  EXPECT_EQ(nothing.status, AnalysisStatus::INVALID_GEOMETRY);
+  EXPECT_EQ(nothing.reason, "GROUND_UNSUPPORTED");
+  EXPECT_FALSE(nothing.evaluation_region_valid);
+}
+
+TEST(Ground, SparseFarFloorExtendsTheRangeOnlyWhenAllowed) {
+  // Dense floor to 60 m, then two returns per metre, as the grazing floor thins out.
+  auto scene = verified_input();
+  add_floor(scene, 1, 60);
+  for (int x = 61; x <= 100; ++x)
+    for (const double y : {-0.3, 0.3}) scene.points.push_back({double(x), y, -1.0});
+  auto config = single_frame_config();
+  const auto near = PerceptionPipeline(config).process(scene);
+  ASSERT_EQ(near.status, AnalysisStatus::OK) << near.reason;
+  EXPECT_LT(near.evaluated_range_m, 66.0);
+
+  config.ground_far_min_bin_points = 5;
+  config.ground_max_x_m = 105;
+  const auto far = PerceptionPipeline(config).process(scene);
+  ASSERT_EQ(far.status, AnalysisStatus::OK) << far.reason;
+  EXPECT_GT(far.evaluated_range_m, 95.0);
+}
+
+TEST(Candidates, ThinColumnFromFloorToVaultIsStructure) {
+  auto config = single_frame_config();
+  config.corridor_half_width_m = 1.05;
+  config.corridor_height_m = 3.0;
+  config.hanging_tip_max_height_m = 3.0;
+  auto run = [&](double top) {
+    auto scene = curved_tunnel(1e9);
+    for (double h = 0.0; h <= top + 1e-9; h += 0.1)
+      for (double dy = -0.1; dy <= 0.1 + 1e-9; dy += 0.1)
+        scene.points.push_back({40, dy, -1.0 + h});
+    return PerceptionPipeline(config).process(scene).candidates.size();
+  };
+  EXPECT_EQ(run(4.5), 1u);  // Off by default.
+  config.pole_rejection = true;
+  EXPECT_EQ(run(4.5), 0u);  // A pillar up to the vault.
+  EXPECT_EQ(run(2.0), 1u);  // A post or a person on the track ends below the vault.
+}
