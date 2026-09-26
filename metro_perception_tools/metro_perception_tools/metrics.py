@@ -648,7 +648,8 @@ def evaluate_run(run_dir, dataset_path, splits_path, root, working_range_m=None,
         'provenance': {key: manifest.get(key) for key in (
             'commit', 'dirty', 'image_id', 'build_info', 'executable_sha256',
             'dataset_sha256', 'config_sha256', 'preview',
-            'full_scan_research', 'max_points', 'max_cloud_bytes', 'tf_lookahead_s')}
+            'full_scan_research', 'full_scan_unresolved', 'max_points', 'max_cloud_bytes',
+            'tf_lookahead_s')}
         if manifest else None,
         'bags': bags, 'skipped': skipped,
         'by_split': by_split, 'total': aggregate(bags),

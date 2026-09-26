@@ -70,11 +70,16 @@ def main():
     parser.add_argument(
         '--full-scan-research',
         action='store_true',
-        help='Score full_scan bags with the unverified research forward axis (-sensor Y)',
+        help='Score full_scan bags with the older research profile (fixed source frame)',
+    )
+    parser.add_argument(
+        '--full-scan-unresolved',
+        action='store_true',
+        help='Score full_scan bags with the orientation left unresolved (always UNKNOWN)',
     )
     args = parser.parse_args()
-    if args.preview and args.full_scan_research:
-        parser.error('--preview and --full-scan-research are mutually exclusive')
+    if args.preview + args.full_scan_research + args.full_scan_unresolved > 1:
+        parser.error('--preview, --full-scan-research and --full-scan-unresolved are exclusive')
     if not 1 <= args.max_points <= 10000000:
         parser.error('--max-points must be in [1, 10000000]')
     if not 1 <= args.max_cloud_bytes <= 1024 * 1024 * 1024:
@@ -98,13 +103,15 @@ def main():
                 'dataset_sha256': sha256(args.dataset), 'config_sha256': {},
                 'scoring_sha256': {}, 'scoring_executed_from': 'source_tree', 'bags': [],
                 'preview': args.preview, 'full_scan_research': args.full_scan_research,
+                'full_scan_unresolved': args.full_scan_unresolved,
                 'max_points': args.max_points,
                 'max_cloud_bytes': args.max_cloud_bytes,
                 'tf_lookahead_s': args.tf_lookahead_s, 'selected_bags': args.bags,
                 'build_info': args.build_info, 'executable_sha256': executable_hashes(),
                 'note': (
                     'Profiles are selected by sensor_profile metadata; '
-                    'full-scan orientation remains unresolved; experimental detector, no deskew.'
+                    'full-scan bags use the shipped forward-sector profile (forward = -sensor Y, '
+                    'ASSUMED); experimental detector, no deskew.'
                 )}
     for config in sorted(list((root / 'metro_perception_bringup/config').rglob('*.yaml')) +
                          list((root / 'metro_perception_ros/config').rglob('*.yaml'))):
@@ -138,9 +145,11 @@ def main():
                     'forward_sector': (
                         root / 'metro_perception_ros/config/forward_sector_assumed.yaml'
                     ),
+                    # The shipped profile crops a 360-degree cloud to the same forward axis.
                     'full_scan': root / 'metro_perception_ros/config' / (
                         'full_scan_research_assumed.yaml' if args.full_scan_research
-                        else 'full_scan_unresolved.yaml'),
+                        else 'full_scan_unresolved.yaml' if args.full_scan_unresolved
+                        else 'forward_sector_assumed.yaml'),
                 }
                 try:
                     profile = profiles[entry['sensor_profile']]

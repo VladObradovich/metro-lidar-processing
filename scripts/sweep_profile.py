@@ -3,8 +3,8 @@
 Run evaluate_bag with sensor-profile overrides and report development and validation apart.
 
 Overrides are KEY=VALUE with KEY either a detector parameter (`static_max_length_m=4`) or
-`section.key` (`temporal.confirm_hits=3`); they are applied to both research profiles
-(forward_sector_assumed and full_scan_research_assumed). Every annotated real bag of
+`section.key` (`temporal.confirm_hits=3`); they are applied to the shipped profile
+forward_sector_assumed, which serves both sensor types. Every annotated real bag of
 evaluation/dataset.yaml and the development synthetic set are run; --val adds the validation
 synthetic set. Results go to OUT_ROOT/NAME, which must not exist. For a quick look only: clean
 runs for reporting go through scripts/evaluate_in_container.sh.
@@ -34,7 +34,7 @@ def load(name, path):
 metrics = load('metrics', ROOT / 'metro_perception_tools/metro_perception_tools/metrics.py')
 inject = load('inject_obstacle', ROOT / 'scripts/inject_obstacle.py')
 PROFILES = {'forward_sector': 'forward_sector_assumed.yaml',
-            'full_scan': 'full_scan_research_assumed.yaml'}
+            'full_scan': 'forward_sector_assumed.yaml'}
 SHOWN_BINS = ('0-20', '20-40', '40-60', '60-80', '80-100')
 
 

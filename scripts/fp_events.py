@@ -188,7 +188,8 @@ def format_events(result):
                 f"  ego {event['ego_speed_mps']} (invalid {event['ego_invalid_frames']},"
                 f" held {event['ego_held_frames']}, break {event['since_ego_break_s']} s ago)"
                 f"  tracks {event['tracks']}  world x travel {event['world_x_travel_m']} m"
-                f"  offset {event['route_offset_m']}  height {event['height_m']}  {event['classes']}")
+                f"  offset {event['route_offset_m']}  height {event['height_m']}"
+                f"  {event['classes']}")
     return '\n'.join(lines)
 
 
