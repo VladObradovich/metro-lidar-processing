@@ -137,6 +137,48 @@ TEST(TemporalMonitorTable, DecisionFollowsNearestUsableCandidate) {
   }
 }
 
+TEST(TemporalMonitorTable, AssumedClearNeedsTheOptionAndEvaluatedRange) {
+  // With assumed_clear an empty, well evaluated region is clear and keeps trust ASSUMED; every
+  // other reason for UNKNOWN is unchanged, and trust UNKNOWN is never clear.
+  using S = AnalysisStatus;
+  using T = CalibrationTrust;
+  TemporalConfig config;
+  config.assumed_clear = true;
+  config.assumed_clear_min_range_m = 50;
+  // clang-format off
+  const std::vector<Case> cases = {
+      {"assumed clear", S::OK, T::ASSUMED, true, 80, {},
+       State::NO_OBSTACLE_DETECTED, "NO_CANDIDATE_ASSUMED_CALIBRATION", kNaN},
+      {"assumed short range", S::OK, T::ASSUMED, true, 40, {},
+       State::UNKNOWN, "EVALUATED_RANGE_TOO_SHORT", kNaN},
+      {"assumed unobservable", S::OK, T::ASSUMED, false, 0, {},
+       State::UNKNOWN, "CORRIDOR_UNOBSERVABLE", kNaN},
+      {"assumed rolling background", S::OK, T::ASSUMED, false, 80, {},
+       State::UNKNOWN, "BACKGROUND_CANNOT_CONFIRM_CLEAR", kNaN, "BACKGROUND_CANNOT_CONFIRM_CLEAR"},
+      {"assumed unconfirmed candidate", S::OK, T::ASSUMED, true, 80, {{true, 30.0}},
+       State::UNKNOWN, "CANDIDATE_UNCONFIRMED", kNaN},
+      {"assumed invalid geometry", S::INVALID_GEOMETRY, T::ASSUMED, true, 80, {},
+       State::UNKNOWN, "GROUND_UNSUPPORTED", kNaN, "GROUND_UNSUPPORTED"},
+      {"unknown trust", S::OK, T::UNKNOWN, true, 80, {},
+       State::UNKNOWN, "CALIBRATION_TRUST_UNKNOWN", kNaN},
+      {"verified short range", S::OK, T::VERIFIED, true, 40, {},
+       State::NO_OBSTACLE_DETECTED, "NO_CANDIDATE_IN_EVALUATED_REGION", kNaN},
+  };
+  // clang-format on
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.name);
+    TemporalConfig single = config;
+    single.confirm_hits = single.confirm_window = 2;  // One sighting stays unconfirmed.
+    const auto a = TemporalMonitor(single).update(frame_of(c), 1);
+    EXPECT_EQ(a.state, c.state);
+    EXPECT_EQ(a.reason, c.reason);
+    EXPECT_EQ(a.calibration_trust, c.trust);
+    EXPECT_TRUE(std::isnan(a.distance_m));
+  }
+  config.assumed_clear_min_range_m = 0;
+  EXPECT_THROW(config.validate(), std::invalid_argument);
+}
+
 TEST(TemporalMonitorTable, UnusableCandidateNeverReportsClearPath) {
   const std::vector<std::pair<bool, double>> values = {{true, kNaN},  {true, kInf}, {true, -kInf},
                                                        {true, 0.0},   {true, -2.0}, {false, 4.0},

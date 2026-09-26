@@ -51,6 +51,9 @@ struct AlgorithmConfig {
   // so obstacles fixed in the world are found while the train approaches them. Long
   // gauge-only structures (walls, platform edges) are rejected by length.
   bool static_channel{true};
+  // With a rolling background, let an empty gauge certify a clear path up to the gauge's range
+  // (the rest of the corridor, seen only by differencing, cannot).
+  bool gauge_certifies_clear{false};
   // Chosen on development data: rails and track-side equipment start around 0.76 m.
   double static_half_width_m{0.9};
   double static_inner_half_width_m{0.9};
@@ -167,6 +170,11 @@ struct TemporalConfig {
   // A longer pause between analysed frames restarts all tracks.
   double max_gap_s{0.5};
   std::size_t max_tracks{64};
+  // Report a clear path under ASSUMED calibration (the owner's decision for data without a
+  // measured mounting). The region must then be evaluated at least this far; the state keeps
+  // its trust, so ASSUMED is never presented as VERIFIED.
+  bool assumed_clear{false};
+  double assumed_clear_min_range_m{50.0};
   void validate() const {
     const auto rule_ok = [](std::size_t hits, std::size_t window) {
       return hits >= 1 && window >= hits && window <= 32;
@@ -178,7 +186,8 @@ struct TemporalConfig {
         !std::isfinite(object_max_speed_mps) || object_max_speed_mps < 0 ||
         !std::isfinite(unknown_ego_speed_mps) || unknown_ego_speed_mps < 0 ||
         !std::isfinite(still_speed_mps) || still_speed_mps < 0 || !std::isfinite(max_gap_s) ||
-        max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024)
+        max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024 ||
+        !std::isfinite(assumed_clear_min_range_m) || assumed_clear_min_range_m <= 0)
       throw std::invalid_argument("Invalid temporal configuration");
   }
 };

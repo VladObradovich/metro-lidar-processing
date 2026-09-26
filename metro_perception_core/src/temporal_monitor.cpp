@@ -194,24 +194,23 @@ Assessment TemporalMonitor::update(const FrameResult& frame, std::int64_t measur
   }
   const bool region_usable = frame.evaluation_region_valid &&
                              std::isfinite(frame.evaluated_range_m) && frame.evaluated_range_m > 0;
-  switch (frame.calibration_trust) {
-    case CalibrationTrust::ASSUMED:
-      result.reason = "ASSUMED_CALIBRATION_CANNOT_CONFIRM_CLEAR";
-      break;
-    case CalibrationTrust::UNKNOWN:
-      result.reason = "CALIBRATION_TRUST_UNKNOWN";
-      break;
-    case CalibrationTrust::VERIFIED:
-      if (region_usable) {
-        result.state = State::NO_OBSTACLE_DETECTED;
-        result.reason = "NO_CANDIDATE_IN_EVALUATED_REGION";
-      } else if (frame.reason == "BACKGROUND_CANNOT_CONFIRM_CLEAR") {
-        result.reason = frame.reason;
-      } else {
-        result.reason =
-            frame.evaluation_region_valid ? "EVALUATION_REGION_INVALID" : "CORRIDOR_UNOBSERVABLE";
-      }
-      break;
+  const bool assumed = frame.calibration_trust == CalibrationTrust::ASSUMED;
+  if (frame.calibration_trust == CalibrationTrust::UNKNOWN) {
+    result.reason = "CALIBRATION_TRUST_UNKNOWN";
+  } else if (assumed && !config_.assumed_clear) {
+    result.reason = "ASSUMED_CALIBRATION_CANNOT_CONFIRM_CLEAR";
+  } else if (region_usable && assumed &&
+             frame.evaluated_range_m < config_.assumed_clear_min_range_m) {
+    result.reason = "EVALUATED_RANGE_TOO_SHORT";
+  } else if (region_usable) {
+    result.state = State::NO_OBSTACLE_DETECTED;
+    result.reason =
+        assumed ? "NO_CANDIDATE_ASSUMED_CALIBRATION" : "NO_CANDIDATE_IN_EVALUATED_REGION";
+  } else if (frame.reason == "BACKGROUND_CANNOT_CONFIRM_CLEAR") {
+    result.reason = frame.reason;
+  } else {
+    result.reason =
+        frame.evaluation_region_valid ? "EVALUATION_REGION_INVALID" : "CORRIDOR_UNOBSERVABLE";
   }
   return result;
 }

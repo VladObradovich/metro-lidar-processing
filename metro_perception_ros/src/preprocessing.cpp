@@ -63,6 +63,8 @@ metro_perception_core::TemporalConfig load_temporal_config(const std::string& pa
       c.still_min_points = temporal["still_min_points"].as<std::uint32_t>();
     read_double("max_gap_s", c.max_gap_s);
     read_count("max_tracks", c.max_tracks);
+    if (temporal["assumed_clear"]) c.assumed_clear = temporal["assumed_clear"].as<bool>();
+    read_double("assumed_clear_min_range_m", c.assumed_clear_min_range_m);
   }
   c.validate();
   return c;
@@ -168,6 +170,8 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("route_min_radius_m", c.algorithm.route_min_radius_m);
     if (detector["static_channel"])
       c.algorithm.static_channel = detector["static_channel"].as<bool>();
+    if (detector["gauge_certifies_clear"])
+      c.algorithm.gauge_certifies_clear = detector["gauge_certifies_clear"].as<bool>();
     read_double("static_half_width_m", c.algorithm.static_half_width_m);
     read_double("static_inner_half_width_m", c.algorithm.static_inner_half_width_m);
     read_double("static_outer_max_length_m", c.algorithm.static_outer_max_length_m);

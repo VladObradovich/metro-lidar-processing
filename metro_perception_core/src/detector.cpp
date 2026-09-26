@@ -919,16 +919,27 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   std::sort(result.candidates.begin(), result.candidates.end(),
             [](const auto& a, const auto& b) { return a.distance_m < b.distance_m; });
   for (std::size_t i = 0; i < result.candidates.size(); ++i) result.candidates[i].id = i + 1;
+  // A stationary object already present in history can disappear from the foreground, so
+  // differencing alone cannot certify a clear path. The gauge channel needs no history: where it
+  // is active (a valid route, up to its farthest wall support) an empty gauge is evidence of a
+  // clear path, and the evaluated range shrinks to it.
+  const double gauge_end =
+      gauge_on && config.gauge_certifies_clear ? std::min(end_x, route.max_x) : 0.0;
+  const bool gauge_clear = gauge_end > config.detection_roi.min[0];
   result.status = AnalysisStatus::OK;
-  result.reason = result.candidates.empty()
-                      ? (config.background_history_frames ? "BACKGROUND_CANNOT_CONFIRM_CLEAR"
-                                                          : "NO_CANDIDATE_IN_EVALUATED_REGION")
-                      : "CANDIDATES_FOUND";
+  result.reason = !result.candidates.empty() ? "CANDIDATES_FOUND"
+                  : !config.background_history_frames || gauge_clear
+                      ? "NO_CANDIDATE_IN_EVALUATED_REGION"
+                      : "BACKGROUND_CANNOT_CONFIRM_CLEAR";
   if (config.background_history_frames) {
-    // A stationary object already present in history can disappear from the
-    // foreground. Differencing alone cannot certify a clear path.
-    result.evaluation_region_valid = false;
-    for (auto& segment : result.corridor) segment.coverage_valid = false;
+    if (gauge_clear) {
+      result.evaluated_range_m = gauge_end;
+      for (auto& segment : result.corridor)
+        segment.coverage_valid = segment.end.x <= gauge_end + 1e-6;
+    } else {
+      result.evaluation_region_valid = false;
+      for (auto& segment : result.corridor) segment.coverage_valid = false;
+    }
     history_.pop_front();
     history_.push_back(make_history(current, range_cache));
   }

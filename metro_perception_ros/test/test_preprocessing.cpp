@@ -110,6 +110,8 @@ TEST(Profile, TemporalRuleIsReadAndValidated) {
   EXPECT_EQ(shipped.confirm_hits, 2u);
   EXPECT_EQ(shipped.confirm_window, 3u);
   EXPECT_EQ(shipped.release_misses, 2u);
+  EXPECT_TRUE(shipped.assumed_clear);
+  EXPECT_DOUBLE_EQ(shipped.assumed_clear_min_range_m, 50.0);
   const auto path = std::string("/tmp/metro-temporal-test-") + std::to_string(getpid()) + ".yaml";
   auto save = [&](const std::string& text) { std::ofstream(path) << text; };
   // Without a temporal section the decision stays per frame.
@@ -118,12 +120,15 @@ TEST(Profile, TemporalRuleIsReadAndValidated) {
   EXPECT_EQ(per_frame.confirm_hits, 1u);
   EXPECT_EQ(per_frame.confirm_window, 1u);
   EXPECT_EQ(per_frame.release_misses, 1u);
+  EXPECT_FALSE(per_frame.assumed_clear);
   save("temporal:\n  confirm_hits: 3\n  confirm_window: 5\n  max_gap_s: 1.5\n");
   const auto read = load_temporal_config(path);
   EXPECT_EQ(read.confirm_hits, 3u);
   EXPECT_EQ(read.confirm_window, 5u);
   EXPECT_DOUBLE_EQ(read.max_gap_s, 1.5);
   save("temporal:\n  confirm_hits: 4\n  confirm_window: 3\n");
+  EXPECT_THROW(load_temporal_config(path), std::invalid_argument);
+  save("temporal:\n  assumed_clear: true\n  assumed_clear_min_range_m: -1\n");
   EXPECT_THROW(load_temporal_config(path), std::invalid_argument);
   save("temporal: 2\n");
   EXPECT_THROW(load_temporal_config(path), std::invalid_argument);

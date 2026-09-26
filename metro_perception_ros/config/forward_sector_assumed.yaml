@@ -37,6 +37,8 @@ detector:
   ego_motion_compensation: true
   ego_max_speed_mps: 25.0
   ego_min_contrast: 0.005
+  # An empty static gauge is evidence of a clear path up to the gauge's range.
+  gauge_certifies_clear: true
   # The static gauge stays at the default 0.9 m: widened to 1.25 m it found side objects in
   # cloud_with_fake_obj but raised alarms on switch and track-side equipment in real bags.
   low_bump_max_length_m: 0.6
@@ -60,3 +62,7 @@ temporal:
   release_misses: 2
   still_speed_mps: 0.5
   still_min_points: 50
+  # Owner's decision (26.09): without a measured mounting a frame with no candidate in a
+  # region evaluated at least this far is reported clear, keeping trust ASSUMED.
+  assumed_clear: true
+  assumed_clear_min_range_m: 50.0

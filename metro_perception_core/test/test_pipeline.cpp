@@ -810,6 +810,42 @@ TEST(Candidates, OutsideTheVehicleEnvelopeCountsOnlyStandingStill) {
   EXPECT_EQ(run(0, 1.6).candidates.size(), 1u);
 }
 
+TEST(Gauge, EmptyGaugeCertifiesClearOnlyWhenEnabledAndWithinItsRange) {
+  // Differencing cannot see an object already in the history; the gauge channel can. With
+  // gauge_certifies_clear an empty gauge makes the region valid up to the gauge's range.
+  auto run = [](bool certify, bool obstacle) {
+    AlgorithmConfig config;
+    config.gauge_certifies_clear = certify;
+    PerceptionPipeline pipeline(config);
+    FrameResult frame;
+    for (int i = 0; i <= 12; ++i) frame = pipeline.process(moving_tunnel(i, 10, obstacle));
+    return frame;
+  };
+  const auto strict = run(false, false);
+  ASSERT_EQ(strict.status, AnalysisStatus::OK) << strict.reason;
+  EXPECT_EQ(strict.reason, "BACKGROUND_CANNOT_CONFIRM_CLEAR");
+  EXPECT_FALSE(strict.evaluation_region_valid);
+
+  const auto clear = run(true, false);
+  ASSERT_EQ(clear.status, AnalysisStatus::OK) << clear.reason;
+  ASSERT_TRUE(clear.route.valid);
+  EXPECT_TRUE(clear.candidates.empty());
+  EXPECT_EQ(clear.reason, "NO_CANDIDATE_IN_EVALUATED_REGION");
+  EXPECT_TRUE(clear.evaluation_region_valid);
+  EXPECT_GT(clear.evaluated_range_m, 25);
+  EXPECT_LE(clear.evaluated_range_m, clear.route.max_x + 1e-6);
+  TemporalConfig temporal;
+  temporal.assumed_clear = true;
+  temporal.assumed_clear_min_range_m = 25;
+  EXPECT_EQ(TemporalMonitor(temporal).update(clear, 1).state, State::NO_OBSTACLE_DETECTED);
+
+  // An object moving with the train stays in the history, yet the gauge still finds it.
+  const auto blocked = run(true, true);
+  ASSERT_EQ(blocked.status, AnalysisStatus::OK) << blocked.reason;
+  EXPECT_FALSE(blocked.candidates.empty());
+  EXPECT_EQ(TemporalMonitor(temporal).update(blocked, 1).state, State::OBSTACLE);
+}
+
 TEST(Gauge, OuterStripEquipmentDoesNotLengthenAnObjectOnTheRoute) {
   // With the gauge widened past the rails, equipment along the outer strip joins a wide
   // object standing on the route. The equipment alone is a long structure; the object is not.
