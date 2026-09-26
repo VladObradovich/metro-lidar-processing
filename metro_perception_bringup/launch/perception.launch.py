@@ -75,9 +75,13 @@ def generate_launch_description():
     params = [LaunchConfiguration('algorithm_config'), LaunchConfiguration('runtime_config'),
               {'use_sim_time': LaunchConfiguration('use_sim_time'),
                'sensor_profile': LaunchConfiguration('sensor_profile')}]
+    perception_params = params + [
+        {'publish_bound_transform': LaunchConfiguration('publish_bound_transform')}]
     return LaunchDescription([
         DeclareLaunchArgument('sensor_profile', default_value=''),
         DeclareLaunchArgument('publish_sensor_tf', default_value='false'),
+        # Perception sends the profile transform of the bound input frame to /tf_static.
+        DeclareLaunchArgument('publish_bound_transform', default_value='false'),
         DeclareLaunchArgument('sensor_frame_override', default_value=''),
         DeclareLaunchArgument('namespace', default_value='metro'),
         DeclareLaunchArgument('input_topic', default_value='/lidar_points'),
@@ -88,7 +92,7 @@ def generate_launch_description():
             [share, 'config', 'runtime.yaml'])),
         OpaqueFunction(function=_sensor_tf),
         Node(package='metro_perception_ros', executable='perception_node', name='perception',
-             namespace=namespace, parameters=params, output='screen', remappings=[
+             namespace=namespace, parameters=perception_params, output='screen', remappings=[
                  ('~/input/points', LaunchConfiguration('input_topic')),
                  ('~/output/analysis', 'analysis')]),
         Node(package='metro_perception_ros', executable='obstacle_monitor_node',

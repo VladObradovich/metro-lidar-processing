@@ -80,8 +80,10 @@ class Visualizer : public rclcpp::Node {
     output.markers.push_back(clear);
 
     Marker status = base(assessment, "status", 0, Marker::TEXT_VIEW_FACING);
-    status.pose.position.z = 1.0;
-    status.scale.z = 0.35;
+    // Ahead of the train and above the track, readable from a camera behind the lidar.
+    status.pose.position.x = 12.0;
+    status.pose.position.z = 2.5;
+    status.scale.z = 0.5;
     status.color.r = assessment.state == PathAssessment::NO_OBSTACLE_DETECTED ? 0.2 : 1.0;
     status.color.g = assessment.state == PathAssessment::OBSTACLE ? 0.2 : 0.8;
     status.color.a = 1.0;
@@ -101,7 +103,7 @@ class Visualizer : public rclcpp::Node {
       std::int32_t id = 0;
       for (const auto& segment : assessment.corridor) {
         Marker corridor = base(assessment, "corridor", id++, Marker::LINE_LIST);
-        corridor.scale.x = 0.05;
+        corridor.scale.x = 0.1;
         const bool usable = segment.geometry_valid && segment.coverage_valid;
         corridor.color.r = usable ? 0.2 : 1.0;
         corridor.color.g = usable ? 0.9 : 0.8;
@@ -130,7 +132,7 @@ class Visualizer : public rclcpp::Node {
       if (nearest) {
         Marker dot = base(assessment, "nearest_point", 0, Marker::SPHERE);
         dot.pose.position = nearest->nearest_point;
-        dot.scale.x = dot.scale.y = dot.scale.z = 0.25;
+        dot.scale.x = dot.scale.y = dot.scale.z = 0.4;
         dot.color.r = 1.0;
         dot.color.a = 1.0;
         output.markers.push_back(dot);
@@ -143,7 +145,7 @@ class Visualizer : public rclcpp::Node {
         Marker text = base(assessment, "track_label", id, Marker::TEXT_VIEW_FACING);
         text.pose.position = track.bbox.center.position;
         text.pose.position.z += track.bbox.size.z / 2 + 0.4;
-        text.scale.z = 0.4;
+        text.scale.z = 0.6;
         text.color.r = text.color.g = text.color.b = text.color.a = 1.0;
         std::ostringstream name;
         name << '#' << track.track_id << ' ' << std::fixed << std::setprecision(1)

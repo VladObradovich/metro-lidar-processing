@@ -25,6 +25,7 @@ def generate_launch_description():
                 'sensor_profile': LaunchConfiguration('sensor_profile'),
                 'publish_sensor_tf': LaunchConfiguration('publish_sensor_tf'),
                 'sensor_frame_override': LaunchConfiguration('sensor_frame_override'),
+                'publish_bound_transform': 'true',  # RViz draws any input frame.
                 'namespace': namespace, 'input_topic': LaunchConfiguration('input_topic'),
                 'use_sim_time': LaunchConfiguration('use_sim_time')}.items()),
         Node(package='metro_perception_ros', executable='visualizer_node',

@@ -14,11 +14,12 @@ Visualization Manager:
       Enabled: true
       Topic:
         Value: /metro_rviz/input
-        Reliability Policy: Best Effort
+        # Large clouds rarely arrive whole best effort; switch for a best-effort live driver.
+        Reliability Policy: Reliable
         History Policy: Keep Last
         Depth: 1
       Style: Points
-      Size (Pixels): 2
+      Size (Pixels): 1
       Color Transformer: Intensity
       Channel Name: intensity
       Use rainbow: true
@@ -30,7 +31,7 @@ Visualization Manager:
     - Class: rviz_default_plugins/MarkerArray
       Name: Assessment
       Enabled: true
-      Marker Topic:
+      Topic:
         Value: /metro_rviz/markers
         Reliability Policy: Reliable
         Depth: 1
@@ -45,6 +46,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 25
-      Pitch: 0.5
-      Yaw: 0.8
+      # Inside the tunnel just behind and above the lidar, looking along the track.
+      Focal Point:
+        X: 25
+        Y: 0
+        Z: -0.5
+      Distance: 30
+      Pitch: 0.08
+      Yaw: 3.1416
+Window Geometry:
+  Width: 1600
+  Height: 900
+  X: 0
+  Y: 0

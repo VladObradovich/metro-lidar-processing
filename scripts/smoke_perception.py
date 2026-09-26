@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check scaffold UNKNOWN, observation identity, watchdog, best-effort input and shutdown."""
+"""Check scaffold UNKNOWN, identity, watchdog, best-effort input, demo TF and shutdown."""
 import signal
 import os
 import struct
@@ -7,8 +7,9 @@ import subprocess
 import time
 
 import rclpy
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 from sensor_msgs.msg import PointCloud2, PointField
+from tf2_msgs.msg import TFMessage
 from visualization_msgs.msg import MarkerArray
 from metro_perception_interfaces.msg import PathAssessment
 
@@ -25,6 +26,10 @@ def main():
         PointCloud2, '/scaffold_smoke/points', qos_profile_sensor_data)
     marker_subscription = node.create_subscription(
         MarkerArray, '/scaffold_smoke/markers', markers.append, 10)
+    static_tf = []
+    tf_subscription = node.create_subscription(
+        TFMessage, '/tf_static', static_tf.append,
+        QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
     launch = subprocess.Popen([
         'ros2', 'launch', 'metro_perception_bringup', 'demo.launch.py', 'rviz:=false',
         'namespace:=scaffold_smoke', 'input_topic:=/scaffold_smoke/points',
@@ -58,6 +63,10 @@ def main():
             publisher.publish(cloud)
             rclpy.spin_once(node, timeout_sec=0.1)
         fresh = next(row for row in reversed(received) if row.reason == 'GROUND_UNSUPPORTED')
+        # The demo publishes the bound input frame so RViz can draw the cloud.
+        spin_until(lambda: any(t.header.frame_id == 'lidar_assumed' and
+                               t.child_frame_id == 'private_scaffold_lidar'
+                               for message in static_tf for t in message.transforms), seconds=3)
         spin_until(lambda: any(row.reason == 'INPUT_PAUSED_OR_STOPPED' and row.stale
                                for row in received), seconds=3)
         stale = next(row for row in reversed(received) if row.stale and row.frame_sequence)
@@ -71,7 +80,7 @@ def main():
                                for array in markers for marker in array.markers), seconds=3)
         print(
             'PASS: best-effort lidar-only no-ring cloud -> GROUND_UNSUPPORTED/UNKNOWN '
-            '-> steady-clock timeout; stamp preserved'
+            '-> bound frame on /tf_static -> steady-clock timeout; stamp preserved'
         )
     finally:
         if launch.poll() is None:
@@ -84,6 +93,7 @@ def main():
             raise RuntimeError('Launch did not stop after SIGINT')
         node.destroy_subscription(subscription)
         node.destroy_subscription(marker_subscription)
+        node.destroy_subscription(tf_subscription)
         node.destroy_node()
         rclpy.shutdown()
 

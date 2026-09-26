@@ -15,6 +15,7 @@
 #include "metro_perception_ros/preprocessing.hpp"
 #include "metro_perception_ros/session_gate.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
 
 using metro_perception_interfaces::msg::FrameAnalysis;
@@ -57,6 +58,11 @@ class PerceptionNode : public rclcpp::Node {
         declare_parameter<std::string>("sensor_profile", ""));
     config_.algorithm.max_points = max_points_;
     pipeline_ = std::make_unique<metro_perception_core::PerceptionPipeline>(config_.algorithm);
+
+    // Off by default: the profile TF stays private to perception. The demo turns it on so that
+    // RViz can draw the input cloud in the target frame whatever the source frame is named.
+    if (declare_parameter<bool>("publish_bound_transform", false))
+      static_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(this);
 
     buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     listener_ = std::make_unique<tf2_ros::TransformListener>(*buffer_);
@@ -192,6 +198,10 @@ class PerceptionNode : public rclcpp::Node {
           if (const auto transform =
                   metro_perception_ros::resolved_static_transform(config_, source_binding_)) {
             buffer_->setTransform(*transform, "sensor_profile", true);
+            if (static_broadcaster_ && transform->child_frame_id != published_frame_) {
+              static_broadcaster_->sendTransform(*transform);
+              published_frame_ = transform->child_frame_id;
+            }
           }
           const auto tf_wait_started = std::chrono::steady_clock::now();
           auto context = resolve_context(work.message->header, config_, source_binding_, *buffer_,
@@ -319,6 +329,8 @@ class PerceptionNode : public rclcpp::Node {
   rclcpp::Publisher<FrameAnalysis>::SharedPtr publisher_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
   rclcpp::TimerBase::SharedPtr qos_timer_;
+  std::unique_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
+  std::string published_frame_;  // Source frame last sent to /tf_static; worker thread only.
   bool reliable_input_{true};
 };
 
