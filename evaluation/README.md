@@ -1,5 +1,10 @@
 # Набор данных и разметка — T1
 
+> Актуализировано 26.09: `new_data` входит в разметку (595 с development и слепая часть),
+> `cloud_with_fake_obj` — регрессия, full-scan bag оцениваются штатным профилем
+> `forward_sector_assumed.yaml`, метрики сопоставляют JSONL с разметкой (`metrics.py`).
+> Текущие результаты и команды — в корневом [README](../README.md).
+
 TF replay по умолчанию читает на 0.05 с вперёд по bag record time. Опция
 `--tf-lookahead-s` задаёт окно `[0, 1]` с и сохраняется в manifest. При сравнении
 с online учитывать `tf_wait_timeout_s`; measurement timestamp не заменяется
@@ -42,10 +47,10 @@ bag приведены в [промежуточном паспорте D1](../do
 
 `splits.yaml` фиксирует назначение целыми bag: три записи, повлиявшие на G1/G2,
 в development; три просмотренные, но не использованные для подбора параметров
-G2, в validation. Это post-hoc validation: независимого слепого holdout нет.
-Положительная запись только одна и уже смотрелась при разработке, поэтому
-независимая проверка полноты по положительному bag невозможна. `new_data`
-исключён из текущей разметки и split.
+G2, в validation. Это post-hoc validation. Слепая часть — `new_data` после 595 с
+(`blind_holdout`), по ней смотрится только итог. Положительная запись только одна и уже
+смотрелась при разработке, поэтому независимая проверка полноты по положительному bag
+невозможна.
 
 Скопировать `annotations/template.yaml` в файл с bag ID, заполнить интервалы
 **в bag timestamps, наносекунды**. Положительное событие подтверждается по
@@ -65,9 +70,8 @@ bag_stamp_ns, state, reason, distance_m (null при отсутствии), cand
 evaluation_region_valid, processing_ms, mode=a02. Добавлены processing_status,
 transform_applied, calibration_verified и счётчики geometry/detection/invalid/blind/outside_roi.
 Обычный прогон выбирает профиль по полю sensor_profile в dataset.yaml:
-forward_sector использует forward_sector_assumed.yaml, а full_scan —
-full_scan_unresolved.yaml и остаётся UNKNOWN до определения направления движения.
+оба типа используют forward_sector_assumed.yaml; `--full-scan-research` — архивный профиль
+full_scan_research_assumed.yaml для сравнения.
 При --preview используются соответствующие *_preview.yaml.
- Идентификаторы и времена
-— целые числа; NaN/Infinity запрещены. Полный формат кандидатов и сопоставление
-с разметкой предстоит добавить в E01/E02 до заявления метрик качества.
+Идентификаторы и времена — целые числа; NaN/Infinity запрещены. Кандидаты, треки, ось
+пути (`route`: c1, c2, valid, max_x, c0, rail_slices) и плоскость пола пишутся в каждой строке.

@@ -1,272 +1,413 @@
 # Metro Perception
 
-Система на ROS 2 Humble обнаруживает препятствия впереди поезда по облакам LiDAR из rosbag. Общий C++ pipeline работает онлайн и в последовательной офлайн-оценке. Результат `/metro/assessment` содержит состояние пути, причину, кандидатов, подтверждённые треки и продольное расстояние до ближайшего подтверждённого препятствия. `OBSTACLE` требует конечной положительной дальности; отсутствие измерения обозначается `distance_valid=false` и NaN. `NO_OBSTACLE_DETECTED` допускается только при проверенной калибровке, пригодной области наблюдения и отсутствии кандидатов. На предоставленных bag калибровка лишь предполагается, поэтому отсутствие препятствия даёт `UNKNOWN`, а не «путь свободен».
+Система на ROS 2 Humble обнаруживает препятствия впереди поезда метро по облакам 3D-лидара
+Hesai Pandar128. Для каждого кадра она сообщает состояние пути и продольную дальность до
+ближайшего препятствия. Состояния:
+- `OBSTACLE` — «препятствие, тормозить»;
+- `NO_OBSTACLE_DETECTED` — «путь свободен» в проверенной области;
+- `UNKNOWN` — наблюдения для решения недостаточно.
 
-На текущем коде `28e8d03` (`g4b`) объект человека совпал с разметкой в 53 из 56 положительных кадров; на пяти отрицательных записях осталось 153 ложных кадра в 12 событиях. Это исследовательский результат на известных записях, не оценка скрытого контроля. Статус задач — в [PLAN.md](PLAN.md).
+Кроме того, публикуются положение и размер объектов, треки и маркеры. При запуске с `rviz:=true`
+открывается наглядный вид: depth-видео и облако, где коридор выделен зелёным, а препятствия —
+красным.
+
+Препятствие — всё, что попадает в габарит поезда 2,1 × 3,0 м над путём (ответ организаторов,
+26.09). Лидар стоит на 1,075 м над головкой рельса по центру вагона. Предмет в жёлобе ниже
+головки рельса препятствием не считается.
+
+**Итог на коммите `f13e569`** (чистый воспроизводимый прогон `results/final-f13e569`):
+- на пяти записях без препятствий ни одного кадра ложной тревоги (было 53);
+- в длинной записи `new_data` — 26 кадров из 5 950 (было 528) и 16 из 5 321 в её слепой части
+  (было 197);
+- на синтетике организаторов: 0 тревог на объектах вне габарита, кубы 0,3 м находятся с 41–43 м,
+  короб 2×2 — с 64 м, средняя ошибка дальности 0,03 м.
+
+Цифры по дальностям — в разделе [Эксперименты](#эксперименты). Это результат на известных
+записях, а не оценка скрытого контроля.
 
 ## Содержание
 
 - [Структура проекта](#структура-проекта)
-- [Быстрый старт: образ → bag → результат](#быстрый-старт-образ--bag--результат)
+- [Быстрый старт](#быстрый-старт)
+- [Стенд без интернета](#стенд-без-интернета)
+- [Наглядный вид в RViz](#наглядный-вид-в-rviz)
 - [Как читать результат](#как-читать-результат)
-- [RViz](#rviz)
 - [Параметры и профили](#параметры-и-профили)
 - [Архитектура](#архитектура)
 - [Алгоритм](#алгоритм)
-- [Эксперименты и воспроизведение](#эксперименты-и-воспроизведение)
+- [Эксперименты](#эксперименты)
 - [Ограничения](#ограничения)
 - [Разработка](#разработка)
-- [Изображение глубины и рабочие записи](#изображение-глубины-и-рабочие-записи)
 
 ## Структура проекта
 
 ```text
-metro_perception_core/                    C++ ядро без зависимости от ROS
-├── include/metro_perception_core/        конфигурация и публичный API
-├── src/                                 pipeline, detector, temporal_monitor
-└── test/                                проверки геометрии и треков
-metro_perception_interfaces/              ROS-типы и их пакет сборки
-└── msg/                                 FrameAnalysis, PathAssessment,
-                                         ObstacleCandidate/Track, CorridorSegment
-metro_perception_ros/                     адаптация ядра к ROS 2
-├── src/                                 perception_node, obstacle_monitor_node,
-│                                        visualizer_node, evaluate_bag и адаптеры
-├── config/                              профили секторного и полного скана
-└── test/                                тесты ROS-контрактов, TF и сессий
-metro_perception_bringup/                 запуск и отображение
-├── launch/                              perception, demo, depth_image
-├── config/                              общие algorithm/runtime YAML
-└── rviz/                                конфигурации RViz для детектора и глубины
-metro_perception_tools/                   Python-инструменты
-├── metro_perception_tools/              depth_image, inspect_bag, metrics, report
-└── test/                                тесты проекции и метрик
-evaluation/                               данные оценки, без самих облаков
-├── annotations/                         интервалы и области размеченных объектов
-├── dataset.yaml, splits.yaml            список bag, профили и разделение выборок
-└── scene_context.yaml                   описание сцен и допущений
-scripts/                                  build/test, smoke, анализ bag,
-                                         оценка, инъекция синтетики, desktop
-docker/                                   Dockerfile для разработки и runtime,
-                                         entrypoint и расширения Compose
-compose.local.yaml, compose.yaml         headless и desktop сервисы
-.devcontainer/                            конфигурации Dev Container и X11-скрипты
-.github/workflows/                        CI: lint, packages, runtime, desktop
-docs/                                    исторические рабочие заметки
-rosbags/                                 приватные входные bag, вне Git
-results/                                 генерируемые JSONL, метрики и логи, вне Git
-README.md, PLAN.md                       текущее описание и план
+metro_perception_core/          C++ ядро без ROS: подготовка, детектор, метки точек, треки
+metro_perception_interfaces/    сообщения FrameAnalysis, PathAssessment, ObstacleCandidate/Track
+metro_perception_ros/           perception_node, obstacle_monitor_node, visualizer_node,
+                                evaluate_bag (офлайн), профили сенсора (config/)
+metro_perception_bringup/       launch (perception, demo, depth_image), rviz/, config/
+metro_perception_tools/         depth_image (depth-видео), metrics, report, inspect_bag
+evaluation/                     разметка, splits, описание сцен (без самих облаков)
+scripts/                        сборка/тесты, smoke, оценка, синтетика, desktop, экспорт образов
+docker/                         Dockerfile для разработки и runtime, compose-расширения
+compose.local.yaml, compose.yaml   headless и desktop (RViz) сервисы
+.devcontainer/                  Dev Container и X11-прокси
+rosbags/, results/              входные bag и результаты, вне Git
 ```
 
-<a id="быстрый-старт-образ--bag--результат"></a>
+## Быстрый старт
 
-## Быстрый старт: образ → bag → результат
-
-Нужны Docker и распакованные bag в `rosbags/` (папка `rosbags/<bag>/` с `metadata.yaml`). Команды выполняются из корня репозитория. `results/` доступен контейнеру для результатов офлайн-оценки; онлайн-сценарий публикует ROS-топик.
+Нужны Docker и распакованные bag в `rosbags/<bag>/` (с `metadata.yaml`). Команды выполняются
+из корня репозитория.
 
 ```bash
 docker build -f docker/Dockerfile.runtime --target runtime -t metro-lidar:local .
-mkdir -p results
-docker run --rm --init --name metro-demo \
-  --user "$(id -u):$(id -g)" \
+docker run --rm --init --name metro-demo --user "$(id -u):$(id -g)" \
   -v "$PWD/rosbags:/data:ro" -v "$PWD/results:/results" \
-  metro-lidar:local \
-  ros2 launch metro_perception_bringup perception.launch.py input_topic:=/lidar_points
+  metro-lidar:local ros2 launch metro_perception_bringup perception.launch.py
 ```
 
-В другом терминале, когда узлы запустились:
+Во втором терминале проиграть запись, в третьем читать результат:
 
 ```bash
 docker exec metro-demo metro-entrypoint ros2 bag play /data/doubleT_platform
-```
-
-В третьем терминале:
-
-```bash
-docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field state
 docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field reason
+docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field distance_m
 ```
 
-Для положительной записи `doubleT_obstacle` используется полный скан с **исследовательским предположением** о направлении движения. Человек появляется после примерно 13-й секунды bag. Запустите следующий launch вместо варианта выше, затем `ros2 bag play /data/doubleT_obstacle`:
+По умолчанию вход — `/lidar_points` (Hesai, передний сектор). Для записи с другим топиком
+передайте `input_topic:=...`, например `input_topic:=/sensing/lidar/hesai128/pointcloud` для
+`doubleT_obstacle`. Профиль один для всех записей и выбирается по типу сенсора, а не по имени
+bag. `docker exec` запускается через `metro-entrypoint`, чтобы загрузить ROS; ROS-связь
+ограничена localhost, поэтому все команды идут в один контейнер.
+
+Тот же runtime через Compose:
+- запуск: `docker compose -f compose.local.yaml up -d --build`;
+- команды: `docker compose -f compose.local.yaml exec local metro-entrypoint ros2 ...`;
+- остановка: `docker compose -f compose.local.yaml down`.
+
+## Стенд без интернета
+
+Образы собираются из Docker Hub, apt и pip, поэтому на машине без интернета их не собрать.
+Соберите их там, где интернет есть, и перенесите файлами:
 
 ```bash
-docker run --rm --init --name metro-demo \
-  --user "$(id -u):$(id -g)" \
-  -v "$PWD/rosbags:/data:ro" -v "$PWD/results:/results" \
-  metro-lidar:local ros2 launch metro_perception_bringup perception.launch.py \
-  input_topic:=/sensing/lidar/hesai128/pointcloud \
-  sensor_profile:=/opt/metro/install/share/metro_perception_ros/config/full_scan_research_assumed.yaml
+docker build -f docker/Dockerfile.runtime --target runtime -t metro-lidar:local .
+docker build -f docker/Dockerfile.runtime --target runtime-desktop -t metro-lidar:desktop .
+bash scripts/export_images.sh          # results/images/metro-lidar-{local,desktop}.tar.gz + .sha256
 ```
 
-У установленного пакета путь профиля можно получить командой `ros2 pkg prefix metro_perception_ros`: добавьте `/share/metro_perception_ros/config/<имя>.yaml`. Команды `docker exec` явно запускают entrypoint, чтобы загрузить ROS и установленный workspace. Контейнер ограничивает ROS-связь localhost; все терминалы обращаются к одному контейнеру.
+На стенде: `docker load -i metro-lidar-local.tar.gz` (и `metro-lidar-desktop.tar.gz` для RViz).
+Дальше — те же команды `docker run`, что выше. Во время работы контейнеру сеть не нужна: в CI
+smoke-тесты runtime-образа идут с `--network none`.
 
-**Проверка 24.09.2026:** сборка и запуск описанных команд прошли. При `doubleT_obstacle` на этом стенде `ros2 bag play` публиковал облако, но `FrameAnalysis` за время прогона не был получен, а assessment оставался `UNKNOWN`; повтор с `--start-offset 13 --rate 0.2` также не дал анализа. Поэтому онлайн-подтверждение человека с дальностью этой инструкцией пока не доказано. Сохранённые результаты G4b ниже получены последовательным `evaluate_bag`; задача online 1× остаётся Q2 в PLAN.md.
+## Наглядный вид в RViz
 
-Вариант с Compose запускает такой же headless runtime: `docker compose -f compose.local.yaml up -d --build`, затем `docker compose -f compose.local.yaml exec local metro-entrypoint ros2 launch ...`, `... ros2 bag play ...` и `... ros2 topic echo ...`. После работы: `docker compose -f compose.local.yaml down`.
+```bash
+bash scripts/desktop.sh up                 # desktop-образ с RViz, X11, при наличии — GPU NVIDIA
+bash scripts/desktop.sh exec ros2 launch metro_perception_bringup perception.launch.py rviz:=true
+bash scripts/desktop.sh exec ros2 bag play /data/cloud_with_fake_obj
+```
+
+С `rviz:=true` запускаются визуализатор, узел depth-видео и RViz с конфигом `rviz/detector.rviz`.
+
+**Слева:**
+- **Depth** — развёртка облака по кольцам лидара и азимуту (±50° вперёд). Серый показывает
+  глубину: чем ближе, тем светлее. Зелёным закрашен коридор (полоса ±1,05 м вдоль оси пути
+  от пола до 3 м), красным — точки препятствий.
+- **Displays** — список топиков.
+
+**Справа** — облако анализируемых точек с той же раскраской и маркеры детектора:
+- надпись состояния `STATE d m: reason`;
+- каркас коридора: зелёный, когда геометрия и покрытие пригодны, иначе жёлтый;
+- боксы кандидатов: красные для движения, синие для неподвижных в габарите;
+- ближайшая точка, подписи треков и прогноз трека.
+
+Облако и маркеры публикуются во фрейме `lidar_assumed`, поэтому TF не нужен.
+
+Про `scripts/desktop.sh`:
+- Он настраивает X11-прокси, UID/GID и `/dev/dri`. Если установлен NVIDIA container toolkit,
+  подключается `docker/compose.nvidia.yaml` и RViz рисует на GPU (`--no-nvidia` отключает).
+- Остановка: `bash scripts/desktop.sh down`.
+- Без скрипта: `xhost +local:` и `docker compose up -d` — используется сокет X11 хоста.
+
+`demo.launch.py` — прежний вход, он делает то же с `rviz:=true` по умолчанию.
 
 ## Как читать результат
 
 | Топик | Тип | Содержание |
 |---|---|---|
-| `/lidar_points` или `/sensing/lidar/hesai128/pointcloud` | `sensor_msgs/msg/PointCloud2` | Вход; выбирается `input_topic` |
-| `/metro/analysis` | `metro_perception_interfaces/msg/FrameAnalysis` | Геометрия одного кадра, кандидаты и диагностика |
-| `/metro/assessment` | `metro_perception_interfaces/msg/PathAssessment` | Решение монитора, треки, дальность, возраст результата |
-| `/metro/markers` | `visualization_msgs/msg/MarkerArray` | Маркеры при запуске `demo.launch.py` |
+| `/lidar_points` | `sensor_msgs/PointCloud2` | Вход (`input_topic`) |
+| `/metro/analysis` | `FrameAnalysis` | Анализ кадра: кандидаты, коридор, дальность, диагностика |
+| `/metro/assessment` | `PathAssessment` | Решение: состояние, причина, дальность, объекты, треки |
+| `/metro/markers` | `MarkerArray` | Маркеры (с `rviz:=true` или в `demo.launch.py`) |
+| `/metro/labelled_points` | `PointCloud2` | Облако с метками и цветом (только с `rviz:=true`) |
+| `/metro/depth_image` | `Image` | Depth-видео с раскраской (только с `rviz:=true`) |
 
-В ROS 2 Humble удобно читать отдельные поля:
+Коды `state`: `0` — UNKNOWN, `1` — OBSTACLE, `2` — NO_OBSTACLE_DETECTED. `distance_m` имеет
+смысл только при `distance_valid=true`: это продольная дальность до ближайшего подтверждённого
+трека; иначе NaN.
 
-```bash
-docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field state
-docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field distance_m
-docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --field reason
-docker exec metro-demo metro-entrypoint ros2 topic echo /metro/assessment --once --no-arr
-docker exec metro-demo metro-entrypoint ros2 topic echo /metro/analysis --field overwritten_frames
-docker exec metro-demo metro-entrypoint ros2 topic hz /metro/assessment
-```
+| Причина (`reason`) | Смысл |
+|---|---|
+| `OBSTACLE_WITH_ASSUMED_CALIBRATION` | Подтверждённое препятствие |
+| `OBSTACLE_COASTING_WITH_ASSUMED_CALIBRATION` | Прогноз трека в кадре без нового измерения |
+| `NO_CANDIDATE_ASSUMED_CALIBRATION` | Путь свободен в проверенной области (не короче 50 м) |
+| `CANDIDATE_UNCONFIRMED` | Что-то есть, но подтверждения ещё нет (или объект у края габарита) — UNKNOWN |
+| `EVALUATED_RANGE_TOO_SHORT` | Пол виден ближе 50 м — UNKNOWN |
+| `BASELINE_WARMUP` | Первая секунда: копится история |
+| `GROUND_UNSUPPORTED` | Пол не найден (например, обзор закрыт) — UNKNOWN |
+| `INPUT_PAUSED_OR_STOPPED` | Вход пропал; объекты и треки очищены, поле `stale` |
 
-`state`: `0 UNKNOWN`, `1 OBSTACLE`, `2 NO_OBSTACLE_DETECTED`. Интерпретируйте `distance_m` только вместе с `distance_valid=true`; это продольная дальность до ближайшего подтверждённого трека. `OBSTACLE_WITH_ASSUMED_CALIBRATION` означает препятствие при непроверенной ориентации; `OBSTACLE_COASTING_WITH_ASSUMED_CALIBRATION` — прогноз трека в кадре без повторного измерения. `CANDIDATE_UNCONFIRMED` означает, что кандидат ещё не выполнил правило подтверждения. `ASSUMED_CALIBRATION_CANNOT_CONFIRM_CLEAR`, `BACKGROUND_CANNOT_CONFIRM_CLEAR`, `BASELINE_WARMUP`, `GROUND_UNSUPPORTED` и `INPUT_PAUSED_OR_STOPPED` объясняют типичные `UNKNOWN`. Поле `stale` сообщает о потере актуального входа; при этом объекты и треки очищаются, а ключ последнего наблюдения сохраняется.
+`reported_objects` — кандидаты текущего кадра, включая неподтверждённые. В `reasons` у каждого:
+- канал: `MOTION` или `GAUGE`;
+- `EDGE`, если объект в полосе неопределённости у края габарита;
+- `OFFSET=` — расстояние от оси пути.
 
-`reported_objects` — кандидаты текущего кадра, включая неподтверждённые, с `bbox`, `nearest_point`, `distance_m`, `distance_valid`, `support_points` и `reasons` (`MOTION`/`GAUGE`). `tracks` содержат `track_id`, `confirmed`, `coasting`, `hits`, `age_frames`, `bbox`, `distance_m`. У `FrameAnalysis` смотрите `processing_age_ms`, `queue_age_ms`, `tf_wait_ms`, `received_frames`, `processed_frames`, `rejected_frames`, `overwritten_frames`, `evaluated_range_m` и `reason`. Поле `result_age_ms` в assessment показывает возраст результата по локальным часам.
-
-## RViz
-
-На машине с рабочим графическим дисплеем запустите desktop-контейнер, затем в одном терминале демо, в другом — bag:
-
-```bash
-bash scripts/desktop.sh up
-bash scripts/desktop.sh exec ros2 launch metro_perception_bringup demo.launch.py \
-  input_topic:=/lidar_points publish_sensor_tf:=true sensor_frame_override:=hesai_lidar
-bash scripts/desktop.sh exec ros2 bag play /data/doubleT_platform
-```
-
-Для полного скана замените `input_topic` на `/sensing/lidar/hesai128/pointcloud`, передайте `sensor_profile:=/opt/metro/install/share/metro_perception_ros/config/full_scan_research_assumed.yaml` и оставьте `publish_sensor_tf:=true`. У профиля `exact` имя `sensor_frame_override` не нужно. `demo.launch.py` включает визуализатор и RViz (`rviz:=true`, `fixed_frame:=lidar_assumed`). При `publish_sensor_tf:=true` для профиля `bind_first` обязательно явно указать фактический frame облака через `sensor_frame_override`; для `exact` он уже задан в YAML. После работы: `bash scripts/desktop.sh down`.
-
-Легенда `/metro/markers`: `status` — текст `STATE d m: reason`; `corridor` — зелёный при пригодной геометрии и покрытии, жёлтый иначе; `candidate_bbox` — красный для `MOTION`, синий для только `GAUGE` (ближайший непрозрачнее); `nearest_point` — точка ближайшего кандидата; `track_label` — `#id d m`, с пометкой `(predicted)` при прогнозе; `track_coasting` — полупрозрачный прогнозируемый бокс. Устаревшие маркеры удаляются.
-
-В пустой конфигурации RViz установите **Fixed Frame = `lidar_assumed`**, затем **Add → By topic → `/metro/markers` → MarkerArray**. Добавьте входной `PointCloud2` и `TF`; для облака должен существовать transform из исходного frame в `lidar_assumed`. Для отдельного инструмента изображения глубины добавьте **Image → `/lidar/depth_image`** после запуска `depth_image.launch.py`.
-
-<details>
-<summary>Ручной desktop Docker и HiDPI</summary>
-
-`docker build -f docker/Dockerfile.runtime --target runtime-desktop -t metro-lidar:desktop .` собирает образ с RViz. `scripts/desktop.sh` настраивает X11 proxy, монтирования, UID/GID и, если доступно, render device. Его `shell` открывает подготовленное окружение; `exec` запускает команду. Для ручного `docker run` нужно самостоятельно передать X11 socket, `DISPLAY`, `/data` и `/results`; подробности и настройки масштаба экрана находятся в [документации демо](docs/demo.md).
-
-</details>
+`tracks` — треки с `confirmed`, `coasting`, `hits` и дальностью. В `FrameAnalysis` полезны
+`processing_age_ms`, `overwritten_frames`, `rejected_frames` и `evaluated_range_m`.
 
 ## Параметры и профили
 
-| Аргумент `perception.launch.py` | По умолчанию | Назначение |
+Аргументы `perception.launch.py`:
+
+| Аргумент | По умолчанию | Назначение |
 |---|---|---|
 | `input_topic` | `/lidar_points` | Входное облако |
 | `namespace` | `metro` | Пространство выходных топиков |
-| `sensor_profile` | пусто, встроенный `forward_sector_assumed.yaml` | YAML геометрии и алгоритма |
-| `publish_sensor_tf` | `false` | Публикация предполагаемого статического TF для RViz |
-| `sensor_frame_override` | пусто | Явное имя source frame для `bind_first` при публикации TF |
-| `algorithm_config`, `runtime_config` | YAML из bringup | Параметры узлов |
-| `use_sim_time` | `false` | ROS clock; с `true` нужен bag `--clock` |
+| `rviz` | `false` | Depth-видео, маркеры и RViz |
+| `visualizer` | `false` | Только маркеры, без RViz |
+| `fixed_frame` | `lidar_assumed` | Fixed frame RViz |
+| `sensor_profile` | встроенный `forward_sector_assumed.yaml` | YAML геометрии и алгоритма |
+| `publish_sensor_tf`, `sensor_frame_override` | `false`, пусто | Статический TF профиля |
+| `use_sim_time` | `false` | Время ROS; с `true` нужен `bag play --clock` |
 
-`demo.launch.py` добавляет `rviz` (`true`) и `fixed_frame` (`lidar_assumed`). Профиль выбирайте по **типу сенсора**, а не по имени bag. `forward_sector_assumed.yaml` связывается с первым `frame_id` потока (`bind_first`); ось вперёд принята как −Y сенсора. `full_scan_research_assumed.yaml` ожидает точно `lidar_livox`, использует ту же непроверенную ориентацию и нужен для исследования положительного bag. `full_scan_unresolved.yaml` не задаёт направление вперёд и сохраняет `UNKNOWN`. Исходные frame в известных данных: секторный `hesai_lidar`, полный скан `lidar_livox`. Передавайте путь к YAML через `sensor_profile:=...`.
+Штатный профиль [forward_sector_assumed.yaml](metro_perception_ros/config/forward_sector_assumed.yaml):
+- направление вперёд — −Y сенсора; фрейм облака связывается с первым сообщением;
+- доверие к калибровке ASSUMED; по решению владельца (26.09) при нём разрешён ответ «свободно»,
+  если область проверена не короче 50 м.
 
-Основные параметры в секциях `detector:` и `temporal:` профилей:
+Основные параметры:
 
 | Параметры | Значение | Смысл |
 |---|---:|---|
-| `corridor_half_width_m`, `corridor_height_m` | 2,0 м; 3,5 м | Полуширина и высота коридора |
-| `background_history_frames`, `background_lag_frames` | 10; 5 | История для `MOTION` и лаг сравнения |
-| `static_half_width_m`, `static_min_height_m`, `static_max_height_m` | 0,9 м; 0,3–2,5 м | Центральная полоса и высота для `GAUGE` |
-| `static_max_length_m` | 3,0 м | Отсев длинных конструкций в `GAUGE` |
-| `low_object_height_m`, `low_object_half_width_m` | 1,0 м; 0,5 м | Низкий объект учитывается только между рельсами |
-| `envelope_half_width_m`, `envelope_min_speed_mps` | 1,5 м; 1 м/с | На ходу боковой `MOTION` без `GAUGE` не создаёт кандидата |
-| `confirm_hits`, `confirm_window`; `gauge_confirm_hits`, `gauge_confirm_window` | 2/3; 2/3 | Подтверждение трека по кадрам |
-| `release_misses`, `still_speed_mps`, `still_min_points` | 2; 0,5 м/с; 50 | Удержание и мгновенное подтверждение уверенной цели на стоянке |
+| `corridor_half_width_m`, `corridor_height_m` | 1,05 м; 3,0 м | Габарит поезда по ответу организаторов |
+| `sensor_height_above_rail_m`, `rail_head_margin_m` | 1,075 м; 0,05 м | Низ габарита от головки рельса: жёлоб не препятствие |
+| `static_half_width_m`, `static_min/max_height_m` | 1,05 м; 0,3–2,5 м | Канал неподвижных объектов (GAUGE) |
+| `route_smoothing` | 0,5 | Сглаживание оси пути по стенам между кадрами |
+| `route_margin_per_m`, `route_support_margin_m` | 0,005; 5 м | Полоса неопределённости у края; конец опоры оси |
+| `side_structure_max_length_m`, `pole_rejection` | 3 м; вкл | Длинные конструкции сбоку и колонны до свода |
+| `ground_hold_frames` | 3 | Удержание пола, когда объект закрыл обзор |
+| `confirm_hits/window`, `gauge_confirm_hits/window` | 2/3; 2/3 | Подтверждение трека |
+| `far_confirm_from_m`, `far_confirm_hits/window` | 70 м; 4/5 | Строже дальше 70 м |
+| `motion_gauge_speed_mps` | 3 м/с | На ходу одного признака движения мало |
+| `edge_retracts` | вкл | Снять тревогу, если объект уходит к краю габарита |
+| `assumed_clear`, `assumed_clear_min_range_m` | вкл; 50 м | Ответ «свободно» при ASSUMED |
 
-Полный набор и допустимые значения — в [config.hpp](metro_perception_core/include/metro_perception_core/config.hpp); загрузка YAML — в [preprocessing.cpp](metro_perception_ros/src/preprocessing.cpp). Параметры среды в [runtime.yaml](metro_perception_bringup/config/runtime.yaml): `input_reliability=best_effort`, `max_processing_age_s=0.30`, `tf_wait_timeout_s=0.05`, `timeout_s=0.5`. Исследовательский профиль разрешает обработку при ASSUMED калибровке, но не подтверждает свободный путь.
+Полный список параметров и допустимые значения — в
+[config.hpp](metro_perception_core/include/metro_perception_core/config.hpp); чтение YAML — в
+[preprocessing.cpp](metro_perception_ros/src/preprocessing.cpp).
+
+Параметры узлов в [runtime.yaml](metro_perception_bringup/config/runtime.yaml):
+- `input_reliability: auto` — подстройка под QoS издателя;
+- `max_processing_age_s: 0.30` и `timeout_s: 0.5`.
+
+Прочие профили:
+- `full_scan_research_assumed.yaml` — архивный, только для сравнения;
+- `full_scan_unresolved.yaml` — всегда UNKNOWN.
 
 ## Архитектура
 
 ```text
 PointCloud2 → perception_node → FrameAnalysis → obstacle_monitor_node → PathAssessment
-                                                               │
-                                                               └→ visualizer_node → MarkerArray
+                    │                                                    └→ visualizer_node → MarkerArray
+                    └→ labelled_points (rviz:=true) → depth_image → Image
 rosbag → evaluate_bag → тот же C++ pipeline → frames.jsonl → metrics.py → quality.json
 ```
 
 | Пакет | Роль |
 |---|---|
-| `metro_perception_core` | ROS-независимый C++ детектор и временной монитор |
+| `metro_perception_core` | Детектор, временной монитор и метки точек (без ROS) |
 | `metro_perception_interfaces` | Сообщения анализа, кандидатов, треков и состояния |
-| `metro_perception_ros` | Узлы, адаптер PointCloud2, TF и офлайн-оценщик |
-| `metro_perception_bringup` | Launch, runtime config и RViz |
-| `metro_perception_tools` | Изображение глубины, метрики, отчёты и осмотр bag |
+| `metro_perception_ros` | Узлы, адаптер PointCloud2, TF, офлайн-оценщик |
+| `metro_perception_bringup` | Launch, конфиги, RViz |
+| `metro_perception_tools` | Depth-видео, метрики, отчёты |
 
-Онлайн-обработка использует latest-only слот: один кадр обрабатывается, один ожидает; более ранний ожидающий может быть перезаписан. Монитор привязывает результат к `source_instance_id`, `session_id`, `frame_sequence`; чужие и старые анализы отвергаются. Watchdog после остановки входа переводит результат в `UNKNOWN`, очищает кандидатов и треки, сохраняя ключ наблюдения. Время bag служит для разметки и оценки, `header.stamp` — для точного TF, локальные монотонные часы — для watchdog и возраста результата.
+Устройство онлайн-режима:
+- `perception_node` работает по схеме latest-only: один кадр в обработке, один в ожидании,
+  старый ожидающий перезаписывается.
+- Монитор привязывает результаты к источнику и сессии.
+- Сторожевой таймер переводит состояние в UNKNOWN при потере входа.
 
-Контракт решения: `OBSTACLE` возникает только от подтверждённого трека с конечной положительной дальностью; `NO_OBSTACLE_DETECTED` требует `VERIFIED` калибровки, пригодной области на положительной дальности и отсутствия кандидатов; иначе `UNKNOWN`. Кандидаты `reported_objects` относятся к отдельному кадру, а не к подтверждённым трекам. При невалидной дальности сохраняются NaN и `distance_valid=false`.
+Три часа:
+- время bag — для разметки;
+- `header.stamp` — для TF;
+- монотонные часы — для таймера и возраста результата.
 
 ## Алгоритм
 
-1. **Подготовка A02.** Адаптер проверяет структуру PointCloud2, отбрасывает NaN/Inf и ближнюю слепую область, применяет TF к целевой системе координат и две ROI. Сохраняет связь с исходными точками и диагностику отброса.
-2. **Опора пола.** По нижним точкам пространственных ячеек выбирается ограниченная плоскость RANSAC с проверкой наклона и поддержки. Непрерывность пола по пятиметровым диапазонам ограничивает пригодную дальность; пропадание опоры ведёт к `UNKNOWN`.
-3. **Ось маршрута.** Стены тоннеля дают криволинейную ось `y = c1·x + c2·x²`; коридор строится вокруг неё. Это позволяет отличать путь от стен и платформы на повороте.
-4. **Два канала свидетельств.** `MOTION` сравнивает текущий дальностный профиль со скользящей историей после компенсации собственной скорости по LiDAR. `GAUGE` допускает статический объект в узкой центральной полосе без истории, чтобы обнаружить его при приближении.
-5. **Объекты.** Угловая кластеризация объединяет соседние возвраты; bounding box и ближайшая точка проверяются на исходных точках внутри коридора. Длинные конструкции отсекаются в `GAUGE`; низкие возвраты принимаются только между рельсами. При движении боковой `MOTION` вне габарита вагона не создаёт препятствие, если нет `GAUGE`.
-6. **Дальность и время.** Дальность — продольная координата ближайшей принятой точки, а не Евклидово расстояние до центра бокса. Треки связываются между кадрами: два попадания из трёх подтверждают, один пропуск удерживается прогнозом; достаточно плотный `MOTION` объект при остановке подтверждается сразу. Решение использует только подтверждённые треки и контракт калибровки.
+1. **Подготовка.** Проверка PointCloud2, отброс NaN и слепой зоны, поворот в систему
+   «x вперёд», две ROI.
+2. **Пол.** RANSAC по нижним точкам ячеек и опора по отрезкам 5 м; дальность, на которой пол
+   ещё виден, ограничивает проверенную область (обычно 65–75 м). Головка рельса — на 1,075 м
+   ниже лидара.
+3. **Ось пути.** Строится по стенам тоннеля как `y = c1·x + c2·x²` и сглаживается между
+   кадрами; вокруг неё строится габарит ±1,05 × 3,0 м.
+4. **Два канала:**
+   - `MOTION` — новое относительно скользящей истории дальностей после компенсации собственного
+     движения по лидарной одометрии;
+   - `GAUGE` — всё, что внутри габарита, без истории, чтобы видеть неподвижные объекты при
+     подъезде.
+5. **Объекты.** Угловая кластеризация. Отбрасываются:
+   - длинные конструкции вдоль пути;
+   - колонны от пола до свода;
+   - низкие вытянутые элементы у рельсов;
+   - всё в жёлобе ниже головки рельса.
+6. **Неопределённость оси.** Объект, лежащий целиком в полосе неопределённости у края
+   (0,005 м на метр дальности) или у конца опоры оси по стенам, помечается `EDGE`: он
+   отслеживается, но тревогу не поднимает, пока не станет ясно, что он внутри.
+7. **Треки.** Подтверждение 2 из 3 кадров, дальше 70 м — 4 из 5. На ходу нужен сигнал GAUGE,
+   на стоянке плотное движение подтверждается сразу. Объект, уходящий при подъезде к краю,
+   теряет подтверждение.
+8. **Решение и дальность.**
+   - `OBSTACLE` — подтверждённый трек с конечной положительной дальностью;
+   - «свободно» — нет кандидатов в проверенной области не короче 50 м;
+   - иначе — UNKNOWN.
 
-Нужны только облака LiDAR и явно заданный профиль. IMU, одометрия поезда и внешний TF не требуются для assumed-профиля; при наличии TF используется точная метка облака. Предположение об ориентации не является измеренной калибровкой.
+   Дальность — продольная координата ближайшей точки объекта в габарите.
 
-## Эксперименты и воспроизведение
+Нужны только облака лидара: IMU, одометрия поезда и внешний TF не требуются.
 
-Набор состоит из шести коротких bag: одна запись с человеком (`doubleT_obstacle`) и пять отрицательных по описанию владельца. Разметка находится в [evaluation/annotations](evaluation/annotations), выборка — в [splits.yaml](evaluation/splits.yaml). Development содержит positive; validation содержит только отрицательные bag. После G4 ложные тревоги разбирались на обеих половинах («две половины»), поэтому validation не независима. Синтетические объекты добавляются к отрицательным bag и оцениваются отдельно. `new_data` в текущую разметку и метрики не входит.
+## Эксперименты
 
-| Прогон | SHA текущей истории | FP development, кадры/события | FP validation, кадры/события | Совпадения с человеком |
-|---|---|---:|---:|---:|
-| Q1 / G3 | `c1e791e` / `9d5d9a1` | 35 / 12 | 162 / 17 | 11 / 35 |
-| G3f / G3r | `ae6177f` / `0a4b47f` | 53 / 10 | 144 / 13 | 35 / 35 |
-| S2 | `89f02f5` | 157 / 20 | 229 / 17 | 53 / 56 |
-| G4 | `848549d` | 134 / 8 | 203 / 14 | 52 / 56 |
-| G4b | `28e8d03` | 97 / 6 | 56 / 6 (2,13/мин) | 53 / 56 |
+**Данные:**
+- семь реальных записей: одна с людьми (`doubleT_obstacle`, другой лидар), пять без
+  препятствий и длинная `new_data` (595 с для разработки, остальное — слепая часть);
+- синтетика организаторов `cloud_with_fake_obj` — 7 объектов в габарите, 3 вне его;
+- наша синтетика: человек стоит, человек пересекает путь, короб на рельсах.
 
-Начиная с S2, область человека размечена на 56 кадрах вместо 35, поэтому доли между ранними и поздними прогонами напрямую не сравниваются. `FP` — кадры со состоянием `OBSTACLE` на отрицательном интервале; события объединяют близкие срабатывания. Прогоны и хеши исходного кода/конфигурации сохранены в `results/<run>/manifest.json`, оценка — в `quality.json`. В старых манифестах до перевода тел коммитов записаны прежние SHA; соответствия находятся в `results/ru-bodies/sha-map-2026-09-24.txt`.
-
-| Bag в G4b | Split | FP кадры/события | Offline p50/p95, мс |
-|---|---|---:|---:|
-| `doubleT_obstacle` | development | 67 / 1 | 70,5 / 79,9 |
-| `doubleT_platform` | development | 10 / 3 | 79,5 / 86,2 |
-| `roundT_pressureGate_roundT` | development | 20 / 2 | 72,0 / 103,8 |
-| `roundT_doubleT` | validation | 56 / 6 | 50,4 / 73,7 |
-| `roundT_squareT_pressureGate_squareT` | validation | 0 / 0 | 110,0 / 126,8 |
-| `squareT_platform_squareT_switch` | validation | 0 / 0 | 94,3 / 111,8 |
-
-Это время **последовательной офлайн-обработки кадра**, не задержка онлайн-системы и не доказательство 10 Гц. В G4b синтетический неподвижный человек на validation обнаружен в 32/32 кадрах до 20 м, 40/46 на 20–40 м, 26/42 на 40–60 м, 2/22 на 60–80 м и 0/11 на 80–100 м; первое подтверждение по сценам — около 50–66 м. Пересекающий полосу человек: примерно 70% на 0–40 м. Низкий бокс высотой 0,5 м: 0–20% вблизи. На development синтетический неподвижный человек обнаруживался до 79 м, на 80+ м recall равен нулю. На двух реальных эталонных кадрах ошибка продольной дальности составляет +0,10…+0,13 м; это сравнение с размеченным облаком в предположенной системе координат, а не метрологическая проверка дальности поезда. Задержка первого подтверждения G4 на положительном событии составляла около 0,38 с; у текущего G4b по `quality.json` — 0,286 с.
-
-Основные ложные тревоги приходили от стен, платформ и оборудования при въезде в двойной тоннель, на поворотах и от боковых длинных конструкций. Снижение дали оценка криволинейной оси, раздельный `GAUGE`, ограничение длины/высоты, низких объектов и боковой полосы на ходу, а также подтверждение 2/3. Проверялись и отклонялись склейка близких срезов, чрезмерно широкий криволинейный `GAUGE` и общее правило 3/5: они ухудшали ложные тревоги, дальность или задержку. Сложными остаются двухпутный тоннель и человек около 56 м: последний требует пересмотра разметки/свидетельств без подгонки по имени записи.
-
-Для повторения количественной оценки используйте mounted checkout и новый каталог `/results/NAME`:
+Разметка — в [evaluation/](evaluation), воспроизведение —
+[evaluate_in_container.sh](scripts/evaluate_in_container.sh):
 
 ```bash
 docker build -f docker/Dockerfile --target universal -t metro-lidar:dev docker
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v "$PWD:/repo:ro" -v "$PWD/rosbags:/data:ro" -v "$PWD/results:/results" \
-  metro-lidar:dev bash /repo/scripts/evaluate_in_container.sh my-run --full-scan-research
-python3 scripts/fp_events.py results/my-run
+  metro-lidar:dev bash /repo/scripts/evaluate_in_container.sh my-run
+python3 scripts/fp_events.py results/my-run          # события ложных тревог и их природа
 ```
 
-Скрипт строит именно смонтированный checkout, хеширует бинарники и пишет JSONL/метрики; детали аргументов — в [evaluate_in_container.sh](scripts/evaluate_in_container.sh), [evaluate_all.py](scripts/evaluate_all.py), [fp_events.py](scripts/fp_events.py). Синтетические сценарии `static`, `crossing`, `box` создаёт [inject_obstacle.py](scripts/inject_obstacle.py); его команды `inject`, `dataset`, `report` описаны в начале файла. Результаты прогонов в `results/` не входят в Git.
+### Ложные тревоги (кадры `OBSTACLE` на участках без препятствий, по дальности)
+
+| Запись | Кадров | До доработок (`706e399`) | Сейчас (`f13e569`) |
+|---|---:|---|---|
+| doubleT_platform | 345 | 10 (0–20 м: 10) | **0** |
+| roundT_doubleT | 252 | 35 (0–20: 11, 20–40: 12, 40–60: 10, 60–80: 2) | **0** |
+| roundT_pressureGate_roundT | 268 | 8 (0–20: 8) | **0** |
+| roundT_squareT_pressureGate_squareT | 545 | 0 | **0** |
+| squareT_platform_squareT_switch | 877 | 0 | **0** |
+| new_data, первые 595 с | 5 950 | 528 (0–20: 167, 20–40: 127, 40–60: 110, 60–80: 124) | **26** (0–20: 2, 20–40: 11, 40–60: 6, 60–80: 7) |
+| new_data, слепая часть | 5 321 | 197 | **16** |
+| Синтетика организаторов, пустые кадры и объекты вне габарита | 833 | 0 | **0** |
+
+Оставшиеся события в `new_data` (9 шт.):
+- развилки (стена отходящего тоннеля пересекает путь);
+- объекты у края габарита на изгибах;
+- тонкий вертикальный объект по центру на 49 м.
+
+Доля ответов «свободно» на пустых записях — 73–93 % кадров.
+
+### Распознавание: синтетика организаторов
+
+| Объект | Кадров с объектом | До: найден / первое обнаружение | Сейчас |
+|---|---:|---|---|
+| Короб 2×2 в центре | 231 | 76, с 64 м | 78, с 64 м |
+| Куб 0,3 м в центре | 24 | 15, с 29 м | **24, с 41 м** |
+| Куб 0,3 м на рельсе | 24 | 8, с 28 м | **16, с 43 м** |
+| Куб 0,3 м на краю габарита | 24 | 3, с 5 м | **6, с 33 м** |
+| Короб 2×2 у края (заходит на 13 см) | 102 | 0 | 0 |
+| Длинный низкий на рельсах | 50 | 28, с 64 м | 26, с 64 м |
+| Тонкая полоса с потолка | 10 | 2, с 8 м | 2, с 8 м |
+
+| Дальность | 0–20 м | 20–40 м | 40–60 м | 60–80 м | 80–100 м |
+|---|---|---|---|---|---|
+| До | 36/81 | 41/83 | 42/60 | 12/71 | 0/118 |
+| Сейчас | **42/81** | **55/83** | **42/60** | **12/71** | 0/118 |
+
+Средняя ошибка продольной дальности — 0,03 м (максимум 0,30 м, 151 совпадение).
+
+Наша синтетика (доля кадров с найденным объектом по дальности; первое обнаружение):
+
+| Сценарий | Первое | 0–20 м | 20–40 м | 40–60 м | 60–80 м |
+|---|---:|---:|---:|---:|---:|
+| Человек стоит, станция | 64 м | 1,00 | 0,80 | 1,00 | 0,20 |
+| Человек стоит, тоннель | 54 м | 1,00 | 1,00 | 0,77 | 0 |
+| Человек пересекает путь, станция | 67 м | 0,83 | 0,90 | 0,54 | 0,20 |
+| Человек пересекает путь, тоннель | 54 м | 1,00 | 0,46 | 0,62 | 0 |
+| Короб 1×1×0,5 м на рельсах, станция | 57 м | 1,00 | 0,72 | 0,88 | 0 |
+| Короб 1×1×0,5 м на рельсах, тоннель | 54 м | 1,00 | 1,00 | 0,71 | 0 |
+
+У пересекающего путь человека часть кадров приходится на время, когда он за краем габарита:
+разметка считает их положительными, детектор — нет.
+
+`doubleT_obstacle` снят другим лидаром с другой установкой (пол на 1,67 м ниже сенсора):
+- дальний человек найден в 68 кадрах из 201;
+- ближний — в 12 из 56; он размечен на 1,6–2,4 м вбок от оси, то есть вне габарита.
+
+### Скорость
+
+Офлайн: `evaluate_bag`, один bag за раз, Release-сборка, одно ядро на кадр; процессор
+разработки — Intel Core Ultra 5 225H (стенд жюри — i7-9700E, результаты там могут отличаться). Время кадра — полная обработка облака
+(разбор PointCloud2, подготовка, детектор, треки):
+
+| Запись | Точек в кадре | p50, мс | p95, мс | Максимум, мс |
+|---|---:|---:|---:|---:|
+| doubleT_obstacle (полный скан) | 921 600 | 33 | 37 | 48 |
+| doubleT_platform | 307 200 | 33 | 41 | 45 |
+| roundT_doubleT | 307 200 | 23 | 32 | 38 |
+| roundT_pressureGate_roundT | 307 200 | 32 | 50 | 59 |
+| roundT_squareT_pressureGate_squareT | 307 200 | 47 | 55 | 64 |
+| squareT_platform_squareT_switch | 307 200 | 43 | 54 | 69 |
+| new_data | 307 200 | 30 | 47 | 79 |
+| cloud_with_fake_obj | 307 200 | 46 | 56 | 64 |
+
+Онлайн в runtime-образе (`ros2 bag play` 1×, `cloud_with_fake_obj`, без RViz): анализ 10 Гц,
+возраст результата от прихода облака ~44 мс, перезаписано 8 кадров из 290 (latest-only). С
+`rviz:=true` depth-видео идёт ~10 Гц. GPU для детектора не нужен.
+
+До 26.09 runtime-образ собирался без `CMAKE_BUILD_TYPE=Release`: онлайн кадр занимал ~280 мс, и
+большая часть кадров отбрасывалась. Исправлено в `f13e569`.
 
 ## Ограничения
 
-- На реальных bag нет утверждения «путь свободен»: калибровка ASSUMED. Официальный профиль неориентированного полного скана сохраняет `UNKNOWN`.
-- Надёжная дальность обнаружения синтетического человека сейчас примерно до 60–80 м, хотя detection ROI простирается до 120 м; после ~90 м часто не хватает опоры пола. Требование 100+ м не доказано.
-- Низкие объекты обнаруживаются плохо; правило между рельсами намеренно отсекает низкие боковые конструкции.
-- Двухпутный тоннель, ошибки LiDAR-одометрии и предполагаемая ориентация полного скана остаются источниками ошибок.
-- Есть только один реальный positive; validation использована при разработке, независимый positive holdout отсутствует. Скрытые контрольные bag могут дать другие метрики.
-- Онлайн 1×, потери, RSS и визуальная проверка RViz на целевой машине ещё не измерены. Пока нет основания обещать частоту или демонстрационную готовность.
-- При движении человек в боковой полосе 1,5–2,0 м без `GAUGE` не сообщается как препятствие: это правило габарита вагона, требующее проверки на контрольных сценах.
+- **Дальность.** Надёжно — примерно до 60–75 м: дальше лидар почти не видит пол, и проверенная
+  область кончается. Расширение до 100 м (код есть: `ground_far_min_bin_points`,
+  `ground_max_x_m`, `far_gauge_*`) в слепой части `new_data` давало в 3–10 раз больше ложных
+  тревог и выключено.
+- **Край габарита.** Предмет, заходящий в габарит на 10–15 см, на дальности не отличить от
+  предмета рядом: ось по стенам ошибается на такую величину. Такие объекты подтверждаются
+  поздно или не подтверждаются.
+- **Развилки и двухпутные тоннели.** Возможны единичные ложные тревоги; по словам организаторов,
+  сбои на стрелках не штрафуются.
+- **Калибровка.** Ориентация лидара предполагается (ASSUMED), а не измерена.
+- **Данные.** Реальный положительный пример один, и он с другого лидара. Слепая часть `new_data`
+  использовалась для итоговых проверок, поэтому уже не вполне независима. Скрытые записи могут
+  дать другие цифры.
+- **Низкие предметы.** Предмет, верх которого всего на 5 см выше головки рельса, находится не
+  всегда.
 
 ## Разработка
 
-Для разработки есть Dev Container и универсальный [Dockerfile](docker/Dockerfile) (`universal`, `desktop`). В среде ROS 2 Humble: `bash scripts/build.sh`, `source install/local_setup.bash`, `bash scripts/test.sh`; интеграция — `python3 scripts/smoke_monitor.py` и `python3 scripts/smoke_detector.py`. CI проверяет `clang-format --dry-run --Werror`, `ament_flake8`, `ament_pep257`, сборку, тесты и smoke в четырёх jobs. Изменения детектора требуют повторить оценку по размеченным bag, синтетике, `UNKNOWN` и времени с зафиксированными commit/profile/manifest.
+- **Среда.** Dev Container или [docker/Dockerfile](docker/Dockerfile) (`universal`, `desktop`).
+  В среде Humble: `bash scripts/build.sh`, `source install/local_setup.bash`,
+  `bash scripts/test.sh`.
+- **Интеграция.** Smoke-скрипты `python3 scripts/smoke_*.py`.
+- **CI:** clang-format, `ament_flake8`, `ament_pep257`, сборка, тесты, smoke в runtime-образе без
+  сети.
+- **Изменения детектора** проверяются по размеченным записям, синтетике и времени кадра с
+  фиксацией коммита и профиля. Быстрые сравнения — `scripts/sweep_profile.py`, синтетика —
+  `scripts/inject_obstacle.py`.
 
-## Изображение глубины и рабочие записи
-
-`depth_image.launch.py` из пакета bringup публикует `/lidar/depth_image` и может записать видео через `video_path`. Это вспомогательный вид облака; состояние пути и расстояние публикует детектор. Параметры изображения доступны через `ros2 launch metro_perception_bringup depth_image.launch.py --show-args`.
-
-[docs/](docs/) и [evaluation/README.md](evaluation/README.md) содержат исторические рабочие записи на дату создания. Текущие статус, команды и ограничения описаны здесь и в [PLAN.md](PLAN.md).
+[docs/](docs/) и [evaluation/README.md](evaluation/README.md) — архив рабочих заметок
+20–24.09; актуальное состояние — здесь и в [PLAN.md](PLAN.md).
