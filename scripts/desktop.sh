@@ -41,7 +41,11 @@ case "$action" in
     up)
         docker compose version >/dev/null
         mkdir -p "$project_dir/rosbags" "$project_dir/results"
-        "${proxy[@]}" start
+        project_name="$("${compose[@]}" config --format json \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])')"
+        "${proxy[@]}" start \
+            --watch-label "com.docker.compose.project=$project_name" \
+            --watch-label "com.docker.compose.service=desktop"
         if [[ "$source_mount" == true ]]; then
             echo "Source mount: $project_dir -> /ws"
         fi
