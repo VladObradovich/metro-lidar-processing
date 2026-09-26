@@ -37,8 +37,9 @@ class GeometricDetector {
   void estimate_motion(const AlgorithmConfig& config, const PreprocessedFrame& frame,
                        const std::array<double, 3>& ground, std::int64_t measurement_time_ns,
                        FrameResult& result);
-  HistoryFrame make_history(const std::unordered_map<std::int64_t, PointXYZ>& nearest,
-                            const PointXYZ& origin) const;
+  // `nearest` maps a cell to the index of its nearest return, whose range is ranges[index].
+  HistoryFrame make_history(const std::unordered_map<std::int64_t, std::size_t>& nearest,
+                            const std::vector<double>& ranges) const;
 
   std::deque<HistoryFrame> history_;
   std::int64_t last_stamp_ns_{0};

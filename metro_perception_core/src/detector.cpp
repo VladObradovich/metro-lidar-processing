@@ -454,10 +454,27 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   auto sensor_range = [&](const PointXYZ& p) {
     return std::hypot(std::hypot(p.x - origin.x, p.y - origin.y), p.z - origin.z);
   };
+  // The background map, the cells and the component loops all need the range and the angular
+  // cell of the same returns; each is computed once per return and frame.
+  std::vector<double> range_cache(frame.geometry_points.size(), -1.0);
+  std::vector<std::int64_t> cell_cache(frame.geometry_points.size(), -1);
+  auto range_of = [&](std::size_t index) {
+    double& range = range_cache[index];
+    if (range < 0) range = sensor_range(frame.geometry_points[index].point);
+    return range;
+  };
+  auto cell_of = [&](std::size_t index) {
+    std::int64_t& cell = cell_cache[index];
+    if (cell < 0) {
+      const auto [az, el] = angular_cell(frame.geometry_points[index].point);
+      cell = key(az, el);
+    }
+    return cell;
+  };
   // Candidates may extend this far past the corridor edge; only returns inside
   // the corridor decide acceptance and distance.
   const double band_half_width = config.corridor_half_width_m + config.candidate_margin_m;
-  std::unordered_map<std::int64_t, PointXYZ> current;  // Nearest return per cell.
+  std::unordered_map<std::int64_t, std::size_t> current;  // Nearest return per cell.
   if (config.background_history_frames) {
     // The full range image includes floor and tunnel returns. Foreground is a
     // nearer surface in the same angular cell, as in analyze_bag.py. The history
@@ -468,13 +485,12 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       if (p.x < config.detection_roi.min[0] || std::abs(route.offset(p)) > band_half_width ||
           height < -0.5 || height > config.corridor_height_m)
         continue;
-      const auto [az, el] = angular_cell(p);
-      const auto found = current.try_emplace(key(az, el), p);
-      if (!found.second && sensor_range(p) < sensor_range(found.first->second))
-        found.first->second = p;
+      const double range = range_of(index);
+      const auto found = current.try_emplace(cell_of(index), index);
+      if (!found.second && range < range_of(found.first->second)) found.first->second = index;
     }
     if (history_.size() < config.background_history_frames) {
-      history_.push_back(make_history(current, origin));
+      history_.push_back(make_history(current, range_cache));
       result.status = AnalysisStatus::INVALID_GEOMETRY;
       result.reason = "BASELINE_WARMUP";
       result.evaluation_region_valid = false;
@@ -520,7 +536,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     std::vector<double> clearances;
     double reference = 0;
     for (const auto& [i, shift] : baselines) {
-      const auto& p = current_cell->second;
+      const auto& p = frame.geometry_points[current_cell->second].point;
       const PointXYZ past{p.x + shift, p.y, p.z};
       if (past.x > config.detection_roi.max[0]) continue;  // Never inside that baseline.
       const auto [az, el] = angular_cell(past);
@@ -578,10 +594,10 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
                          height <= config.corridor_height_m;
     const bool in_gauge = gauge_on && p.x <= route.max_x && gauge_point(offset, height);
     if (!in_band && !in_gauge) continue;
-    const double range = sensor_range(p);
+    const double range = range_of(index);
     if (!(range > 0)) continue;
-    const auto [az, el] = angular_cell(p);
-    const auto cell_key = key(az, el);
+    const auto cell_key = cell_of(index);
+    const int az = static_cast<int>(cell_key / 2048), el = static_cast<int>(cell_key % 2048);
     std::uint8_t channels = in_gauge ? ObstacleCandidate::kGauge : 0;
     if (in_band && foreground(cell_key)) channels |= ObstacleCandidate::kMotion;
     if (!channels) continue;
@@ -667,7 +683,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       const auto& cell = cells[cell_index];
       for (const auto point_index : cell.points) {
         const auto& p = frame.geometry_points[point_index].point;
-        if (sensor_range(p) > cell.range + 0.5 ||
+        if (range_of(point_index) > cell.range + 0.5 ||
             std::abs(route.offset(p)) > config.corridor_half_width_m)
           continue;
         possible_lo.x = std::min(possible_lo.x, p.x);
@@ -716,7 +732,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
             inner_hi_x = std::max(inner_hi_x, p.x);
           }
         }
-        if (sensor_range(p) > cell.range + 0.5) continue;
+        if (range_of(point_index) > cell.range + 0.5) continue;
         const bool inside = offset <= config.corridor_half_width_m;
         if (inside) {
           inside_top = std::max(inside_top, height);
@@ -914,17 +930,16 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     result.evaluation_region_valid = false;
     for (auto& segment : result.corridor) segment.coverage_valid = false;
     history_.pop_front();
-    history_.push_back(make_history(current, origin));
+    history_.push_back(make_history(current, range_cache));
   }
 }
 
 GeometricDetector::HistoryFrame GeometricDetector::make_history(
-    const std::unordered_map<std::int64_t, PointXYZ>& nearest, const PointXYZ& origin) const {
+    const std::unordered_map<std::int64_t, std::size_t>& nearest,
+    const std::vector<double>& ranges) const {
   HistoryFrame frame{{}, odometry_m_, motion_epoch_};
   frame.ranges.reserve(nearest.size());
-  for (const auto& [cell, p] : nearest)
-    frame.ranges.emplace(cell,
-                         std::hypot(std::hypot(p.x - origin.x, p.y - origin.y), p.z - origin.z));
+  for (const auto& [cell, index] : nearest) frame.ranges.emplace(cell, ranges[index]);
   return frame;
 }
 }  // namespace metro_perception_core
