@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check scaffold UNKNOWN, observation identity, watchdog and clean shutdown."""
+"""Check scaffold UNKNOWN, observation identity, watchdog, best-effort input and shutdown."""
 import signal
 import os
 import struct
@@ -7,6 +7,7 @@ import subprocess
 import time
 
 import rclpy
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import PointCloud2, PointField
 from visualization_msgs.msg import MarkerArray
 from metro_perception_interfaces.msg import PathAssessment
@@ -19,7 +20,9 @@ def main():
     markers = []
     subscription = node.create_subscription(
         PathAssessment, '/scaffold_smoke/assessment', received.append, 10)
-    publisher = node.create_publisher(PointCloud2, '/scaffold_smoke/points', 1)
+    # A live driver publishes best effort: input_reliability auto must switch to it.
+    publisher = node.create_publisher(
+        PointCloud2, '/scaffold_smoke/points', qos_profile_sensor_data)
     marker_subscription = node.create_subscription(
         MarkerArray, '/scaffold_smoke/markers', markers.append, 10)
     launch = subprocess.Popen([
@@ -67,7 +70,7 @@ def main():
         spin_until(lambda: any('INPUT_PAUSED_OR_STOPPED' in marker.text
                                for array in markers for marker in array.markers), seconds=3)
         print(
-            'PASS: default lidar-only no-ring cloud -> GROUND_UNSUPPORTED/UNKNOWN '
+            'PASS: best-effort lidar-only no-ring cloud -> GROUND_UNSUPPORTED/UNKNOWN '
             '-> steady-clock timeout; stamp preserved'
         )
     finally:

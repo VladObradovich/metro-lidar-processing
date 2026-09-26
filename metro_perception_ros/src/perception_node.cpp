@@ -73,18 +73,20 @@ class PerceptionNode : public rclcpp::Node {
     }
     source_ = id.str();
 
-    const auto reliability = declare_parameter<std::string>("input_reliability", "best_effort");
-    if (reliability != "best_effort" && reliability != "reliable") {
-      throw std::invalid_argument("input_reliability: best_effort or reliable");
+    const auto reliability = declare_parameter<std::string>("input_reliability", "auto");
+    if (reliability != "auto" && reliability != "best_effort" && reliability != "reliable") {
+      throw std::invalid_argument("input_reliability: auto, best_effort or reliable");
     }
-    auto qos = rclcpp::SensorDataQoS().keep_last(1);
-    if (reliability == "reliable") qos.reliable();
 
     publisher_ = create_publisher<FrameAnalysis>("~/output/analysis", 1);
-    subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-        "~/input/points", qos, [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr message) {
-          on_cloud(std::move(message));
-        });
+    // Clouds of several megabytes rarely arrive whole over best-effort DDS (one lost fragment
+    // drops the message), so auto subscribes reliably, which also matches rosbag2 play. A
+    // reliable reader cannot match a best-effort writer (a live driver): auto switches to best
+    // effort while no cloud has arrived and every publisher of the topic is best effort.
+    subscribe(reliability != "best_effort");
+    if (reliability == "auto") {
+      qos_timer_ = create_wall_timer(std::chrono::seconds(1), [this] { adapt_reliability(); });
+    }
 
     worker_ = std::thread([this] { worker_loop(); });
 
@@ -106,6 +108,33 @@ class PerceptionNode : public rclcpp::Node {
     std::uint64_t session_id{0};
     std::chrono::steady_clock::time_point received_at;
   };
+
+  void subscribe(bool reliable) {
+    auto qos = rclcpp::SensorDataQoS().keep_last(1);
+    if (reliable) qos.reliable();
+    reliable_input_ = reliable;
+    subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+        "~/input/points", qos, [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr message) {
+          on_cloud(std::move(message));
+        });
+  }
+
+  void adapt_reliability() {
+    if (received_.load() > 0 || !reliable_input_) {
+      qos_timer_->cancel();
+      return;
+    }
+    const auto publishers = get_publishers_info_by_topic(subscription_->get_topic_name());
+    if (publishers.empty()) return;
+    for (const auto& info : publishers)
+      if (info.qos_profile().reliability() != rclcpp::ReliabilityPolicy::BestEffort) return;
+    RCLCPP_WARN(get_logger(),
+                "Every publisher of %s is best effort; subscribing best effort. Large clouds "
+                "may be lost in transport.",
+                subscription_->get_topic_name());
+    subscribe(false);
+    qos_timer_->cancel();
+  }
 
   void on_cloud(sensor_msgs::msg::PointCloud2::ConstSharedPtr message) {
     const auto received_at = std::chrono::steady_clock::now();
@@ -289,6 +318,8 @@ class PerceptionNode : public rclcpp::Node {
 
   rclcpp::Publisher<FrameAnalysis>::SharedPtr publisher_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
+  rclcpp::TimerBase::SharedPtr qos_timer_;
+  bool reliable_input_{true};
 };
 
 int main(int argc, char** argv) {
