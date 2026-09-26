@@ -113,6 +113,9 @@ struct FrameResult {
   double evaluated_range_m{0};
   CalibrationTrust calibration_trust{CalibrationTrust::UNKNOWN};
   RouteEstimate route;
+  // Floor under the route, z = ground_a x + ground_b y + ground_c.
+  bool ground_valid{false};
+  double ground_a{0}, ground_b{0}, ground_c{0};
   std::vector<RejectedComponent> rejected;  // Only with AlgorithmConfig::record_rejected.
   // Lidar-only forward speed used to move the range baseline; diagnostic only.
   bool ego_motion_valid{false};

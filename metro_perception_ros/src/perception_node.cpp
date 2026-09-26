@@ -8,7 +8,9 @@
 #include <sstream>
 #include <thread>
 
+#include "metro_perception_core/labels.hpp"
 #include "metro_perception_interfaces/msg/frame_analysis.hpp"
+#include "metro_perception_ros/labelled_cloud.hpp"
 #include "metro_perception_ros/latest_frame_slot.hpp"
 #include "metro_perception_ros/measurement_time.hpp"
 #include "metro_perception_ros/pointcloud_adapter.hpp"
@@ -85,6 +87,10 @@ class PerceptionNode : public rclcpp::Node {
     }
 
     publisher_ = create_publisher<FrameAnalysis>("~/output/analysis", 1);
+    // Display only: the analysed points coloured by corridor and obstacle membership.
+    if (declare_parameter<bool>("publish_labelled_cloud", false))
+      labelled_publisher_ =
+          create_publisher<sensor_msgs::msg::PointCloud2>("~/output/labelled_points", 1);
     // Clouds of several megabytes rarely arrive whole over best-effort DDS (one lost fragment
     // drops the message), so auto subscribes reliably, which also matches rosbag2 play. A
     // reliable reader cannot match a best-effort writer (a live driver): auto switches to best
@@ -300,6 +306,10 @@ class PerceptionNode : public rclcpp::Node {
             return;
           }
           publisher_->publish(output);
+          if (labelled_publisher_ && frame.preprocessed.transform_applied)
+            labelled_publisher_->publish(metro_perception_ros::make_labelled_cloud(
+                output.header, frame,
+                metro_perception_core::label_points(config_.algorithm, frame)));
         })) {
       rejected_.fetch_add(1);
     }
@@ -329,6 +339,7 @@ class PerceptionNode : public rclcpp::Node {
   bool worker_session_initialized_{false};
 
   rclcpp::Publisher<FrameAnalysis>::SharedPtr publisher_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr labelled_publisher_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
   rclcpp::TimerBase::SharedPtr qos_timer_;
   std::unique_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;

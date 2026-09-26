@@ -4,6 +4,7 @@
 #include <cmath>
 #include <functional>
 
+#include "metro_perception_core/labels.hpp"
 #include "metro_perception_core/pipeline.hpp"
 #include "metro_perception_core/temporal_monitor.hpp"
 using namespace metro_perception_core;
@@ -1147,4 +1148,33 @@ TEST(Candidates, LongSideStructureIsRejectedWhateverItsChannels) {
   EXPECT_TRUE(PerceptionPipeline(config).process(wall(0.8)).candidates.empty());
   // The same length across the route centre stays a candidate.
   EXPECT_FALSE(PerceptionPipeline(config).process(wall(0.0)).candidates.empty());
+}
+
+TEST(Labels, PointsAreBackgroundCorridorOrObstacle) {
+  auto config = single_frame_config();
+  config.corridor_half_width_m = 1.05;
+  config.corridor_height_m = 3.0;
+  config.hanging_tip_max_height_m = 3.0;
+  auto scene = curved_tunnel(1e9);
+  add_box(scene, 30, -0.3, 0.3, 0.3, 1.7);
+  scene.points.push_back({20, 0.0, -1.0 + 1.0});  // In the envelope, no object.
+  scene.points.push_back({20, 1.9, -1.0 + 1.0});  // Beside it.
+  const auto frame = PerceptionPipeline(config).process(scene);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  ASSERT_TRUE(frame.ground_valid);
+  const auto labels = label_points(config, frame);
+  ASSERT_EQ(labels.size(), frame.preprocessed.geometry_points.size());
+  auto label_at = [&](double x, double y, double z) {
+    for (std::size_t i = 0; i < labels.size(); ++i) {
+      const auto& p = frame.preprocessed.geometry_points[i].point;
+      if (std::abs(p.x - x) < 1e-3 && std::abs(p.y - y) < 1e-3 && std::abs(p.z - z) < 1e-3)
+        return int(labels[i]);
+    }
+    return -1;
+  };
+  EXPECT_EQ(label_at(30, 0.02, -0.14), int(kObstaclePoint));
+  EXPECT_EQ(label_at(20, 0.0, 0.0), int(kCorridorPoint));
+  EXPECT_EQ(label_at(20, 1.9, 0.0), int(kBackgroundPoint));
+  EXPECT_EQ(label_at(20, 0.0, -1.0), int(kCorridorPoint));    // The track bed shows the path.
+  EXPECT_EQ(label_at(20, 1.8, -1.0), int(kBackgroundPoint));  // Floor beside the envelope.
 }

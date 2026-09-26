@@ -13,7 +13,8 @@ find_package(tf2 REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
-add_library(pointcloud_adapter SHARED src/pointcloud_adapter.cpp src/preprocessing.cpp)
+add_library(pointcloud_adapter SHARED src/pointcloud_adapter.cpp src/preprocessing.cpp
+  src/labelled_cloud.cpp)
 target_link_libraries(pointcloud_adapter yaml-cpp)
 target_compile_features(pointcloud_adapter PUBLIC cxx_std_17)
 target_include_directories(pointcloud_adapter PUBLIC

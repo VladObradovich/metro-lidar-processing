@@ -5,6 +5,7 @@
 #include <cstring>
 #include <limits>
 
+#include "metro_perception_ros/labelled_cloud.hpp"
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 using metro_perception_ros::decode_cloud;
 using sensor_msgs::msg::PointCloud2;
@@ -198,4 +199,33 @@ TEST(Adapter, RejectedCloudsDoNotInvokeStatefulResolver) {
           .status,
       metro_perception_core::AnalysisStatus::INVALID_GEOMETRY);
   EXPECT_EQ(calls, 1);
+}
+
+TEST(LabelledCloud, CarriesPointsColoursAndLabels) {
+  metro_perception_core::FrameResult frame;
+  frame.preprocessed.geometry_points = {{{5, 0, 0}, 0}, {{20, 0.5, 0}, 1}, {{30, 0, 0.5}, 2}};
+  std_msgs::msg::Header header;
+  header.frame_id = "lidar_assumed";
+  const auto cloud = metro_perception_ros::make_labelled_cloud(header, frame, {0, 1, 2});
+  ASSERT_EQ(cloud.width, 3u);
+  EXPECT_EQ(cloud.header.frame_id, "lidar_assumed");
+  ASSERT_EQ(cloud.fields.size(), 5u);
+  EXPECT_EQ(cloud.fields[3].name, "rgb");
+  EXPECT_EQ(cloud.fields[4].name, "label");
+  auto rgb_at = [&](std::size_t i) {
+    std::uint32_t rgb;
+    std::memcpy(&rgb, cloud.data.data() + i * cloud.point_step + 12, sizeof(rgb));
+    return rgb;
+  };
+  auto x_at = [&](std::size_t i) {
+    float x;
+    std::memcpy(&x, cloud.data.data() + i * cloud.point_step, sizeof(x));
+    return x;
+  };
+  EXPECT_FLOAT_EQ(x_at(1), 20.0f);
+  const auto grey = rgb_at(0);
+  EXPECT_EQ(grey >> 16 & 0xff, grey & 0xff);                 // Background is grey.
+  EXPECT_GT(rgb_at(1) >> 8 & 0xff, rgb_at(1) >> 16 & 0xff);  // Corridor is green.
+  EXPECT_EQ(rgb_at(2) >> 16 & 0xff, 255u);                   // Obstacle is red.
+  EXPECT_EQ(cloud.data[2 * cloud.point_step + 16], 2);
 }

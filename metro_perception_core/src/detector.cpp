@@ -534,6 +534,8 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   }
   route_ = route;
   result.route = route;
+  result.ground_valid = true;
+  result.ground_a = ground.a, result.ground_b = ground.b, result.ground_c = ground.c;
   const double norm = std::sqrt(1 + ground.a * ground.a + ground.b * ground.b);
   auto route_point = [&](double x) {
     const double y = route.center(x);
@@ -863,16 +865,29 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   // structure (the pillars between the tracks of a double tunnel), not an obstacle: an object
   // on the track ends below the vault, and a suspended one does not reach the floor.
   constexpr double kPoleMaxFootprintM = 0.8, kPoleMaxGapM = 1.0, kPoleAboveM = 0.1;
+  constexpr double kPoleBinM = 0.5;
+  std::vector<std::vector<std::size_t>> pole_bins;
   auto pole = [&](const PointXYZ& lo, const PointXYZ& hi) {
     if (!config.pole_rejection || hi.x - lo.x > kPoleMaxFootprintM ||
         hi.y - lo.y > kPoleMaxFootprintM)
       return false;
-    std::vector<double> heights;
-    for (const auto index : frame.detection_indices) {
-      const auto& p = frame.geometry_points[index].point;
-      if (p.x >= lo.x - 0.2 && p.x <= hi.x + 0.2 && p.y >= lo.y - 0.2 && p.y <= hi.y + 0.2)
-        heights.push_back(ground.height(p));
+    // Returns are binned along x once per frame, at the first check that needs them.
+    if (pole_bins.empty() && !frame.detection_indices.empty()) {
+      pole_bins.resize(static_cast<std::size_t>(std::ceil(end_x / kPoleBinM)) + 1);
+      for (const auto index : frame.detection_indices) {
+        const auto& p = frame.geometry_points[index].point;
+        if (p.x >= 0 && p.x <= end_x)
+          pole_bins[static_cast<std::size_t>(p.x / kPoleBinM)].push_back(index);
+      }
     }
+    std::vector<double> heights;
+    const auto first = static_cast<std::size_t>(std::max(0.0, lo.x - 0.2) / kPoleBinM);
+    for (std::size_t bin = first; bin < pole_bins.size() && bin * kPoleBinM <= hi.x + 0.2; ++bin)
+      for (const auto index : pole_bins[bin]) {
+        const auto& p = frame.geometry_points[index].point;
+        if (p.x >= lo.x - 0.2 && p.x <= hi.x + 0.2 && p.y >= lo.y - 0.2 && p.y <= hi.y + 0.2)
+          heights.push_back(ground.height(p));
+      }
     std::sort(heights.begin(), heights.end());
     if (heights.empty() || heights.front() > config.obstacle_min_height_m + 0.3) return false;
     double reach = heights.front();

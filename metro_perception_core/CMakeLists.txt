@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(metro_perception_core)
 find_package(ament_cmake REQUIRED)
 add_library(${PROJECT_NAME} SHARED src/pipeline.cpp src/detector.cpp src/speed_tracker.cpp
-  src/temporal_monitor.cpp)
+  src/temporal_monitor.cpp src/labels.cpp)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

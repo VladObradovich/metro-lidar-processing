@@ -1,11 +1,19 @@
-"""Launch perception and monitor; optional sensor TF publication belongs to bringup."""
+"""
+Launch perception and monitor; optional sensor TF publication belongs to bringup.
+
+With rviz:=true (desktop image) it also starts the display chain: perception publishes the
+analysed points labelled by corridor and obstacle, the depth_image node draws them as a grey
+depth video with the corridor green and obstacles red, the visualizer draws the assessment
+markers, and RViz shows the video and the topics on the left and the cloud on the right.
+"""
 from pathlib import Path
 
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -75,8 +83,13 @@ def generate_launch_description():
     params = [LaunchConfiguration('algorithm_config'), LaunchConfiguration('runtime_config'),
               {'use_sim_time': LaunchConfiguration('use_sim_time'),
                'sensor_profile': LaunchConfiguration('sensor_profile')}]
+    rviz = LaunchConfiguration('rviz')
     perception_params = params + [
-        {'publish_bound_transform': LaunchConfiguration('publish_bound_transform')}]
+        {'publish_bound_transform': LaunchConfiguration('publish_bound_transform'),
+         'publish_labelled_cloud': rviz}]
+    display = {'use_sim_time': LaunchConfiguration('use_sim_time')}
+    markers = PythonExpression(["'", rviz, "' == 'true' or '", LaunchConfiguration('visualizer'),
+                                "' == 'true'"])
     return LaunchDescription([
         DeclareLaunchArgument('sensor_profile', default_value=''),
         DeclareLaunchArgument('publish_sensor_tf', default_value='false'),
@@ -90,12 +103,38 @@ def generate_launch_description():
             [share, 'config', 'algorithm.yaml'])),
         DeclareLaunchArgument('runtime_config', default_value=PathJoinSubstitution(
             [share, 'config', 'runtime.yaml'])),
+        DeclareLaunchArgument('rviz', default_value='false',
+                              description='Start the depth video, markers and RViz'),
+        DeclareLaunchArgument('visualizer', default_value='false',
+                              description='Publish assessment markers without RViz'),
+        DeclareLaunchArgument('fixed_frame', default_value='lidar_assumed',
+                              description='RViz fixed frame: the profile target frame'),
         OpaqueFunction(function=_sensor_tf),
         Node(package='metro_perception_ros', executable='perception_node', name='perception',
              namespace=namespace, parameters=perception_params, output='screen', remappings=[
                  ('~/input/points', LaunchConfiguration('input_topic')),
-                 ('~/output/analysis', 'analysis')]),
+                 ('~/output/analysis', 'analysis'),
+                 ('~/output/labelled_points', 'labelled_points')]),
         Node(package='metro_perception_ros', executable='obstacle_monitor_node',
              name='obstacle_monitor', namespace=namespace, parameters=params, output='screen',
              remappings=[('~/input/analysis', 'analysis'), ('~/output/assessment', 'assessment')]),
+        Node(package='metro_perception_ros', executable='visualizer_node', name='visualizer',
+             namespace=namespace, output='screen', parameters=[display],
+             condition=IfCondition(markers),
+             remappings=[('~/input/assessment', 'assessment'), ('~/output/markers', 'markers')]),
+        # The labelled cloud is in the target frame: forward is +x, the forward sector +-50 deg.
+        Node(package='metro_perception_tools', executable='depth_image', name='depth_image',
+             namespace=namespace, output='screen', condition=IfCondition(rviz),
+             parameters=[display, {'input_topic': 'labelled_points',
+                                   'output_topic': 'depth_image',
+                                   'image_width': 480, 'image_height': 128,
+                                   'min_depth': 1.0, 'max_depth': 150.0,
+                                   'min_azimuth_deg': -50.0, 'max_azimuth_deg': 50.0}]),
+        Node(package='rviz2', executable='rviz2', name='rviz', namespace=namespace,
+             condition=IfCondition(rviz), parameters=[display],
+             arguments=['-d', PathJoinSubstitution([share, 'rviz', 'detector.rviz']),
+                        '-f', LaunchConfiguration('fixed_frame')],
+             remappings=[('/metro_rviz/cloud', 'labelled_points'),
+                         ('/metro_rviz/depth', 'depth_image'),
+                         ('/metro_rviz/markers', 'markers')]),
     ])
