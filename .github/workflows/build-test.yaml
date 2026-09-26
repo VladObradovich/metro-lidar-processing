@@ -26,7 +26,7 @@ jobs:
       - name: C++ clang-format
         run: |
           mapfile -d '' files < <(
-            find metro_perception_core metro_perception_ros \
+            find metro_perception_core metro_perception_ros metro_perception_rviz \
               -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) \
               -print0
           )
@@ -116,4 +116,4 @@ jobs:
       - name: Verify RViz is installed
         run: |
           docker run --rm --network none metro-desktop:test \
-            bash -lc 'command -v rviz2 >/dev/null && ros2 pkg prefix metro_perception_bringup >/dev/null'
+            bash -lc 'command -v rviz2 >/dev/null && ros2 pkg prefix metro_perception_bringup >/dev/null && test -f "$(ros2 pkg prefix metro_perception_rviz)/lib/libassessment_panel.so"'

@@ -3,8 +3,9 @@ Launch perception and monitor; optional sensor TF publication belongs to bringup
 
 With rviz:=true (desktop image) it also starts the display chain: perception publishes the
 analysed points labelled by corridor and obstacle, the depth_image node draws them as a grey
-depth video with the corridor green and obstacles red, the visualizer draws the assessment
-markers, and RViz shows the video and the topics on the left and the cloud on the right.
+depth video with the corridor green and obstacles red, and RViz shows the video and the
+assessment as text (metro_perception_rviz panel) on the left and the cloud with the corridor
+lines on the right.
 """
 from pathlib import Path
 
@@ -121,7 +122,8 @@ def generate_launch_description():
         Node(package='metro_perception_ros', executable='visualizer_node', name='visualizer',
              namespace=namespace, output='screen', parameters=[display],
              condition=IfCondition(markers),
-             remappings=[('~/input/assessment', 'assessment'), ('~/output/markers', 'markers')]),
+             remappings=[('~/input/assessment', 'assessment'), ('~/output/markers', 'markers'),
+                         ('~/output/corridor_markers', 'corridor_markers')]),
         # The labelled cloud is in the target frame: forward is +x, the forward sector +-50 deg.
         Node(package='metro_perception_tools', executable='depth_image', name='depth_image',
              namespace=namespace, output='screen', condition=IfCondition(rviz),
@@ -136,5 +138,7 @@ def generate_launch_description():
                         '-f', LaunchConfiguration('fixed_frame')],
              remappings=[('/metro_rviz/cloud', 'labelled_points'),
                          ('/metro_rviz/depth', 'depth_image'),
+                         ('/metro_rviz/assessment', 'assessment'),
+                         ('/metro_rviz/corridor', 'corridor_markers'),
                          ('/metro_rviz/markers', 'markers')]),
     ])

@@ -1,13 +1,12 @@
-# Detector display: topics and the depth video on the left, the labelled cloud on the right.
+# Detector display: the depth video and the assessment as text (metro_perception_rviz panel)
+# on the left, the labelled cloud with the corridor lines on the right.
 # Grey: returns by distance; green: inside the vehicle envelope; red: obstacle candidates.
-# Topics are remapped from /metro_rviz/* by perception.launch.py (rviz:=true).
+# Topics are remapped from /metro_rviz/* by perception.launch.py (rviz:=true). The Detection
+# display (all markers: boxes, labels, state text) is off; Panels > Displays turns it on.
 Panels:
-  - Class: rviz_common/Displays
-    Name: Displays
-    Help Height: 0
-    Property Tree Widget:
-      Expanded: ~
-      Splitter Ratio: 0.55
+  - Class: metro_perception_rviz/Assessment
+    Name: Assessment
+    Topic: /metro_rviz/assessment
 
 Visualization Manager:
   Class: ""
@@ -44,8 +43,16 @@ Visualization Manager:
       Decay Time: 0
 
     - Class: rviz_default_plugins/MarkerArray
-      Name: Detection
+      Name: Corridor
       Enabled: true
+      Topic:
+        Value: /metro_rviz/corridor
+        Reliability Policy: Reliable
+        Depth: 1
+
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Detection
+      Enabled: false
       Topic:
         Value: /metro_rviz/markers
         Reliability Policy: Reliable
@@ -94,9 +101,9 @@ Visualization Manager:
 Window Geometry:
   Hide Left Dock: false
   Hide Right Dock: true
-  Displays:
-    collapsed: false
   Depth:
+    collapsed: false
+  Assessment:
     collapsed: false
   Width: 1600
   Height: 900

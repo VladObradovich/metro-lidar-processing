@@ -12,6 +12,7 @@ COPY metro_perception_bringup/package.xml /ws/src/metro_perception_bringup/packa
 COPY metro_perception_core/package.xml /ws/src/metro_perception_core/package.xml
 COPY metro_perception_interfaces/package.xml /ws/src/metro_perception_interfaces/package.xml
 COPY metro_perception_ros/package.xml /ws/src/metro_perception_ros/package.xml
+COPY metro_perception_rviz/package.xml /ws/src/metro_perception_rviz/package.xml
 RUN rosdep update --rosdistro humble \
     && apt-get update \
     && rosdep install --from-paths src --ignore-src --rosdistro humble \
@@ -23,6 +24,7 @@ COPY metro_perception_bringup /ws/src/metro_perception_bringup
 COPY metro_perception_core /ws/src/metro_perception_core
 COPY metro_perception_interfaces /ws/src/metro_perception_interfaces
 COPY metro_perception_ros /ws/src/metro_perception_ros
+COPY metro_perception_rviz /ws/src/metro_perception_rviz
 RUN /bin/bash -o pipefail -c 'source /opt/ros/humble/setup.bash \
     && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
     && rm -rf /ws/src /ws/build /ws/log'

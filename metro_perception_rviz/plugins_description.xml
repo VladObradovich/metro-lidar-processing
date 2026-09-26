@@ -1,0 +1,6 @@
+<library path="assessment_panel">
+  <class name="metro_perception_rviz/Assessment" type="metro_perception_rviz::AssessmentPanel"
+         base_class_type="rviz_common::Panel">
+    <description>Current PathAssessment as text: state, distance, reason and followed tracks.</description>
+  </class>
+</library>

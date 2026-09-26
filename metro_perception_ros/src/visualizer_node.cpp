@@ -66,6 +66,9 @@ class Visualizer : public rclcpp::Node {
  public:
   Visualizer() : Node("visualizer") {
     publisher_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/output/markers", 1);
+    // Corridor lines alone, for a view that shows the labelled cloud without boxes and text.
+    corridor_publisher_ =
+        create_publisher<visualization_msgs::msg::MarkerArray>("~/output/corridor_markers", 1);
     subscription_ = create_subscription<PathAssessment>(
         "~/input/assessment", 1,
         [this](PathAssessment::ConstSharedPtr assessment) { on_assessment(*assessment); });
@@ -78,6 +81,8 @@ class Visualizer : public rclcpp::Node {
     Marker clear;
     clear.action = Marker::DELETEALL;
     output.markers.push_back(clear);
+    visualization_msgs::msg::MarkerArray corridor_only;
+    corridor_only.markers.push_back(clear);
 
     Marker status = base(assessment, "status", 0, Marker::TEXT_VIEW_FACING);
     // Ahead of the train and above the track, readable from a camera behind the lidar.
@@ -109,7 +114,9 @@ class Visualizer : public rclcpp::Node {
         corridor.color.g = usable ? 0.9 : 0.8;
         corridor.color.b = 0.2;
         corridor.color.a = 0.8;
-        if (corridor_edges(segment, corridor)) output.markers.push_back(corridor);
+        if (!corridor_edges(segment, corridor)) continue;
+        output.markers.push_back(corridor);
+        corridor_only.markers.push_back(corridor);
       }
       const auto* nearest = nearest_candidate(assessment);
       for (const auto& object : assessment.reported_objects) {
@@ -170,6 +177,7 @@ class Visualizer : public rclcpp::Node {
       }
     }
     publisher_->publish(output);
+    corridor_publisher_->publish(corridor_only);
   }
 
   static Marker base(const PathAssessment& assessment, const char* ns, std::int32_t id,
@@ -187,6 +195,7 @@ class Visualizer : public rclcpp::Node {
   }
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr publisher_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr corridor_publisher_;
   rclcpp::Subscription<PathAssessment>::SharedPtr subscription_;
 };
 int main(int argc, char** argv) {

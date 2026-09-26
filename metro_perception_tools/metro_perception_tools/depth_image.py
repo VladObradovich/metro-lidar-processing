@@ -6,6 +6,7 @@ A cloud with a `label` field (the detector's labelled_points: 0 background, 1 co
 any other cloud uses the RealSense Jet palette.
 """
 
+import array
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -15,6 +16,10 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image, PointCloud2, PointField
+
+
+# Elevations closer than this are one channel: the finest Pandar128 spacing is 0.086 deg.
+CHANNEL_TOLERANCE_DEG = 0.02
 
 
 def point_cloud_xyz_ring(
@@ -98,39 +103,67 @@ def rings_from_elevation(
     return xyz, rings
 
 
-def rings_from_elevation_indexed(
+def elevation_channels(
     xyz: np.ndarray, min_range: float, channel_share: float = 0.1
+) -> Optional[np.ndarray]:
+    """
+    Return the elevation (deg) of every lidar channel seen in the cloud, ascending.
+
+    Every return of one lidar channel has the same elevation, so a frame shows one sharp
+    elevation value per channel. Values holding at least `channel_share` of the largest one's
+    returns are the channels. None when fewer than two channels are seen.
+    """
+    x, y, z = xyz.T.astype(np.float64)
+    ranges = np.sqrt(x * x + y * y + z * z)
+    measured = np.isfinite(ranges) & (ranges >= max(min_range, 1e-3))
+    if not np.any(measured):
+        return None
+    elevation = np.degrees(np.arctan2(z[measured], np.hypot(x[measured], y[measured])))
+    values, counts = np.unique(np.round(elevation, 3), return_counts=True)
+    group = np.cumsum(np.r_[True, np.diff(values) > CHANNEL_TOLERANCE_DEG]) - 1
+    group_counts = np.bincount(group, weights=counts)
+    centers = np.bincount(group, weights=values * counts) / group_counts
+    channels = centers[group_counts >= channel_share * group_counts.max()]
+    return channels if len(channels) > 1 else None
+
+
+def rings_from_elevation_indexed(
+    xyz: np.ndarray,
+    min_range: float,
+    channel_share: float = 0.1,
+    channels: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Return rings_from_elevation's (xyz, rings) and the input index of every returned point.
 
     The index maps the copies appended for returns between two channels back to their source,
-    so per-point values such as labels can follow them.
+    so per-point values such as labels can follow them. `channels` from elevation_channels
+    may be passed to skip finding them again in this cloud.
     """
     source = np.arange(len(xyz))
     rings = np.zeros(len(xyz), dtype=np.uint16)
-    x, y, z = xyz.T.astype(np.float64)
-    ranges = np.sqrt(x * x + y * y + z * z)
-    measured = np.isfinite(ranges) & (ranges >= max(min_range, 1e-3))
+    x, y, z = xyz.T.astype(np.float32)
+    horizontal = np.sqrt(x * x + y * y)
+    measured = np.isfinite(horizontal) & np.isfinite(z)
+    measured &= np.sqrt(horizontal * horizontal + z * z) >= max(min_range, 1e-3)
     if not np.any(measured):
         return xyz, rings, source
-    elevation = np.degrees(np.arctan2(z[measured], np.hypot(x[measured], y[measured])))
-    values, counts = np.unique(np.round(elevation, 3), return_counts=True)
-    # Values closer than 0.02 deg are one channel: the finest Pandar128 spacing is 0.086 deg.
-    tolerance = 0.02
-    group = np.cumsum(np.r_[True, np.diff(values) > tolerance]) - 1
-    group_counts = np.bincount(group, weights=counts)
-    centers = np.bincount(group, weights=values * counts) / group_counts
-    channels = centers[group_counts >= channel_share * group_counts.max()]
-    if len(channels) == 1:
+    if channels is None:
+        channels = elevation_channels(xyz, min_range, channel_share)
+    if channels is None:
         return xyz, rings, source
-    upper = np.clip(np.searchsorted(channels, elevation), 1, len(channels) - 1)
+    # Compare slopes z / horizontal instead of angles: the slope grows with the elevation, and
+    # near a channel an angle step is the slope step divided by (1 + slope^2).
+    slope = z[measured] / np.maximum(horizontal[measured], 1e-6)
+    channel_slopes = np.tan(np.radians(channels)).astype(np.float32)
+    upper = np.clip(np.searchsorted(channel_slopes, slope), 1, len(channels) - 1)
     lower = upper - 1
-    above_lower = elevation - channels[lower]
-    below_upper = channels[upper] - elevation
+    to_degrees = np.float32(180.0 / np.pi) / (1.0 + slope * slope)
+    above_lower = (slope - channel_slopes[lower]) * to_degrees
+    below_upper = (channel_slopes[upper] - slope) * to_degrees
     nearest = np.where(above_lower <= below_upper, lower, upper)
     rings[measured] = len(channels) - 1 - nearest
-    between = np.minimum(above_lower, below_upper) > tolerance
+    between = np.minimum(above_lower, below_upper) > CHANNEL_TOLERANCE_DEG
     if not np.any(between):
         return xyz, rings, source
     other = np.where(nearest == lower, upper, lower)[between]
@@ -146,6 +179,66 @@ def channel_count(rings: np.ndarray) -> int:
     return int(rings.max()) + 1 if rings.any() else 0
 
 
+def project_nearest(
+    xyz: np.ndarray,
+    rings: np.ndarray,
+    labels: Optional[np.ndarray],
+    width: int,
+    height: int,
+    min_depth: float,
+    max_depth: float,
+    min_azimuth_deg: float,
+    max_azimuth_deg: float,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Project XYZ using lidar rings as rows and azimuth as columns, nearest point per pixel.
+
+    Returns the depth image (inf where empty) and the label of the nearest point of every
+    pixel (0 where empty or without labels).
+    """
+    depth = np.full(width * height, np.inf, dtype=np.float32)
+    label_image = np.zeros(width * height, dtype=np.uint8)
+    if xyz.size == 0:
+        return depth.reshape(height, width), label_image.reshape(height, width)
+
+    x, y, z = xyz.T
+    ranges = np.sqrt(x * x + y * y + z * z)
+    azimuth = np.degrees(np.arctan2(y, x))
+    ring_min = float(np.min(rings))
+    ring_max = float(np.max(rings))
+    valid = (
+        np.isfinite(ranges)
+        & (ranges >= min_depth)
+        & (ranges <= max_depth)
+        & (azimuth >= min_azimuth_deg)
+        & (azimuth <= max_azimuth_deg)
+    )
+    index = np.flatnonzero(valid)
+    if index.size == 0:
+        return depth.reshape(height, width), label_image.reshape(height, width)
+
+    columns = (
+        (azimuth[index] - min_azimuth_deg) * (width - 1) / (max_azimuth_deg - min_azimuth_deg)
+    ).astype(np.int64)
+    if ring_max == ring_min:
+        rows = np.zeros(index.shape, dtype=np.int64)
+    else:
+        rows = (
+            (rings[index].astype(np.float32) - ring_min) * (height - 1) / (ring_max - ring_min)
+        ).astype(np.int64)
+    pixels = np.clip(rows, 0, height - 1) * width + np.clip(columns, 0, width - 1)
+    # One sort of pixel and range (in 0.1 mm) together; the first entry of a pixel is nearest.
+    key = (pixels << 32) | np.minimum(ranges[index] * 1e4, 2**31).astype(np.int64)
+    order = np.argsort(key)
+    sorted_pixels = pixels[order]
+    first = np.r_[True, sorted_pixels[1:] != sorted_pixels[:-1]]
+    nearest = index[order[first]]
+    depth[sorted_pixels[first]] = ranges[nearest]
+    if labels is not None:
+        label_image[sorted_pixels[first]] = labels[nearest]
+    return depth.reshape(height, width), label_image.reshape(height, width)
+
+
 def project_depth_panorama(
     xyz: np.ndarray,
     rings: np.ndarray,
@@ -157,46 +250,8 @@ def project_depth_panorama(
     max_azimuth_deg: float,
 ) -> np.ndarray:
     """Project XYZ using lidar rings as rows and azimuth as columns."""
-    depth = np.full(width * height, np.inf, dtype=np.float32)
-    if xyz.size == 0:
-        return depth.reshape(height, width)
-
-    x, y, z = xyz.T
-    ranges = np.sqrt(x * x + y * y + z * z)
-    azimuth = np.degrees(np.arctan2(y, x))
-    ring_min = float(np.min(rings))
-    ring_max = float(np.max(rings))
-
-    valid = (
-        np.isfinite(ranges)
-        & (ranges >= min_depth)
-        & (ranges <= max_depth)
-        & (azimuth >= min_azimuth_deg)
-        & (azimuth <= max_azimuth_deg)
-    )
-    if not np.any(valid):
-        return depth.reshape(height, width)
-
-    ranges = ranges[valid].astype(np.float32, copy=False)
-    azimuth = azimuth[valid]
-    valid_rings = rings[valid].astype(np.float32, copy=False)
-
-    columns = (
-        (azimuth - min_azimuth_deg)
-        * (width - 1)
-        / (max_azimuth_deg - min_azimuth_deg)
-    ).astype(np.int32)
-    if ring_max == ring_min:
-        rows = np.zeros(valid_rings.shape, dtype=np.int32)
-    else:
-        rows = (
-            (valid_rings - ring_min) * (height - 1) / (ring_max - ring_min)
-        ).astype(np.int32)
-    columns = np.clip(columns, 0, width - 1)
-    rows = np.clip(rows, 0, height - 1)
-
-    np.minimum.at(depth, rows * width + columns, ranges)
-    return depth.reshape(height, width)
+    return project_nearest(xyz, rings, None, width, height, min_depth, max_depth,
+                           min_azimuth_deg, max_azimuth_deg)[0]
 
 
 def project_labels(
@@ -211,38 +266,8 @@ def project_labels(
     max_azimuth_deg: float,
 ) -> np.ndarray:
     """Label of the nearest point per pixel of project_depth_panorama's image (0 when empty)."""
-    image = np.zeros(width * height, dtype=np.uint8)
-    if xyz.size == 0:
-        return image.reshape(height, width)
-    x, y, z = xyz.T
-    ranges = np.sqrt(x * x + y * y + z * z)
-    azimuth = np.degrees(np.arctan2(y, x))
-    ring_min = float(np.min(rings))
-    ring_max = float(np.max(rings))
-    valid = (
-        np.isfinite(ranges)
-        & (ranges >= min_depth)
-        & (ranges <= max_depth)
-        & (azimuth >= min_azimuth_deg)
-        & (azimuth <= max_azimuth_deg)
-    )
-    if not np.any(valid):
-        return image.reshape(height, width)
-    columns = np.clip(
-        ((azimuth[valid] - min_azimuth_deg) * (width - 1) / (max_azimuth_deg - min_azimuth_deg))
-        .astype(np.int32), 0, width - 1)
-    if ring_max == ring_min:
-        rows = np.zeros(columns.shape, dtype=np.int32)
-    else:
-        rows = np.clip(
-            ((rings[valid].astype(np.float32) - ring_min) * (height - 1) / (ring_max - ring_min))
-            .astype(np.int32), 0, height - 1)
-    pixels = rows * width + columns
-    # Nearest point first within each pixel; np.unique keeps the first occurrence.
-    order = np.lexsort((ranges[valid], pixels))
-    first = np.unique(pixels[order], return_index=True)[1]
-    image[pixels[order][first]] = labels[valid][order][first]
-    return image.reshape(height, width)
+    return project_nearest(xyz, rings, labels, width, height, min_depth, max_depth,
+                           min_azimuth_deg, max_azimuth_deg)[1]
 
 
 def colorize_labelled_depth(
@@ -313,6 +338,9 @@ def colorize_depth(
     return result, int(np.count_nonzero(valid))
 
 
+CHANNEL_REFRESH_FRAMES = 50
+
+
 def video_frame_index(stamp_ns: int, first_stamp_ns: int, fps: float) -> int:
     """Map a ROS timestamp to its constant-frame-rate video index."""
     elapsed_seconds = max(0, stamp_ns - first_stamp_ns) / 1_000_000_000
@@ -357,9 +385,13 @@ class DepthImageNode(Node):
         self.video_frames_written = 0
         self.last_video_frame = None
         self.elevation_rows_reported = False
+        # Channel elevations of a cloud without rings; found again every CHANNEL_REFRESH_FRAMES.
+        self.channels = None
+        self.channels_age = 0
 
         self._validate_parameters()
-        input_qos = QoSProfile(depth=4, reliability=ReliabilityPolicy.RELIABLE)
+        # Latest cloud only: a slow frame drops older clouds instead of delaying the video.
+        input_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
         image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
         self.publisher = self.create_publisher(Image, self.output_topic, image_qos)
         self.subscription = self.create_subscription(
@@ -432,7 +464,12 @@ class DepthImageNode(Node):
             xyz, rings = point_cloud_xyz_ring(message, self.point_stride)
             labels = point_cloud_labels(message, self.point_stride)
             if rings is None:
-                xyz, rings, source = rings_from_elevation_indexed(xyz, self.min_depth)
+                if self.channels is None or self.channels_age >= CHANNEL_REFRESH_FRAMES:
+                    self.channels = elevation_channels(xyz, self.min_depth)
+                    self.channels_age = 0
+                self.channels_age += 1
+                xyz, rings, source = rings_from_elevation_indexed(
+                    xyz, self.min_depth, channels=self.channels)
                 if labels is not None:
                     labels = labels[source]
                 # Reported once, from the first cloud whose channels could be recovered.
@@ -443,20 +480,10 @@ class DepthImageNode(Node):
                         'PointCloud2 has no ring field: rings recovered from elevation '
                         f'({channels} channels)'
                     )
-            depth = project_depth_panorama(
-                xyz,
-                rings,
-                self.image_width,
-                self.image_height,
-                self.min_depth,
-                self.max_depth,
-                self.min_azimuth,
-                self.max_azimuth,
-            )
+            depth, label_image = project_nearest(
+                xyz, rings, labels, self.image_width, self.image_height, self.min_depth,
+                self.max_depth, self.min_azimuth, self.max_azimuth)
             if labels is not None:
-                label_image = project_labels(
-                    xyz, rings, labels, self.image_width, self.image_height, self.min_depth,
-                    self.max_depth, self.min_azimuth, self.max_azimuth)
                 rgb, populated_pixels = colorize_labelled_depth(
                     depth, label_image, self.min_depth, self.max_depth,
                     self.histogram_equalization)
@@ -479,7 +506,8 @@ class DepthImageNode(Node):
         image.encoding = 'rgb8'
         image.is_bigendian = False
         image.step = self.image_width * 3
-        image.data = rgb.tobytes()
+        # An array.array skips rclpy's per-byte check of a bytes value (~0.1 s per image).
+        image.data = array.array('B', rgb.tobytes())
         self.publisher.publish(image)
 
         self.frame_count += 1
