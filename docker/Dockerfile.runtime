@@ -24,7 +24,7 @@ COPY metro_perception_core /ws/src/metro_perception_core
 COPY metro_perception_interfaces /ws/src/metro_perception_interfaces
 COPY metro_perception_ros /ws/src/metro_perception_ros
 RUN /bin/bash -o pipefail -c 'source /opt/ros/humble/setup.bash \
-    && colcon build --merge-install --cmake-args -DBUILD_TESTING=OFF \
+    && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
     && rm -rf /ws/src /ws/build /ws/log'
 
 FROM ros:humble-ros-base AS runtime

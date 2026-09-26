@@ -11,8 +11,10 @@ services:
     environment:
       DISPLAY: "${DISPLAY:-}"
     volumes:
+      # scripts/desktop.sh points this at its X11 proxy directory; without the script the host
+      # socket directory is used (allow the container with `xhost +local:`).
       - type: bind
-        source: ./.devcontainer/.runtime/compose/x11
+        source: ${METRO_X11_DIR:-/tmp/.X11-unix}
         target: /tmp/.X11-unix
       - type: bind
         source: ./rosbags
