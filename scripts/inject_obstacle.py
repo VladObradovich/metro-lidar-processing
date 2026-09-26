@@ -5,12 +5,14 @@ Insert a synthetic obstacle into a negative bag and report recall against distan
 The obstacle is an axis-aligned box in the assumed target frame of forward_sector_assumed.yaml
 (x forward = -sensor y, y left = sensor x, z up, origin at the lidar). Returns whose ray enters
 the box before their own range are moved onto the box surface, so occlusion is consistent and
-the organised cloud layout and all other fields stay unchanged. The train trajectory and floor
+the organised cloud layout and all other fields stay unchanged. Cells without a return (rays
+towards floor too far to be seen) take the ray of their channel and azimuth column and get a
+return where it meets the box, as the lidar would. The train trajectory and floor
 height come from a reference evaluate_bag JSONL of the same bag (lidar odometry, ground plane).
 
 Scenarios:
   static    person 0.5 x 0.5 x 1.7 m standing on the route, fixed in the world
-  box       object 1.0 x 1.0 x 0.5 m lying on the route, fixed in the world
+  box       object 1.0 x 1.0 x 0.5 m lying on the rails, fixed in the world
   crossing  person walking across the route at 1 m/s, fixed longitudinal position
 
   inject_obstacle.py inject BAG TOPIC REFERENCE.jsonl OUTPUT_ROOT --scenario static
@@ -26,7 +28,7 @@ import yaml
 
 SCENARIOS = {
     'static': {'size': (0.5, 0.5, 1.7), 'lateral': 0.0, 'crossing': False},
-    'box': {'size': (1.0, 1.0, 0.5), 'lateral': 0.3, 'crossing': False},
+    'box': {'size': (1.0, 1.0, 0.5), 'lateral': 0.3, 'crossing': False, 'on_rails': True},
     'crossing': {'size': (0.5, 0.5, 1.7), 'lateral': 0.0, 'crossing': True},
 }
 CROSSING_SPEED_MPS = 1.0
@@ -34,6 +36,10 @@ CROSSING_HALF_WIDTH_M = 1.5
 ROI_PAD_M = 0.1
 MIN_VISIBLE_POINTS = 10
 MAX_EVENT_DISTANCE_M = 200.0
+MAX_RANGE_M = 200.0  # Pandar128 ranging limit at 10 % reflectivity.
+# The lidar stands 1.075 m above the rail heads (organizers). An object lying on the track rests
+# on the rails: below them it would be in the trough, which the organizers do not count.
+RAIL_BELOW_LIDAR_M = 1.075
 DISTANCE_BINS_M = (0, 20, 40, 60, 80, 100, 120, 150, 200)
 
 
@@ -64,19 +70,60 @@ def ray_box_entry(directions, lo, hi):
     return np.where((enter <= leave) & (enter > 0), enter, np.inf)
 
 
-def occlude(points, lo, hi):
-    """Move returns hidden behind the box onto its surface; return points and their count."""
+def ray_directions(points, height, width):
+    """
+    Return the unit ray of every cell of an organised cloud, also where it has no return.
+
+    Rows are channels and columns azimuth steps: a cell without a return takes the median
+    elevation of its row and the median azimuth of its column. NaN when unknown.
+    """
+    grid = points.reshape(height, width, 3)
+    ranges = np.linalg.norm(grid, axis=2)
+    valid = np.isfinite(ranges) & (ranges > 0)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        elevation = np.where(valid, np.arcsin(grid[..., 2] / ranges), np.nan)
+        azimuth = np.where(valid, np.arctan2(grid[..., 1], grid[..., 0]), np.nan)
+    rows = np.full(height, np.nan)
+    columns = np.full(width, np.nan)
+    for r in range(height):
+        if valid[r].any():
+            rows[r] = np.median(elevation[r, valid[r]])
+    for c in range(width):
+        if valid[:, c].any():
+            columns[c] = np.median(azimuth[valid[:, c], c])
+    el = np.broadcast_to(rows[:, None], (height, width))
+    az = np.broadcast_to(columns[None, :], (height, width))
+    return np.stack([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az), np.sin(el)],
+                    axis=2).reshape(-1, 3)
+
+
+def occlude(points, lo, hi, empty_directions=None, max_range=MAX_RANGE_M):
+    """
+    Move returns hidden behind the box onto its surface; return points and their count.
+
+    With empty_directions (unit rays of every cell, in the frame of points), cells without a
+    return whose ray meets the box within max_range get a return on its surface, as the lidar
+    would have measured; without them a box in front of floor the lidar did not see stays empty.
+    """
     ranges = np.linalg.norm(points, axis=1)
     valid = np.isfinite(ranges) & (ranges > 0)
     out = points.copy()
-    if not valid.any():
-        return out, 0
-    directions = points[valid] / ranges[valid, None]
-    entry = ray_box_entry(directions, lo, hi)
-    hidden = entry < ranges[valid] - 1e-6
-    index = np.flatnonzero(valid)[hidden]
-    out[index] = directions[hidden] * entry[hidden, None]
-    return out, int(hidden.sum())
+    count = 0
+    if valid.any():
+        directions = points[valid] / ranges[valid, None]
+        entry = ray_box_entry(directions, lo, hi)
+        hidden = entry < ranges[valid] - 1e-6
+        index = np.flatnonzero(valid)[hidden]
+        out[index] = directions[hidden] * entry[hidden, None]
+        count += int(hidden.sum())
+    if empty_directions is not None:
+        empty = np.flatnonzero(~valid & np.isfinite(empty_directions).all(axis=1))
+        if empty.size:
+            entry = ray_box_entry(empty_directions[empty], lo, hi)
+            hit = entry <= max_range
+            out[empty[hit]] = empty_directions[empty[hit]] * entry[hit, None]
+            count += int(hit.sum())
+    return out, count
 
 
 def odometry(rows):
@@ -206,12 +253,19 @@ def estimate_floor(points):
 
 
 def place(scenario, x_center, time_s, plane, points):
-    """Box on the floor and route centre estimated from this frame; reference plane fallback."""
+    """
+    Box on the floor and route centre estimated from this frame; reference plane fallback.
+
+    An object lying on the track (on_rails) rests on the rail heads instead: the floor plane
+    moved up to pass RAIL_BELOW_LIDAR_M below the lidar.
+    """
     floor = estimate_floor(points)
     plane = plane if floor is None else floor
     route = estimate_route(points, plane)
     centre = 0.0 if route is None else route[0] * x_center + route[1] * x_center ** 2
     floor_z = floor_height(plane, x_center, centre + SCENARIOS[scenario]['lateral'])
+    if SCENARIOS[scenario].get('on_rails'):
+        floor_z += -RAIL_BELOW_LIDAR_M - floor_height(plane, 0.0, 0.0)
     lo, hi = box_at(scenario, x_center, time_s, floor_z, centre)
     return lo, hi, route
 
@@ -258,7 +312,9 @@ def inject(args):
         sensor = np.stack([x.ravel(), y.ravel(), z.ravel()], axis=1).astype(float)
         target = to_target(sensor)
         lo, hi, route = place(args.scenario, *plan[stamp], target)
-        moved, hidden = occlude(target, lo, hi)
+        empty = (to_target(ray_directions(sensor, msg.height, msg.width))
+                 if msg.height > 1 else None)
+        moved, hidden = occlude(target, lo, hi, empty)
         back = to_sensor(moved)
         x[...] = back[:, 0].reshape(x.shape)
         y[...] = back[:, 1].reshape(y.shape)

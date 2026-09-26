@@ -33,6 +33,24 @@ class InjectObstacleTests(unittest.TestCase):
         np.testing.assert_allclose(moved[0], [10.0, 0.0, 0.0])
         np.testing.assert_allclose(moved[1:], points[1:])
 
+    def test_rays_without_a_return_get_one_on_the_box(self):
+        lo, hi = np.array([10.0, -0.5, -1.0]), np.array([11.0, 0.5, 1.0])
+        points = np.array([[np.nan] * 3, [np.nan] * 3, [30.0, 10.0, 0.0]])
+        directions = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [np.nan] * 3])
+        moved, count = inject.occlude(points, lo, hi, directions)
+        self.assertEqual(count, 1)
+        np.testing.assert_allclose(moved[0], [10.0, 0.0, 0.0])  # the ray meets the near face
+        self.assertTrue(np.isnan(moved[1]).all())               # misses the box: no return
+        np.testing.assert_allclose(moved[2], points[2])
+
+    def test_empty_cells_take_their_row_and_column_ray(self):
+        # 2 channels x 3 azimuths; the middle cell of the first channel has no return.
+        grid = np.array([[[10.0, -1.0, 1.0], [np.nan] * 3, [10.0, 1.0, 1.0]],
+                         [[10.0, -1.0, -1.0], [10.0, 0.0, -1.0], [10.0, 1.0, -1.0]]])
+        directions = inject.ray_directions(grid.reshape(-1, 3), 2, 3)
+        expected = np.array([10.0, 0.0, 1.0]) / np.linalg.norm([10.0, 0.0, 1.0])
+        np.testing.assert_allclose(directions[1], expected, atol=0.01)
+
     def test_axis_parallel_rays_are_handled(self):
         directions = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
         entry = inject.ray_box_entry(directions, [10, -1, -1], [12, 1, 1])
@@ -58,6 +76,16 @@ class InjectObstacleTests(unittest.TestCase):
         rails = [[x, y, -1.15 + 0.01 * x] for x in np.arange(3, 60, 0.05) for y in (-0.76, 0.76)]
         plane = inject.estimate_floor(np.array(floor + rails))
         self.assertAlmostEqual(inject.floor_height(plane, 30.0, 0.0), -1.2, delta=0.05)
+
+    def test_box_lies_on_the_rails_not_in_the_trough(self):
+        # Floor 1.4 m below the lidar; the rail heads are 1.075 m below it.
+        points = np.array([[x, y, -1.4] for x in np.arange(3.0, 60.0, 0.25)
+                           for y in np.arange(-1.0, 1.01, 0.25)])
+        plane = [0.0, 0.0, 1.0, 1.4]
+        lo, _, _ = inject.place('box', 20.0, 0.0, plane, points)
+        self.assertAlmostEqual(lo[2], -1.075, delta=0.02)
+        lo, _, _ = inject.place('static', 20.0, 0.0, plane, points)
+        self.assertAlmostEqual(lo[2], -1.4, delta=0.02)  # a person stands on the floor
 
     def test_obstacle_is_placed_on_a_curved_route(self):
         radius = 300.0

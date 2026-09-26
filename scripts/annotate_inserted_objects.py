@@ -31,6 +31,9 @@ CLUSTER_GAP_X_M = 3.0
 CLUSTER_GAP_Y_M = 1.5
 # Same visibility rule as the synthetic benchmark (inject_obstacle.py).
 MIN_RETURNS = 10
+# An inside object with at least this many returns, though fewer than MIN_RETURNS, can already
+# be found: its frames are not scored rather than counted as empty.
+FAINT_RETURNS = 3
 HORIZON_M = 200.0
 NEAR_M = 1.0  # Closer than this the object is at the lidar and has no forward face left.
 SEED_BEFORE_S, SEED_AFTER_S, SEED_MAX_X_M = 1.0, 0.6, 25.0
@@ -38,13 +41,13 @@ DEFAULT_SPEED_MPS = 10.0
 BACK_MAX_MISSES, FORWARD_MAX_MISSES = 15, 5
 
 # Frame kinds, the highest priority wins. Before an inside object is observable it counts as
-# absent, as in the synthetic benchmark; only its passage and unknown observable returns are
-# left unscored.
-PRIORITY = {'positive': 0, 'passing': 1, 'unexplained': 2, 'outside': 3, 'unobservable': 4,
-            'far': 5, 'empty': 6}
+# absent, as in the synthetic benchmark, unless it is already faintly seen; its passage, faint
+# frames and unknown observable returns are left unscored.
+PRIORITY = {'positive': 0, 'passing': 1, 'unexplained': 2, 'faint': 3, 'outside': 4,
+            'unobservable': 5, 'far': 6, 'empty': 7}
 LABEL = {'positive': 'positive', 'passing': 'uncertain', 'unexplained': 'uncertain',
-         'outside': 'negative', 'unobservable': 'negative', 'far': 'negative',
-         'empty': 'negative'}
+         'faint': 'uncertain', 'outside': 'negative', 'unobservable': 'negative',
+         'far': 'negative', 'empty': 'negative'}
 
 
 def to_target(points):
@@ -258,13 +261,15 @@ def follow_object(frames, item):
     return track
 
 
-def label_frames(frames, tracks, horizon=HORIZON_M, min_returns=MIN_RETURNS, near=NEAR_M):
+def label_frames(frames, tracks, horizon=HORIZON_M, min_returns=MIN_RETURNS, near=NEAR_M,
+                 faint_returns=FAINT_RETURNS):
     """
     Kind of every frame (see PRIORITY) with the objects behind it, and the span of each object.
 
     An inside object is positive from its first frame with min_returns returns within the
     horizon to its last frame at least near ahead, then passing until the train reaches it at
-    its last approach speed. Outside and above objects make their frames negative.
+    its last approach speed. Before that, frames where it has at least faint_returns returns
+    are faint (not scored). Outside and above objects make their frames negative.
     """
     kinds = ['empty'] * len(frames)
     notes = [set() for _ in frames]
@@ -293,8 +298,12 @@ def label_frames(frames, tracks, horizon=HORIZON_M, min_returns=MIN_RETURNS, nea
         spans[track['id']] = (first, last)
         for i in range(first, last + 1):
             mark(i, 'positive', track['id'])
+        # From its first faint sighting on, every frame is faint until it is observable.
+        faint = next((i for i in within if i < first and track['n'][i] >= faint_returns), first)
+        for i in range(faint, first):
+            mark(i, 'faint', track['id'])
         for i in within:
-            if i < first:
+            if i < faint:
                 mark(i, 'unobservable', track['id'])
             elif i > last:
                 mark(i, 'passing', track['id'])
@@ -328,8 +337,11 @@ def evidence(kinds, notes, tracks, lo, hi, horizon=HORIZON_M, min_returns=MIN_RE
                 parts.append(f"{track['id']} {max(xs):.1f}->{min(xs):.1f} m")
         return (f'Inside object observed ahead (at least {min_returns} returns within '
                 f'{horizon:g} m): ' + ', '.join(parts) + '.')
-    if 'passing' in names or 'unexplained' in names:
+    if 'passing' in names or 'unexplained' in names or 'faint' in names:
         parts = []
+        if 'faint' in names:
+            parts.append(f'inside object already seen, with fewer than {min_returns} returns: ' +
+                         ', '.join(names['faint']))
         if 'passing' in names:
             parts.append(f'inside object closer than {near:g} m or out of view until the train '
                          'reaches it: ' + ', '.join(names['passing']))
@@ -429,20 +441,19 @@ def limits(frames, bag_id):
         'metrics add their own matching margin); uncertainty_m is not estimated. Visibility rule '
         'of the synthetic benchmark (inject_obstacle.py): an inside object is positive from the '
         f'first frame with at least {MIN_RETURNS} returns within {HORIZON_M:g} m to its last '
-        f'frame at least {NEAR_M:g} m ahead; before that it counts as absent. Uncertain (not '
-        f'scored): an inside object closer than {NEAR_M:g} m or out of view until the train '
-        'reaches it at its last approach speed. Negative: everything else, including objects the '
-        'organizers class outside or above the envelope. Inside, outside and above are the '
-        'organizer classes; the envelope itself is not given, and the current detector corridor '
-        '(forward_sector_assumed.yaml: +-2 m, 3.5 m above the track) also contains objects 5 and '
-        '7 and the lower part of 8, so an alarm on them is false against the classes but '
-        'expected from that corridor. The positive frames do not depend on a detector: frames '
-        'beyond its range stay positive; metrics.py reports object recall by distance and, apart '
-        'from the totals, within the range of the run profile. It also counts alarms on the '
-        'outside and above objects on every frame, including frames that another object makes '
-        'positive. Axes are the assumed forward-sector frame. The legacy person_roi_assumed_m key '
-        'is the generic object ROI read by the metrics; returns is the number of inserted returns '
-        'behind the reference.')
+        f'frame at least {NEAR_M:g} m ahead; before that it counts as absent until its first '
+        f'frame with at least {FAINT_RETURNS} returns. Uncertain (not scored): from that frame '
+        f'until it is positive, and an inside object closer than {NEAR_M:g} m or out of view '
+        'until the train reaches it at its last approach speed. Negative: everything else, '
+        'including objects the organizers class outside or above the envelope. Inside, outside '
+        'and above are the organizer classes against their envelope of 2.1 x 3.0 m (26.09), which'
+        ' the detector corridor of forward_sector_assumed.yaml follows. The positive frames do '
+        'not depend on a detector: frames beyond its range stay positive; metrics.py reports '
+        'object recall by distance and, apart from the totals, within the range of the run '
+        'profile. It also counts alarms on the outside and above objects on every frame, '
+        'including frames that another object makes positive. Axes are the assumed forward-sector'
+        ' frame. The legacy person_roi_assumed_m key is the generic object ROI read by the '
+        'metrics; returns is the number of inserted returns behind the reference.')
 
 
 class Dumper(yaml.SafeDumper):

@@ -51,6 +51,8 @@ struct ObstacleCandidate {
   // All of its evidence lies within the route uncertainty of the envelope edge: the object may
   // be beside the envelope. It is followed but does not count towards confirmation.
   bool edge{false};
+  // Least lateral distance of its evidence from the route centre (m).
+  double closest_offset_m{0};
 };
 // Route centre ahead, y = c1 * x + c2 * x^2, estimated from the tunnel walls. Invalid means
 // the straight corridor y = 0 is used and the gauge channel is off.

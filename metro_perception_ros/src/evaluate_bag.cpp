@@ -218,7 +218,8 @@ int main(int argc, char** argv) {
                << candidate.center.z << "],\"size\":[" << candidate.size.x << ','
                << candidate.size.y << ',' << candidate.size.z
                << "],\"channels\":" << static_cast<unsigned>(candidate.channels)
-               << ",\"edge\":" << (candidate.edge ? "true" : "false") << '}';
+               << ",\"edge\":" << (candidate.edge ? "true" : "false")
+               << ",\"closest_offset_m\":" << candidate.closest_offset_m << '}';
       }
       output << "]";
       output << ",\"evaluation_region_valid\":"

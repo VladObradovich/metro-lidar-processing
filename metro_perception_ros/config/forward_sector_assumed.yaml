@@ -55,6 +55,9 @@ detector:
   # frame's smoothing correction, may lie beside the envelope: it is followed but confirmed
   # only once nearer. Most false alarms on curves at 40-80 m were of this kind.
   route_margin_per_m: 0.005
+  # Near the farthest wall support the fitted route is least certain (a curve beginning past
+  # it): evidence within 5 m of that end is treated the same way.
+  route_support_margin_m: 5.0
   # A close large object hides the floor; the last floor is kept for 3 frames to find it.
   ground_hold_frames: 3
   # Thin columns from the floor to the vault (double-track tunnels) are structure.
@@ -92,3 +95,6 @@ temporal:
   far_confirm_from_m: 60.0
   far_confirm_hits: 4
   far_confirm_window: 5
+  # Moving at 3 m/s or more, a track needs gauge evidence: the gauge sees whatever is inside
+  # the envelope, and motion evidence alone was a failure of the background difference.
+  motion_gauge_speed_mps: 3.0

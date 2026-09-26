@@ -63,6 +63,9 @@ struct AlgorithmConfig {
   // candidate whose evidence stays within it of the envelope edge is marked `edge`; 0 disables.
   double route_margin_per_m{0.0};
   double route_margin_max_m{0.5};
+  // The wall fit is least certain near its farthest support: evidence less than this far before
+  // route.max_x is marked `edge` as well; 0 disables.
+  double route_support_margin_m{0.0};
   // Gauge channel: returns inside a narrow route gauge are candidates without any history,
   // so obstacles fixed in the world are found while the train approaches them. Long
   // gauge-only structures (walls, platform edges) are rejected by length.
@@ -154,6 +157,7 @@ struct AlgorithmConfig {
         !std::isfinite(route_smoothing) || route_smoothing < 0 || route_smoothing >= 1 ||
         !std::isfinite(route_margin_per_m) || route_margin_per_m < 0 ||
         !std::isfinite(route_margin_max_m) || route_margin_max_m < 0 ||
+        !std::isfinite(route_support_margin_m) || route_support_margin_m < 0 ||
         !std::isfinite(static_half_width_m) || static_half_width_m <= 0 ||
         !std::isfinite(static_inner_half_width_m) || static_inner_half_width_m <= 0 ||
         static_inner_half_width_m > static_half_width_m ||
@@ -208,6 +212,15 @@ struct TemporalConfig {
   // where they are least certain.
   std::size_t far_confirm_hits{1}, far_confirm_window{1};
   double far_confirm_from_m{0.0};
+  // At or above this valid ego speed a track needs gauge evidence to be confirmed: moving, the
+  // gauge sees whatever is inside the envelope, and motion evidence alone is mostly a failure
+  // of the background difference. 0 disables.
+  double motion_gauge_speed_mps{0.0};
+  // A track whose evidence lies farther than outer_offset_m from the route centre (the outer
+  // part of the envelope, where route errors bring side structures in) also needs this rule;
+  // outer_offset_m 0 disables.
+  double outer_offset_m{0.0};
+  std::size_t outer_confirm_hits{1}, outer_confirm_window{1};
   // A confirmed track survives this many missed frames minus one, coasting on ego motion.
   std::size_t release_misses{1};
   // Association gate: base + fraction of range + object and unknown-ego motion over dt.
@@ -235,12 +248,15 @@ struct TemporalConfig {
     if (!rule_ok(confirm_hits, confirm_window) ||
         !rule_ok(gauge_confirm_hits, gauge_confirm_window) ||
         !rule_ok(far_confirm_hits, far_confirm_window) || !std::isfinite(far_confirm_from_m) ||
-        far_confirm_from_m < 0 || release_misses < 1 || release_misses > 32 ||
-        !std::isfinite(gate_base_m) || gate_base_m <= 0 || !std::isfinite(gate_range_fraction) ||
-        gate_range_fraction < 0 || !std::isfinite(object_max_speed_mps) ||
-        object_max_speed_mps < 0 || !std::isfinite(unknown_ego_speed_mps) ||
-        unknown_ego_speed_mps < 0 || !std::isfinite(still_speed_mps) || still_speed_mps < 0 ||
-        !std::isfinite(max_gap_s) || max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024 ||
+        !rule_ok(outer_confirm_hits, outer_confirm_window) ||
+        !std::isfinite(motion_gauge_speed_mps) || motion_gauge_speed_mps < 0 ||
+        !std::isfinite(outer_offset_m) || outer_offset_m < 0 || far_confirm_from_m < 0 ||
+        release_misses < 1 || release_misses > 32 || !std::isfinite(gate_base_m) ||
+        gate_base_m <= 0 || !std::isfinite(gate_range_fraction) || gate_range_fraction < 0 ||
+        !std::isfinite(object_max_speed_mps) || object_max_speed_mps < 0 ||
+        !std::isfinite(unknown_ego_speed_mps) || unknown_ego_speed_mps < 0 ||
+        !std::isfinite(still_speed_mps) || still_speed_mps < 0 || !std::isfinite(max_gap_s) ||
+        max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024 ||
         !std::isfinite(assumed_clear_min_range_m) || assumed_clear_min_range_m <= 0)
       throw std::invalid_argument("Invalid temporal configuration");
   }

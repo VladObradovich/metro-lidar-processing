@@ -67,6 +67,7 @@ GateDecision AssessmentMonitor::on_analysis(const FrameAnalysis& frame, Clock::t
         candidate.channels |= metro_perception_core::ObstacleCandidate::kMotion;
       if (reason == "GAUGE") candidate.channels |= metro_perception_core::ObstacleCandidate::kGauge;
       if (reason == "EDGE") candidate.edge = true;
+      if (reason.rfind("OFFSET=", 0) == 0) candidate.closest_offset_m = std::stod(reason.substr(7));
     }
     result.candidates.push_back(candidate);
   }

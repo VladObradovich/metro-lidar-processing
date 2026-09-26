@@ -86,6 +86,7 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
     track.distance_m = candidate.distance_m;
     track.channels |= candidate.channels;
     track.support = candidate.support_points;
+    track.offset = candidate.closest_offset_m;
     if (!candidate.edge) track.history |= 1u;
     track.misses = 0;
   };
@@ -110,8 +111,8 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
   }
 
   // Confirmation, then removal of released or stale tracks.
-  const std::size_t longest =
-      std::max({config_.confirm_window, config_.gauge_confirm_window, config_.far_confirm_window});
+  const std::size_t longest = std::max({config_.confirm_window, config_.gauge_confirm_window,
+                                        config_.far_confirm_window, config_.outer_confirm_window});
   const double evaluated = frame.evaluation_region_valid && std::isfinite(frame.evaluated_range_m)
                                ? frame.evaluated_range_m
                                : 0.0;
@@ -122,8 +123,14 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
     const bool far =
         (evaluated > 0 && track.distance_m > evaluated) ||
         (config_.far_confirm_from_m > 0 && track.distance_m > config_.far_confirm_from_m);
-    if (!track.confirmed && hits_in(track.history, window) >= needed &&
-        (!far || hits_in(track.history, config_.far_confirm_window) >= config_.far_confirm_hits))
+    const bool outer = config_.outer_offset_m > 0 && track.offset > config_.outer_offset_m;
+    const bool needs_gauge = config_.motion_gauge_speed_mps > 0 && ego &&
+                             frame.ego_speed_mps >= config_.motion_gauge_speed_mps &&
+                             !(track.channels & ObstacleCandidate::kGauge);
+    if (!track.confirmed && !needs_gauge && hits_in(track.history, window) >= needed &&
+        (!far || hits_in(track.history, config_.far_confirm_window) >= config_.far_confirm_hits) &&
+        (!outer ||
+         hits_in(track.history, config_.outer_confirm_window) >= config_.outer_confirm_hits))
       track.confirmed = true;
     // Standing still, the background difference has no odometry or disocclusion error:
     // new MOTION evidence is a real change and is confirmed when it is first seen.
@@ -149,8 +156,8 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
 }
 
 std::vector<TrackSummary> TemporalMonitor::summaries() const {
-  const std::size_t longest =
-      std::max({config_.confirm_window, config_.gauge_confirm_window, config_.far_confirm_window});
+  const std::size_t longest = std::max({config_.confirm_window, config_.gauge_confirm_window,
+                                        config_.far_confirm_window, config_.outer_confirm_window});
   std::vector<TrackSummary> out;
   for (const auto& track : tracks_) {
     TrackSummary summary;

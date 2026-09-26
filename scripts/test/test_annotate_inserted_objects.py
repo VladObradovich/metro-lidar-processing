@@ -126,10 +126,11 @@ class TrackTest(unittest.TestCase):
         self.assertEqual(first, 14)
         self.assertEqual(last, 39)
         self.assertTrue(all(k == 'positive' for k in kinds[14:40]))
-        # Before it is observable the object counts as absent, as in the synthetic benchmark.
-        self.assertEqual(kinds[0], 'unobservable')
-        self.assertEqual(kinds[13], 'unobservable')
-        self.assertEqual(tool.LABEL[kinds[13]], 'negative')
+        # Before it is observable the object counts as absent, as in the synthetic benchmark,
+        # unless it is already faintly seen (400 / x >= 3 from x = 133 m): then not scored.
+        self.assertEqual(kinds[0], 'faint')
+        self.assertEqual(kinds[13], 'faint')
+        self.assertEqual(tool.LABEL[kinds[13]], 'uncertain')
         self.assertEqual(kinds[40], 'passing')  # 1.5 m at 15 m/s: reached within 0.1 s
         self.assertEqual(tool.LABEL[kinds[40]], 'uncertain')
         self.assertEqual(kinds[42], 'empty')
@@ -151,7 +152,8 @@ class TrackTest(unittest.TestCase):
         tracks = [hand_track(frames, 'a', 'inside', 0), hand_track(frames, 'b', 'outside', 1)]
         kinds, _, spans, _ = tool.label_frames(frames, tracks, horizon=200.0, min_returns=10,
                                                near=1.0)
-        self.assertEqual(kinds[:5], ['outside'] * 5)  # the inside object is not observable yet
+        # The inside object is only faintly seen yet: those frames are not scored.
+        self.assertEqual(kinds[:5], ['faint'] * 5)
         self.assertEqual(kinds[5:], ['positive'] * 5)
         self.assertEqual(spans['a'], (5, 9))
 

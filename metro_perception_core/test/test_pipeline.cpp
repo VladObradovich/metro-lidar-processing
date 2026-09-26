@@ -1078,3 +1078,25 @@ TEST(Candidates, ThinColumnFromFloorToVaultIsStructure) {
   EXPECT_EQ(run(4.5), 0u);  // A pillar up to the vault.
   EXPECT_EQ(run(2.0), 1u);  // A post or a person on the track ends below the vault.
 }
+
+TEST(Route, EvidenceAtTheEndOfTheWallSupportIsMarked) {
+  // Walls to 60 m only: the route is fitted to 60 m.
+  auto scene = verified_input();
+  add_floor(scene, 1, 90);
+  for (double x = 1; x <= 60; x += 0.25)
+    for (double h = 0.2; h <= 3.0; h += 0.2)
+      for (const double side : {-1.0, 1.0}) scene.points.push_back({x, side * 2.3, -1.0 + h});
+  auto config = single_frame_config();
+  config.corridor_half_width_m = 1.05;
+  auto edge_at = [&](double x) {
+    auto input = scene;
+    add_box(input, x, -0.3, 0.3, 0.3, 1.7);
+    const auto frame = PerceptionPipeline(config).process(input);
+    EXPECT_EQ(frame.candidates.size(), 1u) << x;
+    return frame.candidates.empty() ? false : frame.candidates.front().edge;
+  };
+  EXPECT_FALSE(edge_at(57));  // Disabled.
+  config.route_support_margin_m = 5;
+  EXPECT_TRUE(edge_at(57));   // Within 5 m of the last wall support.
+  EXPECT_FALSE(edge_at(40));  // Well inside it.
+}

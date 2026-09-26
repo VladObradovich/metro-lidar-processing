@@ -772,7 +772,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   // A thin column standing from the floor up past the envelope to the vault is tunnel
   // structure (the pillars between the tracks of a double tunnel), not an obstacle: an object
   // on the track ends below the vault, and a suspended one does not reach the floor.
-  constexpr double kPoleMaxFootprintM = 0.8, kPoleMaxGapM = 0.6, kPoleAboveM = 0.8;
+  constexpr double kPoleMaxFootprintM = 0.8, kPoleMaxGapM = 1.0, kPoleAboveM = 0.3;
   auto pole = [&](const PointXYZ& lo, const PointXYZ& hi) {
     if (!config.pole_rejection || hi.x - lo.x > kPoleMaxFootprintM ||
         hi.y - lo.y > kPoleMaxFootprintM)
@@ -973,8 +973,11 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     candidate.center = {(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2};
     candidate.size = {hi.x - lo.x, hi.y - lo.y, hi.z - lo.z};
     candidate.nearest_point = nearest;
-    candidate.edge = route_margin(nearest.x) > 0 &&
-                     closest_offset > config.corridor_half_width_m - route_margin(nearest.x);
+    candidate.edge = (route_margin(nearest.x) > 0 &&
+                      closest_offset > config.corridor_half_width_m - route_margin(nearest.x)) ||
+                     (config.route_support_margin_m > 0 && route.valid &&
+                      nearest.x > route.max_x - config.route_support_margin_m);
+    candidate.closest_offset_m = closest_offset;
     candidate.distance_m = distance;
     candidate.distance_valid = std::isfinite(distance) && distance >= 0;
     candidate.support_points = static_cast<std::uint32_t>(support);

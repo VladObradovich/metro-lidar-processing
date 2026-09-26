@@ -269,6 +269,7 @@ class PerceptionNode : public rclcpp::Node {
       if (candidate.channels & metro_perception_core::ObstacleCandidate::kGauge)
         item.reasons.push_back("GAUGE");
       if (candidate.edge) item.reasons.push_back("EDGE");
+      item.reasons.push_back("OFFSET=" + std::to_string(candidate.closest_offset_m));
     }
     for (const auto& segment : frame.corridor) {
       auto& item = output.corridor.emplace_back();

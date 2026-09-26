@@ -122,7 +122,11 @@ class Visualizer : public rclcpp::Node {
         box.scale.y = std::max(box.scale.y, 0.05);
         box.scale.z = std::max(box.scale.z, 0.05);
         // Gauge-only evidence (object fixed in the route) is blue, motion evidence red.
-        const bool gauge_only = object.reasons.size() == 1 && object.reasons.front() == "GAUGE";
+        const auto has = [&](const char* reason) {
+          return std::find(object.reasons.begin(), object.reasons.end(), reason) !=
+                 object.reasons.end();
+        };
+        const bool gauge_only = has("GAUGE") && !has("MOTION");
         box.color.r = gauge_only ? 0.2 : 1.0;
         box.color.g = is_nearest ? 0.1 : 0.6;
         box.color.b = gauge_only ? 1.0 : 0.0;

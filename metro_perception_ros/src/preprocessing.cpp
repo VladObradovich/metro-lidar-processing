@@ -56,6 +56,10 @@ metro_perception_core::TemporalConfig load_temporal_config(const std::string& pa
     read_count("far_confirm_hits", c.far_confirm_hits);
     read_count("far_confirm_window", c.far_confirm_window);
     read_double("far_confirm_from_m", c.far_confirm_from_m);
+    read_double("motion_gauge_speed_mps", c.motion_gauge_speed_mps);
+    read_double("outer_offset_m", c.outer_offset_m);
+    read_count("outer_confirm_hits", c.outer_confirm_hits);
+    read_count("outer_confirm_window", c.outer_confirm_window);
     read_count("release_misses", c.release_misses);
     read_double("gate_base_m", c.gate_base_m);
     read_double("gate_range_fraction", c.gate_range_fraction);
@@ -178,6 +182,7 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("route_smoothing", c.algorithm.route_smoothing);
     read_double("route_margin_per_m", c.algorithm.route_margin_per_m);
     read_double("route_margin_max_m", c.algorithm.route_margin_max_m);
+    read_double("route_support_margin_m", c.algorithm.route_support_margin_m);
     if (detector["static_channel"])
       c.algorithm.static_channel = detector["static_channel"].as<bool>();
     if (detector["gauge_certifies_clear"])

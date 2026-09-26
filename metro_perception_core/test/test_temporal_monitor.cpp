@@ -488,3 +488,45 @@ TEST(Tracker, TracksBeyondTheFarDistanceAlsoNeedTheFarRule) {
     EXPECT_EQ(far_confirmed, i >= 2) << i;
   }
 }
+
+TEST(Tracker, MovingMotionOnlyTracksNeedGaugeEvidence) {
+  auto config = rule(2, 3);
+  config.motion_gauge_speed_mps = 3.0;
+  const Seen motion{30, 0, ObstacleCandidate::kMotion},
+      both{40, 0, ObstacleCandidate::kMotion | ObstacleCandidate::kGauge};
+  for (const double speed : {10.0, 0.0}) {
+    TemporalMonitor monitor(config);
+    Assessment a;
+    for (int i = 0; i < 3; ++i)
+      a = monitor.update(tracked_frame({motion, both}, speed), (i + 1) * kFrameNs);
+    std::size_t confirmed_motion = 0, confirmed_both = 0;
+    for (const auto& t : a.tracks) {
+      if (!t.confirmed) continue;
+      (t.channels == ObstacleCandidate::kMotion ? confirmed_motion : confirmed_both) += 1;
+    }
+    EXPECT_EQ(confirmed_both, 1u) << speed;
+    EXPECT_EQ(confirmed_motion, speed > 0 ? 0u : 1u) << speed;  // Standing still: as before.
+  }
+}
+
+TEST(Tracker, OuterTracksNeedTheOuterRule) {
+  auto config = rule(2, 3);
+  config.outer_offset_m = 0.5;
+  config.outer_confirm_hits = 3;
+  config.outer_confirm_window = 4;
+  TemporalMonitor monitor(config);
+  auto frame_with = [](double offset) {
+    auto frame =
+        tracked_frame({{30, 0, ObstacleCandidate::kGauge}, {50, 0.8, ObstacleCandidate::kGauge}});
+    frame.candidates[0].closest_offset_m = 0.0;
+    frame.candidates[1].closest_offset_m = offset;
+    return frame;
+  };
+  for (int i = 0; i < 3; ++i) {
+    const auto a = monitor.update(frame_with(0.7), (i + 1) * kFrameNs);
+    bool centre = false, outer = false;
+    for (const auto& t : a.tracks) (t.distance_m < 40 ? centre : outer) = t.confirmed;
+    EXPECT_EQ(centre, i >= 1) << i;
+    EXPECT_EQ(outer, i >= 2) << i;
+  }
+}
