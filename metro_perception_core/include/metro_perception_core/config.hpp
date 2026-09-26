@@ -47,6 +47,10 @@ struct AlgorithmConfig {
   // Route centre from the tunnel walls; the corridor follows curves instead of a line.
   bool route_estimation{true};
   double route_min_radius_m{150.0};
+  // Weight of the previous route in the current one. Along an arc the quadratic route seen
+  // from the car barely changes between frames, while a single fit to the walls jitters by
+  // about a metre at 60 m; 0 uses each frame's fit alone.
+  double route_smoothing{0.0};
   // Gauge channel: returns inside a narrow route gauge are candidates without any history,
   // so obstacles fixed in the world are found while the train approaches them. Long
   // gauge-only structures (walls, platform edges) are rejected by length.
@@ -61,8 +65,25 @@ struct AlgorithmConfig {
   double static_outer_min_width_m{0.15};
   std::size_t static_outer_min_points{10};
   double static_min_height_m{0.3};
+  // The lidar stands this far above the rail heads (1.075 m on the organizers' train; 0
+  // disables). The floor found under a deep trough, as at stations, lies well below the rails,
+  // and what lies in the trough is not an obstacle: returns count only from rail_head_margin_m
+  // above the rail heads, on top of the floor-based minimum heights.
+  double sensor_height_above_rail_m{0.0};
+  double rail_head_margin_m{0.1};
   double static_max_height_m{2.5};
   double static_max_length_m{3.0};
+  // Far gauge: past the supported floor the lidar sees almost no floor, so a clear path is not
+  // certified there, but a solid object still returns. Up to far_gauge_max_x_m (0 disables)
+  // and the farthest wall support, returns inside a narrower gauge (the route estimate and the
+  // extrapolated floor are less certain there) and high enough above the extrapolated floor
+  // are gauge evidence; a far component needs far_min_extent_m of vertical extent.
+  double far_gauge_max_x_m{0.0};
+  double far_gauge_half_width_m{0.7};
+  double far_gauge_min_height_m{0.6};
+  double far_min_extent_m{0.4};
+  // Largest route curvature (1/radius) at which the far gauge is used; 0 means any.
+  double far_gauge_max_curvature{0.0};
   // Returns below low_object_height_m above the bed count as obstacle evidence only between
   // the rails: rails (+-0.76 m), the contact rail (~1.5 m), cable ducts and walkways are low
   // and lie outside low_object_half_width_m. Tall objects count anywhere in the corridor.
@@ -113,6 +134,7 @@ struct AlgorithmConfig {
         !std::isfinite(ego_max_speed_mps) || ego_max_speed_mps <= 0 || ego_max_speed_mps > 60 ||
         !std::isfinite(ego_min_contrast) || ego_min_contrast <= 0 || ego_min_contrast > 0.3 ||
         !std::isfinite(route_min_radius_m) || route_min_radius_m < 20 ||
+        !std::isfinite(route_smoothing) || route_smoothing < 0 || route_smoothing >= 1 ||
         !std::isfinite(static_half_width_m) || static_half_width_m <= 0 ||
         !std::isfinite(static_inner_half_width_m) || static_inner_half_width_m <= 0 ||
         static_inner_half_width_m > static_half_width_m ||
@@ -121,8 +143,15 @@ struct AlgorithmConfig {
         !std::isfinite(static_outer_min_width_m) || static_outer_min_width_m <= 0 ||
         static_outer_min_width_m > static_half_width_m || static_outer_min_points == 0 ||
         !std::isfinite(static_min_height_m) || static_min_height_m <= 0 ||
-        !std::isfinite(static_max_height_m) || static_max_height_m <= static_min_height_m ||
-        !std::isfinite(static_max_length_m) || static_max_length_m <= 0 ||
+        !std::isfinite(sensor_height_above_rail_m) || sensor_height_above_rail_m < 0 ||
+        sensor_height_above_rail_m > 5 || !std::isfinite(rail_head_margin_m) ||
+        rail_head_margin_m < 0 || !std::isfinite(static_max_height_m) ||
+        static_max_height_m <= static_min_height_m || !std::isfinite(static_max_length_m) ||
+        static_max_length_m <= 0 || !std::isfinite(far_gauge_max_x_m) || far_gauge_max_x_m < 0 ||
+        far_gauge_max_x_m > 300 || !std::isfinite(far_gauge_half_width_m) ||
+        far_gauge_half_width_m <= 0 || !std::isfinite(far_gauge_min_height_m) ||
+        far_gauge_min_height_m < 0 || !std::isfinite(far_min_extent_m) || far_min_extent_m < 0 ||
+        !std::isfinite(far_gauge_max_curvature) || far_gauge_max_curvature < 0 ||
         !std::isfinite(low_object_height_m) || low_object_height_m < 0 ||
         !std::isfinite(low_object_half_width_m) || low_object_half_width_m < 0 ||
         !std::isfinite(low_bump_max_length_m) || low_bump_max_length_m <= 0 ||
@@ -155,6 +184,9 @@ struct TemporalConfig {
   std::size_t confirm_hits{1}, confirm_window{1};
   // Stricter rule for tracks seen only by the gauge channel, which has no history evidence.
   std::size_t gauge_confirm_hits{1}, gauge_confirm_window{1};
+  // Also required of a track beyond the evaluated range (the far gauge), where the route and
+  // the floor are extrapolated.
+  std::size_t far_confirm_hits{1}, far_confirm_window{1};
   // A confirmed track survives this many missed frames minus one, coasting on ego motion.
   std::size_t release_misses{1};
   // Association gate: base + fraction of range + object and unknown-ego motion over dt.
@@ -180,7 +212,8 @@ struct TemporalConfig {
       return hits >= 1 && window >= hits && window <= 32;
     };
     if (!rule_ok(confirm_hits, confirm_window) ||
-        !rule_ok(gauge_confirm_hits, gauge_confirm_window) || release_misses < 1 ||
+        !rule_ok(gauge_confirm_hits, gauge_confirm_window) ||
+        !rule_ok(far_confirm_hits, far_confirm_window) || release_misses < 1 ||
         release_misses > 32 || !std::isfinite(gate_base_m) || gate_base_m <= 0 ||
         !std::isfinite(gate_range_fraction) || gate_range_fraction < 0 ||
         !std::isfinite(object_max_speed_mps) || object_max_speed_mps < 0 ||

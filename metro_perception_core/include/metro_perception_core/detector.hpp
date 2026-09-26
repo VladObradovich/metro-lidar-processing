@@ -23,6 +23,7 @@ class GeometricDetector {
     last_speed_mps_ = 0;
     speed_.reset();
     ++motion_epoch_;
+    route_ = {};
   }
 
  private:
@@ -51,5 +52,7 @@ class GeometricDetector {
   double odometry_m_{0};
   double last_speed_mps_{0};  // Speed of the last frame with valid odometry.
   std::uint64_t motion_epoch_{0};
+  // Route of the previous analysed frame, for route_smoothing.
+  RouteEstimate route_;
 };
 }  // namespace metro_perception_core

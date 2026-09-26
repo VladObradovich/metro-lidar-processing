@@ -18,14 +18,18 @@ detection_roi:
 
 # Experimental B0 detection parameters; override only after reviewing labelled scenes.
 detector:
-  corridor_half_width_m: 2.0
-  corridor_height_m: 3.5
+  # Train clearance envelope from the organizers (26.09): 2.1 m wide, 3.0 m high above the
+  # track. The height is counted from the floor found under the route, as in their synthetic
+  # scene, where the "above" box starts 3.1 m and the hanging strip ends 2.9 m above it.
+  corridor_half_width_m: 1.05
+  corridor_height_m: 3.0
   ground_max_slope: 0.15
   ground_inlier_tolerance_m: 0.15
   ground_max_gap_m: 10.0
   ground_min_bin_points: 30
   obstacle_min_height_m: 0.25
-  candidate_margin_m: 0.5
+  # Floor search, background history and candidate extent keep the former 2.5 m band.
+  candidate_margin_m: 1.45
   angular_cell_deg: 0.25
   min_ground_inliers: 30
   min_candidate_cells: 3
@@ -39,14 +43,23 @@ detector:
   ego_min_contrast: 0.005
   # An empty static gauge is evidence of a clear path up to the gauge's range.
   gauge_certifies_clear: true
-  # The static gauge stays at the default 0.9 m: widened to 1.25 m it found side objects in
-  # cloud_with_fake_obj but raised alarms on switch and track-side equipment in real bags.
+  # The static gauge covers the whole envelope; the outer strip past 0.9 m keeps its stricter
+  # rules for compact objects (rail and platform fragments reach into it).
+  static_half_width_m: 1.05
+  static_inner_half_width_m: 0.9
+  # While moving, evidence without the gauge channel must intrude into the envelope itself.
+  envelope_half_width_m: 1.05
+  # The wall fit of the route jitters by about a metre at 60 m between frames on curves.
+  route_smoothing: 0.5
+  # Lidar 1.075 m above the rail heads (organizers, 24.09): at stations the floor found is the
+  # bottom of a deep trough, whose contents are not obstacles.
+  sensor_height_above_rail_m: 1.075
   low_bump_max_length_m: 0.6
   low_bump_min_width_m: 0.15
   low_bump_min_prominence_m: 0.15
   low_bump_min_context_points: 10
   hanging_channel: true
-  hanging_tip_max_height_m: 3.15
+  hanging_tip_max_height_m: 3.0
   hanging_min_vertical_span_m: 0.5
   hanging_max_footprint_m: 0.25
   hanging_min_points: 8

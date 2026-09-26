@@ -434,3 +434,19 @@ TEST(Tracker, InvalidConfigurationIsRejected) {
   config.still_speed_mps = -1;
   EXPECT_THROW(TemporalMonitor{config}, std::invalid_argument);
 }
+
+TEST(Tracker, TracksBeyondTheEvaluatedRangeAlsoNeedTheFarRule) {
+  auto config = rule(2, 3);
+  config.far_confirm_hits = 4;
+  config.far_confirm_window = 5;
+  TemporalMonitor monitor(config);
+  const Seen near{50, 0, ObstacleCandidate::kGauge}, far{100, 0, ObstacleCandidate::kGauge};
+  for (int i = 0; i < 4; ++i) {
+    const auto a = monitor.update(tracked_frame({near, far}), (i + 1) * kFrameNs);
+    bool near_confirmed = false, far_confirmed = false;
+    for (const auto& t : a.tracks)
+      (t.distance_m < 80 ? near_confirmed : far_confirmed) = t.confirmed;
+    EXPECT_EQ(near_confirmed, i >= 1) << i;  // The evaluated range is 80 m.
+    EXPECT_EQ(far_confirmed, i >= 3) << i;
+  }
+}

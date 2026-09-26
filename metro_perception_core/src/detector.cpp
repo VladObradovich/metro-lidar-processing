@@ -410,7 +410,13 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   if (config.background_history_frames && config.ego_motion_compensation)
     estimate_motion(config, frame, {ground.a, ground.b, ground.c}, measurement_time_ns, result);
   // Without a route estimate the corridor is the straight line y = 0, as before.
-  const auto route = estimate_route(config, frame, ground);
+  auto route = estimate_route(config, frame, ground);
+  if (route.valid && route_.valid && config.route_smoothing > 0) {
+    const double w = config.route_smoothing;
+    route.c1 = w * route_.c1 + (1 - w) * route.c1;
+    route.c2 = w * route_.c2 + (1 - w) * route.c2;
+  }
+  route_ = route;
   result.route = route;
   const double norm = std::sqrt(1 + ground.a * ground.a + ground.b * ground.b);
   auto route_point = [&](double x) {
@@ -574,9 +580,17 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   const double gauge_half_width =
       std::min(config.static_half_width_m, config.corridor_half_width_m);
   const double gauge_max_height = std::min(config.static_max_height_m, config.corridor_height_m);
+  // Rail heads above the floor found in this frame, from the known mounting height.
+  const double rail_floor =
+      config.sensor_height_above_rail_m > 0
+          ? std::clamp(ground.height(origin) - config.sensor_height_above_rail_m, 0.0, 1.0)
+          : 0.0;
+  const double rail_min =
+      config.sensor_height_above_rail_m > 0 ? rail_floor + config.rail_head_margin_m : 0.0;
+  const double gauge_min_height = std::max(config.static_min_height_m, rail_min);
+  const double band_min_height = std::max(config.obstacle_min_height_m, rail_min);
   auto gauge_point = [&](double offset, double height) {
-    return offset <= gauge_half_width && height >= config.static_min_height_m &&
-           height <= gauge_max_height;
+    return offset <= gauge_half_width && height >= gauge_min_height && height <= gauge_max_height;
   };
   // Static low returns off the space between the rails are track structure (rails, the
   // contact rail, fastenings, ducts). They link a structure along the route so that its full
@@ -585,14 +599,28 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   auto structure_point = [&](double offset, double height) {
     return offset > config.low_object_half_width_m && height < config.low_object_height_m;
   };
+  // On a curve the route fitted nearer is extrapolated into the far zone; it is used only
+  // where the route is nearly straight.
+  const bool far_straight = config.far_gauge_max_curvature <= 0 ||
+                            2 * std::abs(route.c2) <= config.far_gauge_max_curvature;
+  const double far_end =
+      far_straight ? std::min({config.far_gauge_max_x_m, config.detection_roi.max[0], route.max_x})
+                   : 0.0;
+  auto far_gauge_point = [&](double offset, double height) {
+    return offset <= std::min(config.far_gauge_half_width_m, gauge_half_width) &&
+           height >= config.far_gauge_min_height_m && height <= gauge_max_height;
+  };
   for (const auto index : frame.detection_indices) {
     const auto& p = frame.geometry_points[index].point;
-    if (p.x > end_x || p.x < config.detection_roi.min[0]) continue;
+    if (p.x < config.detection_roi.min[0]) continue;
+    const bool far = p.x > end_x;
+    if (far && !(gauge_on && p.x <= far_end)) continue;
     const double height = ground.height(p);
     const double offset = std::abs(route.offset(p));
-    const bool in_band = offset <= band_half_width && height >= config.obstacle_min_height_m &&
+    const bool in_band = !far && offset <= band_half_width && height >= band_min_height &&
                          height <= config.corridor_height_m;
-    const bool in_gauge = gauge_on && p.x <= route.max_x && gauge_point(offset, height);
+    const bool in_gauge = gauge_on && p.x <= route.max_x &&
+                          (far ? far_gauge_point(offset, height) : gauge_point(offset, height));
     if (!in_band && !in_gauge) continue;
     const double range = range_of(index);
     if (!(range > 0)) continue;
@@ -673,6 +701,47 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       return values[rank];
     };
     return top >= std::max(upper(before), upper(after)) + config.low_bump_min_prominence_m;
+  };
+  // Past the fitted route a tunnel that bends further brings its wall into the gauge. The
+  // wall runs on without a break from the intrusion to the side, while an obstacle on the
+  // route stands apart from both walls: far returns (0.5 m cells in plan) that link a far
+  // component, cell by cell, to the wall zone mark it as the wall.
+  constexpr double kFarCellM = 0.5, kFarWallOffsetM = 1.6;
+  constexpr std::size_t kFarFloodLimit = 4000;
+  std::unordered_map<std::int64_t, double> far_cells;  // Plan cell -> route offset.
+  auto plan_key = [](int ix, int iy) { return std::int64_t(ix) * 4096 + (iy + 2048); };
+  if (far_end > end_x)
+    for (const auto index : frame.detection_indices) {
+      const auto& p = frame.geometry_points[index].point;
+      const double height = ground.height(p);
+      if (p.x <= end_x - 20 || p.x > far_end + 20 || height < 0.5 || height > 2.8) continue;
+      const double offset = route.offset(p);
+      if (std::abs(offset) > kFarWallOffsetM + 1) continue;
+      far_cells.emplace(plan_key(static_cast<int>(std::floor(p.x / kFarCellM)),
+                                 static_cast<int>(std::floor(p.y / kFarCellM))),
+                        offset);
+    }
+  auto touches_wall = [&](const PointXYZ& lo, const PointXYZ& hi) {
+    std::vector<std::pair<int, int>> open;
+    std::unordered_map<std::int64_t, bool> seen;
+    for (int ix = static_cast<int>(std::floor(lo.x / kFarCellM));
+         ix <= static_cast<int>(std::floor(hi.x / kFarCellM)); ++ix)
+      for (int iy = static_cast<int>(std::floor(lo.y / kFarCellM));
+           iy <= static_cast<int>(std::floor(hi.y / kFarCellM)); ++iy)
+        if (far_cells.count(plan_key(ix, iy)) && seen.emplace(plan_key(ix, iy), true).second)
+          open.emplace_back(ix, iy);
+    while (!open.empty() && seen.size() < kFarFloodLimit) {
+      const auto [ix, iy] = open.back();
+      open.pop_back();
+      if (std::abs(far_cells.at(plan_key(ix, iy))) >= kFarWallOffsetM) return true;
+      for (int dx = -1; dx <= 1; ++dx)
+        for (int dy = -1; dy <= 1; ++dy) {
+          const auto next = plan_key(ix + dx, iy + dy);
+          if (far_cells.count(next) && seen.emplace(next, true).second)
+            open.emplace_back(ix + dx, iy + dy);
+        }
+    }
+    return false;
   };
   for (const auto& entry : components) {
     PointXYZ possible_lo{INFINITY, INFINITY, INFINITY};
@@ -778,6 +847,11 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       rejected = "FEW_POINTS";
     } else if (inside_high - inside_low < min_extent) {
       rejected = "LOW_EXTENT";
+    } else if (distance > end_x && inside_high - inside_low < config.far_min_extent_m) {
+      // Past the supported floor a flat patch may be floor under a wrong extrapolation.
+      rejected = "FAR_LOW_EXTENT";
+    } else if (distance > end_x && touches_wall(lo, hi)) {
+      rejected = "FAR_WALL_CONTACT";
     } else if (gauge_only && gauge_length > config.static_max_length_m) {
       rejected = "LONG_GAUGE_STRUCTURE";
     } else if (closest_offset > gauge_half_width && hi.x - lo.x > config.static_max_length_m) {

@@ -53,6 +53,8 @@ metro_perception_core::TemporalConfig load_temporal_config(const std::string& pa
     read_count("confirm_window", c.confirm_window);
     read_count("gauge_confirm_hits", c.gauge_confirm_hits);
     read_count("gauge_confirm_window", c.gauge_confirm_window);
+    read_count("far_confirm_hits", c.far_confirm_hits);
+    read_count("far_confirm_window", c.far_confirm_window);
     read_count("release_misses", c.release_misses);
     read_double("gate_base_m", c.gate_base_m);
     read_double("gate_range_fraction", c.gate_range_fraction);
@@ -168,6 +170,7 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     if (detector["route_estimation"])
       c.algorithm.route_estimation = detector["route_estimation"].as<bool>();
     read_double("route_min_radius_m", c.algorithm.route_min_radius_m);
+    read_double("route_smoothing", c.algorithm.route_smoothing);
     if (detector["static_channel"])
       c.algorithm.static_channel = detector["static_channel"].as<bool>();
     if (detector["gauge_certifies_clear"])
@@ -178,8 +181,15 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("static_outer_min_width_m", c.algorithm.static_outer_min_width_m);
     read_count("static_outer_min_points", c.algorithm.static_outer_min_points);
     read_double("static_min_height_m", c.algorithm.static_min_height_m);
+    read_double("sensor_height_above_rail_m", c.algorithm.sensor_height_above_rail_m);
+    read_double("rail_head_margin_m", c.algorithm.rail_head_margin_m);
     read_double("static_max_height_m", c.algorithm.static_max_height_m);
     read_double("static_max_length_m", c.algorithm.static_max_length_m);
+    read_double("far_gauge_max_x_m", c.algorithm.far_gauge_max_x_m);
+    read_double("far_gauge_half_width_m", c.algorithm.far_gauge_half_width_m);
+    read_double("far_gauge_min_height_m", c.algorithm.far_gauge_min_height_m);
+    read_double("far_min_extent_m", c.algorithm.far_min_extent_m);
+    read_double("far_gauge_max_curvature", c.algorithm.far_gauge_max_curvature);
     read_double("envelope_half_width_m", c.algorithm.envelope_half_width_m);
     read_double("envelope_min_speed_mps", c.algorithm.envelope_min_speed_mps);
     read_double("low_object_height_m", c.algorithm.low_object_height_m);

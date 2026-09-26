@@ -895,3 +895,102 @@ TEST(Gauge, ObstacleBesideTrackEquipmentIsNotMergedWithIt) {
   EXPECT_NEAR(frame.candidates.front().center.x, 20.25, 0.5);
   EXPECT_LT(frame.candidates.front().size.x, 1.0);
 }
+
+namespace {
+// Straight tunnel whose floor is seen only to 60 m while the walls are seen to 130 m, as with
+// the real sensor, where the grazing floor fades out long before the walls.
+FrameInput far_tunnel() {
+  auto input = verified_input();
+  add_floor(input, 1, 60);
+  for (double x = 1; x <= 130; x += 0.25)
+    for (double h = 0.2; h <= 3.0; h += 0.2)
+      for (const double side : {-1.0, 1.0}) input.points.push_back({x, side * 2.3, -1.0 + h});
+  return input;
+}
+}  // namespace
+
+TEST(Gauge, FarGaugeFindsASolidObjectPastTheSupportedFloor) {
+  auto config = single_frame_config();
+  config.detection_roi.max[0] = 150;
+  auto scene = far_tunnel();
+  add_box(scene, 100, -0.3, 0.3, 0.8, 1.8);
+  // A flat patch just above the extrapolated floor is not enough evidence out there.
+  add_box(scene, 80, -0.3, 0.3, 0.7, 0.8);
+
+  const auto off = PerceptionPipeline(config).process(scene);
+  ASSERT_EQ(off.status, AnalysisStatus::OK) << off.reason;
+  EXPECT_LT(off.evaluated_range_m, 70.0);
+  EXPECT_TRUE(off.candidates.empty());
+
+  config.far_gauge_max_x_m = 150;
+  const auto on = PerceptionPipeline(config).process(scene);
+  ASSERT_EQ(on.status, AnalysisStatus::OK) << on.reason;
+  EXPECT_LT(on.evaluated_range_m, 70.0);  // A clear path is still not claimed out there.
+  ASSERT_EQ(on.candidates.size(), 1u);
+  EXPECT_NEAR(on.candidates.front().distance_m, 100.0, 0.1);
+  EXPECT_EQ(on.candidates.front().channels, ObstacleCandidate::kGauge);
+
+  // The empty far tunnel gives no candidate.
+  EXPECT_TRUE(PerceptionPipeline(config).process(far_tunnel()).candidates.empty());
+}
+
+TEST(Route, SmoothingDampsAJumpOfTheWallFit) {
+  auto config = single_frame_config();
+  config.route_smoothing = 0.5;
+  PerceptionPipeline smoothed(config), raw(single_frame_config());
+  FrameResult a, b;
+  for (int i = 0; i < 3; ++i) {
+    smoothed.process(curved_tunnel(300));
+    raw.process(curved_tunnel(300));
+  }
+  // The walls suddenly suggest a straight route; one frame moves the estimate only halfway.
+  a = smoothed.process(curved_tunnel(1e9));
+  b = raw.process(curved_tunnel(1e9));
+  ASSERT_TRUE(a.route.valid);
+  ASSERT_TRUE(b.route.valid);
+  EXPECT_NEAR(b.route.c2, 0.0, 0.1 / 600);
+  EXPECT_NEAR(a.route.c2, 0.5 / 600, 0.15 / 600);
+}
+
+TEST(Gauge, FarGaugeIgnoresAWallThatBendsIntoIt) {
+  // Past 90 m the tunnel turns: its left wall crosses the straight route fitted nearer.
+  auto config = single_frame_config();
+  config.detection_roi.max[0] = 150;
+  config.far_gauge_max_x_m = 150;
+  auto scene = far_tunnel();
+  for (double x = 90; x <= 130; x += 0.25)
+    for (double h = 0.2; h <= 3.0; h += 0.2)
+      scene.points.push_back({x, 2.3 - 0.1 * (x - 90), -1.0 + h});
+  const auto frame = PerceptionPipeline(config).process(scene);
+  ASSERT_EQ(frame.status, AnalysisStatus::OK) << frame.reason;
+  EXPECT_TRUE(frame.candidates.empty()) << frame.candidates.front().distance_m;
+}
+
+TEST(Candidates, ObjectsInADeepTroughBelowTheRailsAreNotObstacles) {
+  // Station track: the trough floor is 1.7 m below the lidar, the rail heads 1.075 m.
+  auto scene = [](double top) {
+    auto input = verified_input();
+    for (int x = 1; x <= 60; ++x)
+      for (int yi = -12; yi <= 12; ++yi) input.points.push_back({double(x), yi * 0.2, -1.7});
+    for (double x = 1; x <= 60; x += 0.25)
+      for (double h = 0.2; h <= 3.0; h += 0.2)
+        for (const double side : {-1.0, 1.0}) input.points.push_back({x, side * 2.3, -1.7 + h});
+    for (double dx = 0; dx <= 0.49; dx += 0.08)
+      for (double y = -0.3; y <= 0.3 + 1e-9; y += 0.08)
+        for (double z = -1.6; z <= top + 1e-9; z += 0.05) input.points.push_back({20 + dx, y, z});
+    return input;
+  };
+  auto config = single_frame_config();
+  const auto floor_only = PerceptionPipeline(config).process(scene(-1.1));
+  ASSERT_EQ(floor_only.status, AnalysisStatus::OK) << floor_only.reason;
+  EXPECT_EQ(floor_only.candidates.size(), 1u);  // Without the mounting it rises off the floor.
+
+  config.sensor_height_above_rail_m = 1.075;
+  const auto in_trough = PerceptionPipeline(config).process(scene(-1.1));
+  ASSERT_EQ(in_trough.status, AnalysisStatus::OK) << in_trough.reason;
+  EXPECT_TRUE(in_trough.candidates.empty()) << in_trough.candidates.front().distance_m;
+
+  const auto above_rails = PerceptionPipeline(config).process(scene(-0.5));
+  ASSERT_EQ(above_rails.candidates.size(), 1u);
+  EXPECT_NEAR(above_rails.candidates.front().distance_m, 20.0, 0.1);
+}

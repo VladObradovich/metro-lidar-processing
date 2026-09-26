@@ -121,11 +121,15 @@ TEST(Profile, TemporalRuleIsReadAndValidated) {
   EXPECT_EQ(per_frame.confirm_window, 1u);
   EXPECT_EQ(per_frame.release_misses, 1u);
   EXPECT_FALSE(per_frame.assumed_clear);
-  save("temporal:\n  confirm_hits: 3\n  confirm_window: 5\n  max_gap_s: 1.5\n");
+  save(
+      "temporal:\n  confirm_hits: 3\n  confirm_window: 5\n  max_gap_s: 1.5\n"
+      "  far_confirm_hits: 4\n  far_confirm_window: 5\n");
   const auto read = load_temporal_config(path);
   EXPECT_EQ(read.confirm_hits, 3u);
   EXPECT_EQ(read.confirm_window, 5u);
   EXPECT_DOUBLE_EQ(read.max_gap_s, 1.5);
+  EXPECT_EQ(read.far_confirm_hits, 4u);
+  EXPECT_EQ(read.far_confirm_window, 5u);
   save("temporal:\n  confirm_hits: 4\n  confirm_window: 3\n");
   EXPECT_THROW(load_temporal_config(path), std::invalid_argument);
   save("temporal:\n  assumed_clear: true\n  assumed_clear_min_range_m: -1\n");
@@ -161,8 +165,14 @@ TEST(Profile, DefaultForwardSectorBindsRuntimeFramePerSession) {
   EXPECT_TRUE(c.allow_unverified_calibration);
   EXPECT_FALSE(c.calibration_verified);
   EXPECT_TRUE(c.has_static_transform);
-  EXPECT_DOUBLE_EQ(c.algorithm.static_half_width_m, 0.9);
-  EXPECT_DOUBLE_EQ(c.algorithm.envelope_half_width_m, 1.5);
+  // The organizers' 2.1 x 3.0 m envelope and the 1.075 m lidar height above the rail heads.
+  EXPECT_DOUBLE_EQ(c.algorithm.corridor_half_width_m, 1.05);
+  EXPECT_DOUBLE_EQ(c.algorithm.corridor_height_m, 3.0);
+  EXPECT_DOUBLE_EQ(c.algorithm.static_half_width_m, 1.05);
+  EXPECT_DOUBLE_EQ(c.algorithm.envelope_half_width_m, 1.05);
+  EXPECT_DOUBLE_EQ(c.algorithm.sensor_height_above_rail_m, 1.075);
+  EXPECT_DOUBLE_EQ(c.algorithm.route_smoothing, 0.5);
+  EXPECT_DOUBLE_EQ(c.algorithm.far_gauge_max_x_m, 0.0);  // The far gauge is off.
   EXPECT_DOUBLE_EQ(c.algorithm.low_bump_min_prominence_m, 0.15);
   EXPECT_TRUE(c.algorithm.hanging_channel);
 
