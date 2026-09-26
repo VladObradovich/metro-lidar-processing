@@ -79,15 +79,26 @@ bool TemporalMonitor::update_tracks(const FrameResult& frame, std::int64_t time_
   }
   std::sort(pairs.begin(), pairs.end());
   std::vector<bool> track_used(tracks_.size(), false), candidate_used(frame.candidates.size());
-  // An edge measurement keeps the track alive but is no evidence for confirmation.
-  auto measure = [](Track& track, const ObstacleCandidate& candidate) {
+  // An edge measurement keeps the track alive but is no evidence for confirmation; with
+  // edge_retracts it also withdraws an earlier confirmation.
+  auto measure = [this](Track& track, const ObstacleCandidate& candidate) {
     track.center = candidate.center;
     track.size = candidate.size;
     track.distance_m = candidate.distance_m;
     track.channels |= candidate.channels;
     track.support = candidate.support_points;
+    track.offset_earlier = track.offset_before;
+    track.offset_before = track.offset;
     track.offset = candidate.closest_offset_m;
-    if (!candidate.edge) track.history |= 1u;
+    constexpr double kDriftM = 0.02;
+    const bool drifting_out = track.offset > track.offset_before + kDriftM &&
+                              track.offset_before > track.offset_earlier + kDriftM;
+    if (!candidate.edge) {
+      track.history |= 1u;
+    } else if (config_.edge_retracts && drifting_out) {
+      track.confirmed = false;
+      track.history = 0;
+    }
     track.misses = 0;
   };
   for (auto& track : tracks_) {

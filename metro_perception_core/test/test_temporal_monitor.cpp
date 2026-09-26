@@ -530,3 +530,29 @@ TEST(Tracker, OuterTracksNeedTheOuterRule) {
     EXPECT_EQ(outer, i >= 2) << i;
   }
 }
+
+TEST(Tracker, AnObjectDriftingOutToTheEdgeLosesItsConfirmation) {
+  auto frame_with = [](double x, double offset, bool edge) {
+    auto frame = tracked_frame({{x, offset, ObstacleCandidate::kGauge}}, 10.0);
+    frame.candidates.front().closest_offset_m = offset;
+    frame.candidates.front().edge = edge;
+    return frame;
+  };
+  auto run = [&](bool retracts, std::vector<std::pair<double, bool>> offsets) {
+    auto config = rule(2, 3, 2);
+    config.edge_retracts = retracts;
+    TemporalMonitor monitor(config);
+    Assessment a;
+    for (std::size_t i = 0; i < offsets.size(); ++i)
+      a = monitor.update(frame_with(60.0 - i, offsets[i].first, offsets[i].second),
+                         (i + 1) * kFrameNs);
+    return a.state;
+  };
+  // Confirmed at 0.3 and 0.4 m, then drifting out into the edge band.
+  const std::vector<std::pair<double, bool>> drift = {{0.3, false}, {0.4, false}, {0.6, true}};
+  EXPECT_EQ(run(false, drift), State::OBSTACLE);
+  EXPECT_EQ(run(true, drift), State::UNKNOWN);
+  // Route jitter moves it back and forth: the confirmation stays.
+  const std::vector<std::pair<double, bool>> jitter = {{0.5, false}, {0.3, false}, {0.7, true}};
+  EXPECT_EQ(run(true, jitter), State::OBSTACLE);
+}

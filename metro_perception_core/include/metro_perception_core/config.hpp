@@ -92,6 +92,9 @@ struct AlgorithmConfig {
   double rail_head_margin_m{0.1};
   double static_max_height_m{2.5};
   double static_max_length_m{3.0};
+  // Longer than this along the route with all evidence farther than low_object_half_width_m from
+  // the centre, a component is a side structure whatever its channels (0 disables).
+  double side_structure_max_length_m{0.0};
   // Far gauge: past the supported floor the lidar sees almost no floor, so a clear path is not
   // certified there, but a solid object still returns. Up to far_gauge_max_x_m (0 disables)
   // and the farthest wall support, returns inside a narrower gauge (the route estimate and the
@@ -175,10 +178,12 @@ struct AlgorithmConfig {
         sensor_height_above_rail_m > 5 || !std::isfinite(rail_head_margin_m) ||
         rail_head_margin_m < 0 || !std::isfinite(static_max_height_m) ||
         static_max_height_m <= static_min_height_m || !std::isfinite(static_max_length_m) ||
-        static_max_length_m <= 0 || !std::isfinite(far_gauge_max_x_m) || far_gauge_max_x_m < 0 ||
-        far_gauge_max_x_m > 300 || !std::isfinite(far_gauge_half_width_m) ||
-        far_gauge_half_width_m <= 0 || !std::isfinite(far_gauge_min_height_m) ||
-        far_gauge_min_height_m < 0 || !std::isfinite(far_min_extent_m) || far_min_extent_m < 0 ||
+        static_max_length_m <= 0 || !std::isfinite(side_structure_max_length_m) ||
+        side_structure_max_length_m < 0 || !std::isfinite(far_gauge_max_x_m) ||
+        far_gauge_max_x_m < 0 || far_gauge_max_x_m > 300 ||
+        !std::isfinite(far_gauge_half_width_m) || far_gauge_half_width_m <= 0 ||
+        !std::isfinite(far_gauge_min_height_m) || far_gauge_min_height_m < 0 ||
+        !std::isfinite(far_min_extent_m) || far_min_extent_m < 0 ||
         !std::isfinite(far_gauge_max_curvature) || far_gauge_max_curvature < 0 ||
         !std::isfinite(low_object_height_m) || low_object_height_m < 0 ||
         !std::isfinite(low_object_half_width_m) || low_object_half_width_m < 0 ||
@@ -225,6 +230,11 @@ struct TemporalConfig {
   // part of the envelope, where route errors bring side structures in) also needs this rule;
   // outer_offset_m 0 disables.
   double outer_offset_m{0.0};
+  // A track whose closest evidence moved outwards over its last three measurements and now lies
+  // within the route uncertainty of the envelope edge (`edge`) loses its confirmation and its
+  // hits: an object beside the envelope drifts out as the route ahead of it gets certain,
+  // while route jitter moves it back and forth.
+  bool edge_retracts{false};
   std::size_t outer_confirm_hits{1}, outer_confirm_window{1};
   // A confirmed track survives this many missed frames minus one, coasting on ego motion.
   std::size_t release_misses{1};

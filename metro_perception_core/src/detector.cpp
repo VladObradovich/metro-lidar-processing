@@ -862,7 +862,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   // A thin column standing from the floor up past the envelope to the vault is tunnel
   // structure (the pillars between the tracks of a double tunnel), not an obstacle: an object
   // on the track ends below the vault, and a suspended one does not reach the floor.
-  constexpr double kPoleMaxFootprintM = 0.8, kPoleMaxGapM = 1.0, kPoleAboveM = 0.3;
+  constexpr double kPoleMaxFootprintM = 0.8, kPoleMaxGapM = 1.0, kPoleAboveM = 0.1;
   auto pole = [&](const PointXYZ& lo, const PointXYZ& hi) {
     if (!config.pole_rejection || hi.x - lo.x > kPoleMaxFootprintM ||
         hi.y - lo.y > kPoleMaxFootprintM)
@@ -1014,6 +1014,13 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       // Beside the gauge, a surface long along the route is a wall, a platform edge or a
       // cable seen as new through odometry error or disocclusion; an obstacle is compact.
       rejected = "LONG_EDGE_STRUCTURE";
+    } else if (config.side_structure_max_length_m > 0 &&
+               closest_offset > config.low_object_half_width_m &&
+               std::max(hi.x - lo.x, std::isfinite(gauge_length) ? gauge_length : 0.0) >
+                   config.side_structure_max_length_m) {
+      // Off the centre of the envelope, a surface long along the route is track-side structure
+      // (a cable duct, a platform or wall section) even where the background shows it as new.
+      rejected = "LONG_SIDE_STRUCTURE";
     } else if (config.static_inner_half_width_m < gauge_half_width &&
                (channels & ObstacleCandidate::kGauge) &&
                std::abs(route.offset({(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, 0})) >

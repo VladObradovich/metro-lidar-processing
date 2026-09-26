@@ -1075,8 +1075,9 @@ TEST(Candidates, ThinColumnFromFloorToVaultIsStructure) {
   };
   EXPECT_EQ(run(4.5), 1u);  // Off by default.
   config.pole_rejection = true;
-  EXPECT_EQ(run(4.5), 0u);  // A pillar up to the vault.
-  EXPECT_EQ(run(2.0), 1u);  // A post or a person on the track ends below the vault.
+  EXPECT_EQ(run(4.5), 0u);   // A pillar up to the vault.
+  EXPECT_EQ(run(2.0), 1u);   // A post or a person on the track ends below the vault.
+  EXPECT_EQ(run(3.25), 0u);  // Just above the envelope of 3.0 m, far from the vault.
 }
 
 TEST(Route, EvidenceAtTheEndOfTheWallSupportIsMarked) {
@@ -1129,4 +1130,21 @@ TEST(Route, RailsGiveTheOffsetAndDirectionOfTheTrackNearTheCar) {
   EXPECT_NEAR(rails.route.center(10), centre(10), 0.05);
   EXPECT_NEAR(rails.route.center(60), centre(60), 0.1);
   EXPECT_GT(std::abs(walls.route.center(10) - centre(10)), 0.1);  // What the rails correct.
+}
+
+TEST(Candidates, LongSideStructureIsRejectedWhateverItsChannels) {
+  // Without a background every return is motion evidence as well as gauge evidence.
+  auto config = single_frame_config();
+  config.corridor_half_width_m = 1.05;
+  auto wall = [](double y) {
+    auto scene = curved_tunnel(1e9);
+    for (double x = 30; x <= 35; x += 0.05)
+      for (double h = 0.3; h <= 1.7; h += 0.05) scene.points.push_back({x, y, -1.0 + h});
+    return scene;
+  };
+  EXPECT_FALSE(PerceptionPipeline(config).process(wall(0.8)).candidates.empty());
+  config.side_structure_max_length_m = 3.0;
+  EXPECT_TRUE(PerceptionPipeline(config).process(wall(0.8)).candidates.empty());
+  // The same length across the route centre stays a candidate.
+  EXPECT_FALSE(PerceptionPipeline(config).process(wall(0.0)).candidates.empty());
 }

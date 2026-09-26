@@ -58,6 +58,7 @@ metro_perception_core::TemporalConfig load_temporal_config(const std::string& pa
     read_double("far_confirm_from_m", c.far_confirm_from_m);
     read_double("motion_gauge_speed_mps", c.motion_gauge_speed_mps);
     read_double("outer_offset_m", c.outer_offset_m);
+    if (temporal["edge_retracts"]) c.edge_retracts = temporal["edge_retracts"].as<bool>();
     read_count("outer_confirm_hits", c.outer_confirm_hits);
     read_count("outer_confirm_window", c.outer_confirm_window);
     read_count("release_misses", c.release_misses);
@@ -198,6 +199,7 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("rail_head_margin_m", c.algorithm.rail_head_margin_m);
     read_double("static_max_height_m", c.algorithm.static_max_height_m);
     read_double("static_max_length_m", c.algorithm.static_max_length_m);
+    read_double("side_structure_max_length_m", c.algorithm.side_structure_max_length_m);
     read_double("far_gauge_max_x_m", c.algorithm.far_gauge_max_x_m);
     read_double("far_gauge_half_width_m", c.algorithm.far_gauge_half_width_m);
     read_double("far_gauge_min_height_m", c.algorithm.far_gauge_min_height_m);

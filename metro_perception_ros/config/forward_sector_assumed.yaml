@@ -46,6 +46,8 @@ detector:
   # The static gauge covers the whole envelope; the outer strip past 0.9 m keeps its stricter
   # rules for compact objects (rail and platform fragments reach into it).
   static_half_width_m: 1.05
+  # Off the centre, a component longer than 3 m along the route is track-side structure.
+  side_structure_max_length_m: 3.0
   static_inner_half_width_m: 0.9
   # While moving, evidence without the gauge channel must intrude into the envelope itself.
   envelope_half_width_m: 1.05
@@ -91,10 +93,13 @@ temporal:
   # region evaluated at least this far is reported clear, keeping trust ASSUMED.
   assumed_clear: true
   assumed_clear_min_range_m: 50.0
-  # Beyond 60 m the route and floor are least certain: a track needs 4 sightings in 5 frames.
-  far_confirm_from_m: 60.0
+  # Beyond 70 m the route and floor are least certain: a track needs 4 sightings in 5 frames.
+  far_confirm_from_m: 70.0
   far_confirm_hits: 4
   far_confirm_window: 5
   # Moving at 3 m/s or more, a track needs gauge evidence: the gauge sees whatever is inside
   # the envelope, and motion evidence alone was a failure of the background difference.
   motion_gauge_speed_mps: 3.0
+  # An object that drifts out into the edge band as the train comes nearer is beside the
+  # envelope: its confirmation is withdrawn.
+  edge_retracts: true
