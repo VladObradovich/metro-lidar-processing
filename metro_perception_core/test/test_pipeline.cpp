@@ -28,6 +28,15 @@ TEST(Pipeline, RejectsInvalidLimits) {
   config = {};
   config.ground_max_gap_m = 4.9;  // Shorter than one support bin.
   EXPECT_THROW(PerceptionPipeline pipeline(config), std::invalid_argument);
+  config = {};
+  config.low_bump_min_prominence_m = 0;
+  EXPECT_THROW(PerceptionPipeline pipeline(config), std::invalid_argument);
+  config = {};
+  config.static_inner_half_width_m = config.static_half_width_m + 0.1;
+  EXPECT_THROW(PerceptionPipeline pipeline(config), std::invalid_argument);
+  config = {};
+  config.hanging_tip_max_height_m = config.corridor_height_m + 0.1;
+  EXPECT_THROW(PerceptionPipeline pipeline(config), std::invalid_argument);
 }
 
 TEST(Preprocessing, FiltersBeforeTranslationAndPreservesRawIndices) {
@@ -661,6 +670,57 @@ TEST(Candidates, LowObjectsCountOnlyBetweenTheRails) {
   EXPECT_EQ(PerceptionPipeline(config).process(scene(0.7, 0.85, 1.7)).candidates.size(), 1u);
 }
 
+TEST(Candidates, RaisedLowBoxBesideRailIsNotTheRail) {
+  auto scene = [](int i, bool box) {
+    auto input = moving_tunnel(i, 0, false);
+    for (double x = 5; x < 45; x += 0.05)
+      for (const double y : {0.72, 0.78}) input.points.push_back({x, y, -0.8});
+    if (box) add_box(input, 20, 0.64, 0.88, 0.3, 0.7);
+    return input;
+  };
+  AlgorithmConfig config;
+  config.static_half_width_m = 1.25;
+  PerceptionPipeline empty(config), blocked(config);
+  FrameResult clear, obstacle;
+  for (int i = 0; i < 12; ++i) {
+    clear = empty.process(scene(i, false));
+    obstacle = blocked.process(scene(i, true));
+  }
+  ASSERT_EQ(clear.status, AnalysisStatus::OK);
+  ASSERT_EQ(obstacle.status, AnalysisStatus::OK);
+  EXPECT_TRUE(clear.candidates.empty());
+  EXPECT_TRUE(std::any_of(
+      obstacle.candidates.begin(), obstacle.candidates.end(),
+      [](const auto& candidate) { return std::abs(candidate.center.x - 20.25) < 0.5; }));
+}
+
+TEST(Candidates, NarrowHangingIntrusionIsNotAnOverheadBeam) {
+  auto scene = [](int i, bool strip, bool beam) {
+    auto input = moving_tunnel(i, 0, false);
+    if (strip)
+      for (double h = 2.9; h <= 4.6; h += 0.1) input.points.push_back({20.0, 0.0, -1.0 + h});
+    if (beam)
+      for (double x = 20; x <= 21.5; x += 0.1)
+        for (double y = -1.0; y <= 1.0; y += 0.1)
+          for (double h = 3.3; h <= 4.3; h += 0.2) input.points.push_back({x, y, -1.0 + h});
+    return input;
+  };
+  AlgorithmConfig config;
+  config.hanging_channel = true;
+  PerceptionPipeline suspended(config), overhead(config);
+  FrameResult strip, beam;
+  for (int i = 0; i < 12; ++i) {
+    strip = suspended.process(scene(i, true, false));
+    beam = overhead.process(scene(i, false, true));
+  }
+  ASSERT_EQ(strip.status, AnalysisStatus::OK);
+  ASSERT_EQ(beam.status, AnalysisStatus::OK);
+  EXPECT_TRUE(
+      std::any_of(strip.candidates.begin(), strip.candidates.end(),
+                  [](const auto& candidate) { return std::abs(candidate.center.x - 20) < 0.5; }));
+  EXPECT_TRUE(beam.candidates.empty());
+}
+
 TEST(Candidates, RejectedComponentsAreRecordedOnlyOnRequest) {
   auto input = verified_input();
   add_floor(input, 4, 50);
@@ -729,8 +789,8 @@ TEST(Candidates, LongStructureBesideTheGaugeIsNotAnObstacle) {
 
 TEST(Candidates, OutsideTheVehicleEnvelopeCountsOnlyStandingStill) {
   // Between the vehicle envelope and the corridor edge the train passes by. While it moves,
-  // new returns that stay there are not candidates; reaching into the envelope they are, and
-  // standing still the whole corridor counts.
+  // new returns whose centre stays there are not candidates. A component centred within
+  // the envelope is kept, and standing still the whole corridor counts.
   auto run = [](double speed, double y0) {
     PerceptionPipeline pipeline;
     FrameResult frame;
@@ -745,8 +805,36 @@ TEST(Candidates, OutsideTheVehicleEnvelopeCountsOnlyStandingStill) {
   ASSERT_EQ(moving.status, AnalysisStatus::OK) << moving.reason;
   ASSERT_TRUE(moving.ego_motion_valid);
   EXPECT_TRUE(moving.candidates.empty()) << moving.candidates.front().center.y;
-  EXPECT_EQ(run(10, 1.2).candidates.size(), 1u);
+  EXPECT_TRUE(run(10, 1.2).candidates.empty());  // Only a grazing edge intrudes.
+  EXPECT_EQ(run(10, 0.8).candidates.size(), 1u);
   EXPECT_EQ(run(0, 1.6).candidates.size(), 1u);
+}
+
+TEST(Gauge, OuterStripEquipmentDoesNotLengthenAnObjectOnTheRoute) {
+  // With the gauge widened past the rails, equipment along the outer strip joins a wide
+  // object standing on the route. The equipment alone is a long structure; the object is not.
+  auto scene = [](int i, bool box) {
+    auto input = moving_tunnel(i, 0, false);
+    for (double x = 12.0; x < 28.0; x += 0.02)
+      for (const double y : {1.0, 1.1})
+        for (const double h : {0.35, 0.45, 0.55}) input.points.push_back({x, y, -1.0 + h});
+    if (box) add_box(input, 20, -0.95, 0.95, 0.3, 1.7);
+    return input;
+  };
+  AlgorithmConfig config;
+  config.static_half_width_m = 1.25;
+  PerceptionPipeline empty(config), blocked(config);
+  FrameResult clear, obstacle;
+  for (int i = 0; i <= 11; ++i) {
+    clear = empty.process(scene(i, false));
+    obstacle = blocked.process(scene(i, true));
+  }
+  ASSERT_EQ(obstacle.status, AnalysisStatus::OK) << obstacle.reason;
+  ASSERT_TRUE(obstacle.route.valid);
+  EXPECT_TRUE(clear.candidates.empty());
+  ASSERT_EQ(obstacle.candidates.size(), 1u);
+  EXPECT_NEAR(obstacle.candidates.front().distance_m, 20.0, 0.1);
+  EXPECT_LT(obstacle.candidates.front().size.x, 1.0);
 }
 
 TEST(Gauge, ObstacleBesideTrackEquipmentIsNotMergedWithIt) {

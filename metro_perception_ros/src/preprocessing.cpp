@@ -169,6 +169,10 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     if (detector["static_channel"])
       c.algorithm.static_channel = detector["static_channel"].as<bool>();
     read_double("static_half_width_m", c.algorithm.static_half_width_m);
+    read_double("static_inner_half_width_m", c.algorithm.static_inner_half_width_m);
+    read_double("static_outer_max_length_m", c.algorithm.static_outer_max_length_m);
+    read_double("static_outer_min_width_m", c.algorithm.static_outer_min_width_m);
+    read_count("static_outer_min_points", c.algorithm.static_outer_min_points);
     read_double("static_min_height_m", c.algorithm.static_min_height_m);
     read_double("static_max_height_m", c.algorithm.static_max_height_m);
     read_double("static_max_length_m", c.algorithm.static_max_length_m);
@@ -176,6 +180,16 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
     read_double("envelope_min_speed_mps", c.algorithm.envelope_min_speed_mps);
     read_double("low_object_height_m", c.algorithm.low_object_height_m);
     read_double("low_object_half_width_m", c.algorithm.low_object_half_width_m);
+    read_double("low_bump_max_length_m", c.algorithm.low_bump_max_length_m);
+    read_double("low_bump_min_width_m", c.algorithm.low_bump_min_width_m);
+    read_double("low_bump_min_prominence_m", c.algorithm.low_bump_min_prominence_m);
+    read_count("low_bump_min_context_points", c.algorithm.low_bump_min_context_points);
+    if (detector["hanging_channel"])
+      c.algorithm.hanging_channel = detector["hanging_channel"].as<bool>();
+    read_double("hanging_tip_max_height_m", c.algorithm.hanging_tip_max_height_m);
+    read_double("hanging_min_vertical_span_m", c.algorithm.hanging_min_vertical_span_m);
+    read_double("hanging_max_footprint_m", c.algorithm.hanging_max_footprint_m);
+    read_count("hanging_min_points", c.algorithm.hanging_min_points);
     if (detector["ego_motion_compensation"])
       c.algorithm.ego_motion_compensation = detector["ego_motion_compensation"].as<bool>();
     read_double("ego_max_speed_mps", c.algorithm.ego_max_speed_mps);

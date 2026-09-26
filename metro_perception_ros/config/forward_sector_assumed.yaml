@@ -37,6 +37,17 @@ detector:
   ego_motion_compensation: true
   ego_max_speed_mps: 25.0
   ego_min_contrast: 0.005
+  # The static gauge stays at the default 0.9 m: widened to 1.25 m it found side objects in
+  # cloud_with_fake_obj but raised alarms on switch and track-side equipment in real bags.
+  low_bump_max_length_m: 0.6
+  low_bump_min_width_m: 0.15
+  low_bump_min_prominence_m: 0.15
+  low_bump_min_context_points: 10
+  hanging_channel: true
+  hanging_tip_max_height_m: 3.15
+  hanging_min_vertical_span_m: 0.5
+  hanging_max_footprint_m: 0.25
+  hanging_min_points: 8
 
 # G4 confirmation, chosen on development data: an object is an obstacle after 2 sightings
 # in 3 frames (one extra frame of latency) and is kept through one missed frame. Standing

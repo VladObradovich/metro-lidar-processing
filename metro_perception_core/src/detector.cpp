@@ -613,7 +613,78 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   }
   std::unordered_map<std::size_t, std::vector<std::size_t>> components;
   for (std::size_t i = 0; i < cells.size(); ++i) components[groups.root(i)].push_back(i);
+  // Index nearby low returns once. An isolated bump over the rail bed can then be
+  // compared with the same lateral strip immediately before and after it without
+  // rescanning the entire cloud for every component.
+  constexpr double kLowBinM = 0.5, kContextInnerM = 0.75, kContextOuterM = 2.5;
+  std::vector<std::vector<std::size_t>> low_bins(
+      static_cast<std::size_t>(std::ceil(end_x / kLowBinM)) + 1);
+  if (config.static_channel) {
+    for (std::size_t i = 0; i < frame.geometry_points.size(); ++i) {
+      const auto& p = frame.geometry_points[i].point;
+      if (p.x < 0 || p.x > end_x || std::abs(route.offset(p)) > config.static_half_width_m + 0.25)
+        continue;
+      const double height = ground.height(p);
+      if (height < 0 || height > config.low_object_height_m) continue;
+      low_bins[static_cast<std::size_t>(p.x / kLowBinM)].push_back(i);
+    }
+  }
+  auto low_bump = [&](const PointXYZ& lo, const PointXYZ& hi, double top) {
+    if (hi.x - lo.x > config.low_bump_max_length_m || hi.y - lo.y < config.low_bump_min_width_m)
+      return false;
+    const double x = (lo.x + hi.x) / 2, y = (lo.y + hi.y) / 2;
+    std::vector<double> before, after;
+    const auto first = static_cast<std::size_t>(std::max(0.0, x - kContextOuterM) / kLowBinM);
+    const auto last =
+        std::min(low_bins.size() - 1, static_cast<std::size_t>((x + kContextOuterM) / kLowBinM));
+    for (std::size_t bin = first; bin <= last; ++bin) {
+      for (const auto index : low_bins[bin]) {
+        const auto& p = frame.geometry_points[index].point;
+        if (std::abs(p.y - y) > 0.25) continue;
+        const double dx = p.x - x;
+        if (dx <= -kContextInnerM && dx >= -kContextOuterM)
+          before.push_back(ground.height(p));
+        else if (dx >= kContextInnerM && dx <= kContextOuterM)
+          after.push_back(ground.height(p));
+      }
+    }
+    if (before.size() < config.low_bump_min_context_points ||
+        after.size() < config.low_bump_min_context_points)
+      return false;
+    auto upper = [](std::vector<double>& values) {
+      const auto rank = 9 * (values.size() - 1) / 10;
+      std::nth_element(values.begin(), values.begin() + rank, values.end());
+      return values[rank];
+    };
+    return top >= std::max(upper(before), upper(after)) + config.low_bump_min_prominence_m;
+  };
   for (const auto& entry : components) {
+    PointXYZ possible_lo{INFINITY, INFINITY, INFINITY};
+    PointXYZ possible_hi{-INFINITY, -INFINITY, -INFINITY};
+    double possible_top = -INFINITY, possible_offset = 0;
+    std::size_t possible_points = 0;
+    for (const auto cell_index : entry.second) {
+      const auto& cell = cells[cell_index];
+      for (const auto point_index : cell.points) {
+        const auto& p = frame.geometry_points[point_index].point;
+        if (sensor_range(p) > cell.range + 0.5 ||
+            std::abs(route.offset(p)) > config.corridor_half_width_m)
+          continue;
+        possible_lo.x = std::min(possible_lo.x, p.x);
+        possible_lo.y = std::min(possible_lo.y, p.y);
+        possible_lo.z = std::min(possible_lo.z, p.z);
+        possible_hi.x = std::max(possible_hi.x, p.x);
+        possible_hi.y = std::max(possible_hi.y, p.y);
+        possible_hi.z = std::max(possible_hi.z, p.z);
+        possible_top = std::max(possible_top, ground.height(p));
+        possible_offset += route.offset(p);
+        ++possible_points;
+      }
+    }
+    const bool raised_low =
+        possible_points && possible_top < config.low_object_height_m &&
+        std::abs(possible_offset / double(possible_points)) > config.low_object_half_width_m &&
+        low_bump(possible_lo, possible_hi, possible_top);
     PointXYZ lo{INFINITY, INFINITY, INFINITY}, hi{-INFINITY, -INFINITY, -INFINITY};
     PointXYZ nearest;
     double distance = INFINITY, inside_low = INFINITY, inside_high = -INFINITY;
@@ -622,7 +693,10 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     // Extent along the route of all gauge returns, including those behind the nearest
     // surface of each cell: a structure parallel to the route is seen at a grazing angle
     // and falls into few angular cells, so the per-cell nearest layer would look short.
+    // Returns of the inner gauge are kept apart: rail-side equipment in the outer strip
+    // next to a compact object on the route must not make the object long.
     double gauge_lo_x = INFINITY, gauge_hi_x = -INFINITY;
+    double inner_lo_x = INFINITY, inner_hi_x = -INFINITY;
     double closest_offset = INFINITY;  // Of the evidence, from the route centre.
     std::vector<PointXYZ> structure;
     double inside_top = -INFINITY, inside_offset = 0;
@@ -637,6 +711,10 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
         if (gauge_on && gauge_point(offset, height)) {
           gauge_lo_x = std::min(gauge_lo_x, p.x);
           gauge_hi_x = std::max(gauge_hi_x, p.x);
+          if (offset <= config.static_inner_half_width_m) {
+            inner_lo_x = std::min(inner_lo_x, p.x);
+            inner_hi_x = std::max(inner_hi_x, p.x);
+          }
         }
         if (sensor_range(p) > cell.range + 0.5) continue;
         const bool inside = offset <= config.corridor_half_width_m;
@@ -645,7 +723,8 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
           inside_offset += route.offset(p);
           ++inside_points;
         }
-        if (!(cell.channels & ObstacleCandidate::kMotion) && structure_point(offset, height)) {
+        if (!(cell.channels & ObstacleCandidate::kMotion) && structure_point(offset, height) &&
+            !raised_low) {
           structure.push_back(p);
           continue;
         }
@@ -673,6 +752,9 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     // route are rejected, and its returns already start above static_min_height_m.
     const bool gauge_only = channels == ObstacleCandidate::kGauge;
     const double min_extent = gauge_only ? 0.1 : config.obstacle_min_height_m;
+    // A component seen only in the outer strip is judged by its full gauge extent.
+    const double gauge_length =
+        std::isfinite(inner_lo_x) ? inner_hi_x - inner_lo_x : gauge_hi_x - gauge_lo_x;
     const char* rejected = nullptr;
     if (inside_cells < config.min_candidate_cells) {
       rejected = "FEW_CELLS";
@@ -680,20 +762,33 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
       rejected = "FEW_POINTS";
     } else if (inside_high - inside_low < min_extent) {
       rejected = "LOW_EXTENT";
-    } else if (gauge_only && gauge_hi_x - gauge_lo_x > config.static_max_length_m) {
+    } else if (gauge_only && gauge_length > config.static_max_length_m) {
       rejected = "LONG_GAUGE_STRUCTURE";
     } else if (closest_offset > gauge_half_width && hi.x - lo.x > config.static_max_length_m) {
       // Beside the gauge, a surface long along the route is a wall, a platform edge or a
       // cable seen as new through odometry error or disocclusion; an obstacle is compact.
       rejected = "LONG_EDGE_STRUCTURE";
+    } else if (config.static_inner_half_width_m < gauge_half_width &&
+               (channels & ObstacleCandidate::kGauge) &&
+               std::abs(route.offset({(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, 0})) >
+                   config.static_inner_half_width_m &&
+               (hi.x - lo.x > config.static_outer_max_length_m ||
+                hi.y - lo.y < config.static_outer_min_width_m ||
+                support < config.static_outer_min_points)) {
+      // The wider static channel sees rail and platform fragments. A compact
+      // object there needs a resolved lateral face and enough current returns.
+      rejected = "WEAK_OUTER_STATIC";
     } else if (moving && !(channels & ObstacleCandidate::kGauge) &&
-               closest_offset > config.envelope_half_width_m) {
-      // Between the vehicle envelope and the corridor edge the train passes by: while it
-      // moves, new returns there (platform, equipment, odometry error) are not in its way.
+               std::abs(route.offset({(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, 0})) >
+                   config.envelope_half_width_m) {
+      // A grazing point at the edge of a wall is not enough to put its whole component
+      // in the vehicle envelope. The component centre must intrude while moving.
       rejected = "OUTSIDE_ENVELOPE";
     } else if (inside_top < config.low_object_height_m &&
-               std::abs(inside_offset / double(inside_points)) > config.low_object_half_width_m) {
-      // A low component centred off the rails is track structure as a whole.
+               std::abs(inside_offset / double(inside_points)) > config.low_object_half_width_m &&
+               !raised_low) {
+      // A low off-centre component must rise above the same rail-side strip on
+      // both sides. A continuous rail or walkway has no local protrusion.
       rejected = "LOW_OFF_CENTRE";
     }
     if (rejected) {
@@ -727,6 +822,83 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     candidate.support_points = static_cast<std::uint32_t>(support);
     candidate.channels = channels;
     if (candidate.distance_valid) result.candidates.push_back(candidate);
+  }
+  if (config.hanging_channel && config.static_channel && route.valid) {
+    // Thin suspended obstacles are easily absorbed by the rolling background and
+    // have too few points below the corridor roof for the ordinary angular cluster.
+    // Group a narrow vertical column in metric XY, then require its lower tip to
+    // enter the vehicle height. A broad overhead structure is not such a column.
+    constexpr double kUpperCellM = 0.25;
+    struct UpperCell {
+      int x, y;
+      std::vector<std::size_t> points;
+    };
+    std::vector<UpperCell> upper_cells;
+    std::unordered_map<std::int64_t, std::size_t> upper_lookup;
+    for (const auto index : frame.detection_indices) {
+      const auto& p = frame.geometry_points[index].point;
+      const double height = ground.height(p);
+      if (p.x < config.detection_roi.min[0] || p.x > end_x ||
+          std::abs(route.offset(p)) > config.low_object_half_width_m ||
+          height < config.hanging_tip_max_height_m - 0.5 || height > config.corridor_height_m + 1.5)
+        continue;
+      const int ix = static_cast<int>(std::floor(p.x / kUpperCellM));
+      const int iy = static_cast<int>(std::floor(p.y / kUpperCellM));
+      const auto cell_key = key(ix, iy + 1024);
+      const auto found = upper_lookup.find(cell_key);
+      if (found == upper_lookup.end()) {
+        upper_lookup.emplace(cell_key, upper_cells.size());
+        upper_cells.push_back({ix, iy, {index}});
+      } else {
+        upper_cells[found->second].points.push_back(index);
+      }
+    }
+    DisjointSet upper_groups(upper_cells.size());
+    for (std::size_t i = 0; i < upper_cells.size(); ++i)
+      for (int dx = -1; dx <= 1; ++dx)
+        for (int dy = -1; dy <= 1; ++dy) {
+          const auto near =
+              upper_lookup.find(key(upper_cells[i].x + dx, upper_cells[i].y + dy + 1024));
+          if (near != upper_lookup.end()) upper_groups.join(i, near->second);
+        }
+    std::unordered_map<std::size_t, std::vector<std::size_t>> upper_components;
+    for (std::size_t i = 0; i < upper_cells.size(); ++i)
+      upper_components[upper_groups.root(i)].push_back(i);
+    for (const auto& component : upper_components) {
+      PointXYZ lo{INFINITY, INFINITY, INFINITY}, hi{-INFINITY, -INFINITY, -INFINITY};
+      double tip = INFINITY, top = -INFINITY;
+      std::size_t count = 0;
+      for (const auto cell_index : component.second)
+        for (const auto point_index : upper_cells[cell_index].points) {
+          const auto& p = frame.geometry_points[point_index].point;
+          lo.x = std::min(lo.x, p.x), lo.y = std::min(lo.y, p.y), lo.z = std::min(lo.z, p.z);
+          hi.x = std::max(hi.x, p.x), hi.y = std::max(hi.y, p.y), hi.z = std::max(hi.z, p.z);
+          tip = std::min(tip, ground.height(p));
+          top = std::max(top, ground.height(p));
+          ++count;
+        }
+      if (count < config.hanging_min_points || tip > config.hanging_tip_max_height_m ||
+          top - tip < config.hanging_min_vertical_span_m ||
+          hi.x - lo.x > config.hanging_max_footprint_m ||
+          hi.y - lo.y > config.hanging_max_footprint_m)
+        continue;
+      const PointXYZ centre{(lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2};
+      if (std::any_of(
+              result.candidates.begin(), result.candidates.end(), [&](const auto& candidate) {
+                return std::hypot(candidate.center.x - centre.x, candidate.center.y - centre.y) <
+                       0.5;
+              }))
+        continue;
+      ObstacleCandidate candidate;
+      candidate.center = centre;
+      candidate.size = {hi.x - lo.x, hi.y - lo.y, hi.z - lo.z};
+      candidate.nearest_point = lo;
+      candidate.distance_m = lo.x - origin.x;
+      candidate.distance_valid = std::isfinite(candidate.distance_m) && candidate.distance_m > 0;
+      candidate.support_points = static_cast<std::uint32_t>(count);
+      candidate.channels = ObstacleCandidate::kGauge;
+      if (candidate.distance_valid) result.candidates.push_back(candidate);
+    }
   }
   std::sort(result.candidates.begin(), result.candidates.end(),
             [](const auto& a, const auto& b) { return a.distance_m < b.distance_m; });

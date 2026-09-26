@@ -53,6 +53,10 @@ struct AlgorithmConfig {
   bool static_channel{true};
   // Chosen on development data: rails and track-side equipment start around 0.76 m.
   double static_half_width_m{0.9};
+  double static_inner_half_width_m{0.9};
+  double static_outer_max_length_m{1.0};
+  double static_outer_min_width_m{0.15};
+  std::size_t static_outer_min_points{10};
   double static_min_height_m{0.3};
   double static_max_height_m{2.5};
   double static_max_length_m{3.0};
@@ -61,6 +65,19 @@ struct AlgorithmConfig {
   // and lie outside low_object_half_width_m. Tall objects count anywhere in the corridor.
   double low_object_height_m{1.0};
   double low_object_half_width_m{0.5};
+  // A compact low object outside the rail centre must stand above the nearby
+  // returns in the same lateral strip on both sides of the object.
+  double low_bump_max_length_m{0.6};
+  double low_bump_min_width_m{0.15};
+  double low_bump_min_prominence_m{0.15};
+  std::size_t low_bump_min_context_points{10};
+  // A narrow vertical component hanging over the route counts only when its
+  // lower tip intrudes into the usable vehicle height.
+  bool hanging_channel{false};
+  double hanging_tip_max_height_m{3.15};
+  double hanging_min_vertical_span_m{0.5};
+  double hanging_max_footprint_m{0.25};
+  std::size_t hanging_min_points{8};
   // Vehicle half-width with margin (a metro car is ~1.35-1.4 m). While the train moves at
   // envelope_min_speed_mps or more, evidence without the gauge channel that stays farther
   // from the route is not a candidate; standing still, the whole corridor counts.
@@ -94,11 +111,28 @@ struct AlgorithmConfig {
         !std::isfinite(ego_min_contrast) || ego_min_contrast <= 0 || ego_min_contrast > 0.3 ||
         !std::isfinite(route_min_radius_m) || route_min_radius_m < 20 ||
         !std::isfinite(static_half_width_m) || static_half_width_m <= 0 ||
+        !std::isfinite(static_inner_half_width_m) || static_inner_half_width_m <= 0 ||
+        static_inner_half_width_m > static_half_width_m ||
+        !std::isfinite(static_outer_max_length_m) || static_outer_max_length_m <= 0 ||
+        static_outer_max_length_m > static_max_length_m ||
+        !std::isfinite(static_outer_min_width_m) || static_outer_min_width_m <= 0 ||
+        static_outer_min_width_m > static_half_width_m || static_outer_min_points == 0 ||
         !std::isfinite(static_min_height_m) || static_min_height_m <= 0 ||
         !std::isfinite(static_max_height_m) || static_max_height_m <= static_min_height_m ||
         !std::isfinite(static_max_length_m) || static_max_length_m <= 0 ||
         !std::isfinite(low_object_height_m) || low_object_height_m < 0 ||
         !std::isfinite(low_object_half_width_m) || low_object_half_width_m < 0 ||
+        !std::isfinite(low_bump_max_length_m) || low_bump_max_length_m <= 0 ||
+        low_bump_max_length_m > static_max_length_m || !std::isfinite(low_bump_min_width_m) ||
+        low_bump_min_width_m <= 0 || low_bump_min_width_m > corridor_half_width_m ||
+        !std::isfinite(low_bump_min_prominence_m) || low_bump_min_prominence_m <= 0 ||
+        low_bump_min_prominence_m > low_object_height_m || low_bump_min_context_points == 0 ||
+        !std::isfinite(hanging_tip_max_height_m) || hanging_tip_max_height_m <= 0 ||
+        hanging_tip_max_height_m > corridor_height_m ||
+        !std::isfinite(hanging_min_vertical_span_m) || hanging_min_vertical_span_m <= 0 ||
+        hanging_min_vertical_span_m > corridor_height_m ||
+        !std::isfinite(hanging_max_footprint_m) || hanging_max_footprint_m <= 0 ||
+        hanging_max_footprint_m > corridor_half_width_m || hanging_min_points == 0 ||
         !std::isfinite(envelope_half_width_m) || envelope_half_width_m < 0 ||
         !std::isfinite(envelope_min_speed_mps) || envelope_min_speed_mps < 0 ||
         !std::isfinite(background_margin_m) || background_margin_m < 0 ||

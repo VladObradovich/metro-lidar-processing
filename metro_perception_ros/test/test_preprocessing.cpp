@@ -88,6 +88,12 @@ TEST(Profile, LoadsAndRejectsUnsafeConfiguration) {
   EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
   save("calibration_verified: false\nrotation_rpy_rad: [0, 0, 0]\n");
   EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
+  save("calibration_verified: false\ndetector:\n  low_bump_min_prominence_m: -1\n");
+  EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
+  save(
+      "calibration_verified: false\ndetector:\n  static_half_width_m: 1.25\n"
+      "  static_inner_half_width_m: 1.3\n");
+  EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
   {
     std::ofstream file(path);
     file << "source_frame_mode: bind_first\nsource_frame: null\ntarget_frame: base_link\n"
@@ -150,6 +156,10 @@ TEST(Profile, DefaultForwardSectorBindsRuntimeFramePerSession) {
   EXPECT_TRUE(c.allow_unverified_calibration);
   EXPECT_FALSE(c.calibration_verified);
   EXPECT_TRUE(c.has_static_transform);
+  EXPECT_DOUBLE_EQ(c.algorithm.static_half_width_m, 0.9);
+  EXPECT_DOUBLE_EQ(c.algorithm.envelope_half_width_m, 1.5);
+  EXPECT_DOUBLE_EQ(c.algorithm.low_bump_min_prominence_m, 0.15);
+  EXPECT_TRUE(c.algorithm.hanging_channel);
 
   SourceFrameBinding binding;
   EXPECT_FALSE(bind_source_frame(c, binding, ""));
