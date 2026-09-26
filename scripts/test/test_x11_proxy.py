@@ -62,6 +62,43 @@ def test_cli_still_reports_proxy_failure(isolated_runtime, monkeypatch):
     assert not (isolated_runtime / 'desktop.env').exists()
 
 
+def test_watch_stops_proxy_after_container_disappears(monkeypatch):
+    states = iter([True, True, False, False, False])
+    monkeypatch.setattr(proxy, 'containers_running', lambda _labels: next(states))
+    monkeypatch.setattr(proxy, 'WATCH_INTERVAL', 0.01)
+    monkeypatch.setattr(proxy, 'WATCH_GRACE', 0.015)
+    stopping = threading.Event()
+
+    proxy.watch_containers(['a=b'], stopping)
+
+    assert stopping.is_set()
+
+
+def test_watch_survives_container_recreate(monkeypatch):
+    states = iter([True, False, True, True])
+    monkeypatch.setattr(proxy, 'containers_running', lambda _labels: next(states, True))
+    monkeypatch.setattr(proxy, 'WATCH_INTERVAL', 0.01)
+    monkeypatch.setattr(proxy, 'WATCH_GRACE', 1.0)
+    stopping = threading.Event()
+    watcher = threading.Thread(target=proxy.watch_containers, args=(['a=b'], stopping))
+    watcher.start()
+    watcher.join(timeout=0.2)
+
+    assert not stopping.is_set()
+    stopping.set()
+    watcher.join(timeout=1)
+
+
+def test_watch_is_disabled_without_docker(monkeypatch):
+    monkeypatch.setattr(proxy, 'containers_running', lambda _labels: None)
+    monkeypatch.setattr(proxy, 'WATCH_INTERVAL', 0.01)
+    stopping = threading.Event()
+
+    proxy.watch_containers(['a=b'], stopping)
+
+    assert not stopping.is_set()
+
+
 def test_pump_forwards_file_descriptors():
     sender, source = socket.socketpair()
     destination, receiver = socket.socketpair()

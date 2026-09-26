@@ -78,7 +78,7 @@ def allow_host_user(display: str) -> None:
         pass
 
 
-def start_proxy(scale_override=None, output=None) -> int:
+def start_proxy(scale_override=None, output=None, watch_labels=()) -> int:
     # The desktop devcontainer always bind-mounts PROXY_DIR. Create it before
     # any X11 validation so fallback paths still have a valid mount source.
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
@@ -121,9 +121,12 @@ def start_proxy(scale_override=None, output=None) -> int:
     destination.unlink(missing_ok=True)
     allow_host_user(display)
 
+    command = [sys.executable, str(SCRIPT_PATH), "serve", str(source), str(destination)]
+    for label in watch_labels:
+        command += ["--watch-label", label]
     with LOG_FILE.open("ab", buffering=0) as log:
         process = subprocess.Popen(
-            [sys.executable, str(SCRIPT_PATH), "serve", str(source), str(destination)],
+            command,
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=log,
@@ -204,7 +207,49 @@ def handle_client(client: socket.socket, source_path: Path) -> None:
         client.close()
 
 
-def serve(source_path: Path, destination_path: Path) -> int:
+WATCH_INTERVAL = 2.0
+# Covers a container recreate (old one gone, new one not yet running).
+WATCH_GRACE = 10.0
+# Covers the image build before the first container of a fresh `up` exists.
+WATCH_STARTUP_TIMEOUT = 600.0
+
+
+def containers_running(labels) -> bool | None:
+    """True/False if a matching container runs; None if Docker is unavailable."""
+    command = ["docker", "ps", "-q"]
+    for label in labels:
+        command += ["--filter", f"label={label}"]
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=10, check=False
+        )
+    except FileNotFoundError:
+        return None
+    except subprocess.TimeoutExpired:
+        return True
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def watch_containers(labels, stopping: threading.Event) -> None:
+    """Request shutdown once no container with all `labels` is running."""
+    seen = False
+    last_seen = time.monotonic()
+    while not stopping.wait(WATCH_INTERVAL):
+        running = containers_running(labels)
+        if running is None:
+            print("X11 proxy: docker not found; container watch disabled", flush=True)
+            return
+        now = time.monotonic()
+        if running:
+            seen = True
+            last_seen = now
+        elif now - last_seen > (WATCH_GRACE if seen else WATCH_STARTUP_TIMEOUT):
+            print("X11 proxy: container is gone; stopping", flush=True)
+            stopping.set()
+            return
+
+
+def serve(source_path: Path, destination_path: Path, watch_labels=()) -> int:
     destination_path.parent.mkdir(mode=0o777, parents=True, exist_ok=True)
     destination_path.unlink(missing_ok=True)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -215,6 +260,10 @@ def serve(source_path: Path, destination_path: Path) -> int:
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
+    if watch_labels:
+        threading.Thread(
+            target=watch_containers, args=(watch_labels, stopping), daemon=True
+        ).start()
     try:
         listener.bind(str(destination_path))
         os.chmod(destination_path, 0o777)
@@ -244,6 +293,10 @@ def main() -> int:
     start_parser.add_argument("--scale", help="Explicit Qt scale, e.g. 1, 1.5, 2")
     start_parser.add_argument("--output", help="Host compositor output name")
     start_parser.add_argument(
+        "--watch-label", action="append", default=[], metavar="KEY=VALUE",
+        help="Exit when no running container has all given labels (repeatable)",
+    )
+    start_parser.add_argument(
         "--devcontainer", action="store_true",
         help="Write desktop.env and allow Dev Containers forwarding on proxy failure",
     )
@@ -251,6 +304,7 @@ def main() -> int:
     serve_parser = subparsers.add_parser("serve")
     serve_parser.add_argument("source", type=Path)
     serve_parser.add_argument("destination", type=Path)
+    serve_parser.add_argument("--watch-label", action="append", default=[])
     arguments = parser.parse_args()
     if arguments.runtime_dir is not None:
         RUNTIME_DIR = arguments.runtime_dir.resolve()
@@ -260,7 +314,7 @@ def main() -> int:
 
     if arguments.command == "start":
         if not arguments.devcontainer:
-            return start_proxy(arguments.scale, arguments.output)
+            return start_proxy(arguments.scale, arguments.output, arguments.watch_label)
 
         # Docker reads this file at container creation. An absent DISPLAY lets
         # Dev Containers forward X11; a host TCP DISPLAY would suppress that
@@ -268,7 +322,7 @@ def main() -> int:
         RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
         env_file = RUNTIME_DIR / "desktop.env"
         env_file.write_text("# DISPLAY is provided by Dev Containers.\n", encoding="utf-8")
-        result = start_proxy(arguments.scale, arguments.output)
+        result = start_proxy(arguments.scale, arguments.output, arguments.watch_label)
         if result == 0:
             env_file.write_text(f"DISPLAY={os.environ['DISPLAY']}\n", encoding="utf-8")
         else:
@@ -277,7 +331,7 @@ def main() -> int:
     if arguments.command == "stop":
         stop_previous_proxy()
         return 0
-    return serve(arguments.source, arguments.destination)
+    return serve(arguments.source, arguments.destination, arguments.watch_label)
 
 
 if __name__ == "__main__":
