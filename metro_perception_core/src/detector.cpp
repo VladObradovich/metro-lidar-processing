@@ -184,6 +184,93 @@ Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& fr
 
 std::int64_t key(int az, int el) { return std::int64_t(az) * 2048 + el; }
 
+// The walls give the route only relative to the near-range walls and assume it passes the
+// lidar; a car on a curve or off-centre breaks that, and the error grows with range. The rail
+// heads, sensor_height_above_rail_m below the lidar, are seen 4-30 m ahead: per 2 m slice the
+// median rail on each side of the wall route (0.45-1.15 m from it) gives the track centre,
+// from a pair 1.594 m apart or from one rail. With at least kMinRailSlices slices the route
+// y = c0 + c1 x + c2 x^2 is refitted to the rail centres (weighted) and the wall shifts,
+// which only fix differences to the near walls.
+template <typename Slice>
+void refine_with_rails(const AlgorithmConfig& config, const PreprocessedFrame& frame,
+                       const Plane& ground, const std::vector<Slice>& walls, double near_min_x,
+                       double near_max_x, RouteEstimate& route) {
+  constexpr double kMinX = 4, kMaxX = 30, kBinM = 2, kRailHalfGaugeM = 0.797, kPairTolerance = 0.1,
+                   kHeightTolerance = 0.07;
+  constexpr std::size_t kMinRailSlices = 4, kMinSidePoints = 3;
+  const double rail_height = ground.height(frame.sensor_origin) - config.sensor_height_above_rail_m;
+  const auto bins = static_cast<std::size_t>((kMaxX - kMinX) / kBinM);
+  std::vector<std::vector<float>> left(bins), right(bins);
+  for (const auto& indexed : frame.geometry_points) {
+    const auto& p = indexed.point;
+    if (p.x < kMinX || p.x >= kMaxX || std::abs(ground.height(p) - rail_height) > kHeightTolerance)
+      continue;
+    const double offset = route.offset(p);
+    if (std::abs(offset) < 0.45 || std::abs(offset) > 1.15) continue;
+    const auto bin = static_cast<std::size_t>((p.x - kMinX) / kBinM);
+    (offset > 0 ? left : right)[bin].push_back(static_cast<float>(offset));
+  }
+  auto median = [](std::vector<float>& values) {
+    std::nth_element(values.begin(), values.begin() + values.size() / 2, values.end());
+    return double(values[values.size() / 2]);
+  };
+  struct Row {
+    double a0, a1, a2, b, w;
+  };
+  std::vector<Row> rows;
+  std::uint32_t rail_slices = 0;
+  for (std::size_t bin = 0; bin < bins; ++bin) {
+    const double x = kMinX + (bin + 0.5) * kBinM;
+    const bool has_left = left[bin].size() >= kMinSidePoints,
+               has_right = right[bin].size() >= kMinSidePoints;
+    double shift = 0, weight = 0;
+    if (has_left && has_right) {
+      const double l = median(left[bin]), r = median(right[bin]);
+      if (std::abs(l - r - 2 * kRailHalfGaugeM) > kPairTolerance) continue;
+      shift = (l + r) / 2, weight = 1.0;
+    } else if (has_left) {
+      shift = median(left[bin]) - kRailHalfGaugeM, weight = 0.5;
+    } else if (has_right) {
+      shift = median(right[bin]) + kRailHalfGaugeM, weight = 0.5;
+    } else {
+      continue;
+    }
+    rows.push_back({1, x, x * x, route.center(x) + shift, weight * config.rail_route_weight});
+    ++rail_slices;
+  }
+  if (rail_slices < kMinRailSlices) return;
+  // Wall shifts constrain the route relative to the near-range walls, measured at xn.
+  const double xn = (near_min_x + near_max_x) / 2;
+  for (const auto& s : walls) rows.push_back({0, s.x - xn, s.x * s.x - xn * xn, s.shift, 1.0});
+  double m[3][4] = {};
+  for (const auto& row : rows) {
+    const double a[3] = {row.a0, row.a1, row.a2};
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) m[i][j] += row.w * a[i] * a[j];
+      m[i][3] += row.w * a[i] * row.b;
+    }
+  }
+  // Gaussian elimination with partial pivoting on the 3 x 3 normal equations.
+  for (int col = 0; col < 3; ++col) {
+    int pivot = col;
+    for (int r = col + 1; r < 3; ++r)
+      if (std::abs(m[r][col]) > std::abs(m[pivot][col])) pivot = r;
+    if (std::abs(m[pivot][col]) < 1e-9) return;
+    for (int j = 0; j < 4; ++j) std::swap(m[col][j], m[pivot][j]);
+    for (int r = 0; r < 3; ++r) {
+      if (r == col) continue;
+      const double f = m[r][col] / m[col][col];
+      for (int j = col; j < 4; ++j) m[r][j] -= f * m[col][j];
+    }
+  }
+  const double c0 = m[0][3] / m[0][0], c1 = m[1][3] / m[1][1], c2 = m[2][3] / m[2][2];
+  if (!std::isfinite(c0) || !std::isfinite(c1) || !std::isfinite(c2) || std::abs(c0) > 0.5 ||
+      std::abs(c1) > 0.05 || std::abs(c2) > 1.0 / (2.0 * config.route_min_radius_m))
+    return;
+  route.c0 = c0, route.c1 = c1, route.c2 = c2;
+  route.rail_slices = rail_slices;
+}
+
 // Route centre from the tunnel walls. Per 1 m slice ahead, the nearest structure on each
 // side of the predicted centre (at least kWallMinM away, 0.5-2.5 m above the floor) is a
 // wall sample; its shift from the near-range wall offset is the centre shift. Slices are
@@ -280,6 +367,8 @@ RouteEstimate estimate_route(const AlgorithmConfig& config, const PreprocessedFr
   route.c2 = c2;
   route.valid = true;
   route.max_x = kept.back().x + kBinM / 2;
+  if (config.rail_route_weight > 0 && config.sensor_height_above_rail_m > 0)
+    refine_with_rails(config, frame, ground, kept, kMinX, kNearMaxX, route);
   return route;
 }
 
@@ -439,6 +528,7 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
   const auto raw_route = route;
   if (route.valid && route_.valid && config.route_smoothing > 0) {
     const double w = config.route_smoothing;
+    route.c0 = w * route_.c0 + (1 - w) * route.c0;
     route.c1 = w * route_.c1 + (1 - w) * route.c1;
     route.c2 = w * route_.c2 + (1 - w) * route.c2;
   }

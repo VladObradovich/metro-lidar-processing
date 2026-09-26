@@ -296,7 +296,8 @@ int main(int argc, char** argv) {
         }
       }
       output << ",\"route\":[" << result.route.c1 << ',' << result.route.c2 << ','
-             << (result.route.valid ? "true" : "false") << ',' << result.route.max_x << ']';
+             << (result.route.valid ? "true" : "false") << ',' << result.route.max_x << ','
+             << result.route.c0 << ',' << result.route.rail_slices << ']';
       output << ",\"processing_status\":" << static_cast<unsigned>(result.status)
              << ",\"calibration_trust\":" << static_cast<unsigned>(result.calibration_trust)
              << ",\"transform_applied\":"

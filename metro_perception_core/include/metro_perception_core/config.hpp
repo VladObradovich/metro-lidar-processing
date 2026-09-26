@@ -58,6 +58,10 @@ struct AlgorithmConfig {
   // from the car barely changes between frames, while a single fit to the walls jitters by
   // about a metre at 60 m; 0 uses each frame's fit alone.
   double route_smoothing{0.0};
+  // Weight of rail measurements against wall slices in the route fit (0: walls only). The rail
+  // heads, found sensor_height_above_rail_m below the lidar 4-30 m ahead, give the position and
+  // direction of the track near the train; the walls give its curve further on.
+  double rail_route_weight{0.0};
   // Lateral uncertainty of the route at distance x: route_margin_per_m * x, at most
   // route_margin_max_m, plus the change the smoothing made to this frame's fit at x. A
   // candidate whose evidence stays within it of the envelope edge is marked `edge`; 0 disables.
@@ -155,6 +159,7 @@ struct AlgorithmConfig {
         !std::isfinite(ego_min_contrast) || ego_min_contrast <= 0 || ego_min_contrast > 0.3 ||
         !std::isfinite(route_min_radius_m) || route_min_radius_m < 20 ||
         !std::isfinite(route_smoothing) || route_smoothing < 0 || route_smoothing >= 1 ||
+        !std::isfinite(rail_route_weight) || rail_route_weight < 0 ||
         !std::isfinite(route_margin_per_m) || route_margin_per_m < 0 ||
         !std::isfinite(route_margin_max_m) || route_margin_max_m < 0 ||
         !std::isfinite(route_support_margin_m) || route_support_margin_m < 0 ||

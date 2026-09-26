@@ -180,6 +180,7 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
       c.algorithm.route_estimation = detector["route_estimation"].as<bool>();
     read_double("route_min_radius_m", c.algorithm.route_min_radius_m);
     read_double("route_smoothing", c.algorithm.route_smoothing);
+    read_double("rail_route_weight", c.algorithm.rail_route_weight);
     read_double("route_margin_per_m", c.algorithm.route_margin_per_m);
     read_double("route_margin_max_m", c.algorithm.route_margin_max_m);
     read_double("route_support_margin_m", c.algorithm.route_support_margin_m);

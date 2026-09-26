@@ -60,7 +60,9 @@ struct RouteEstimate {
   double c1{0}, c2{0};
   bool valid{false};
   double max_x{0};  // Farthest wall support; the gauge channel stops here.
-  double center(double x) const { return c1 * x + c2 * x * x; }
+  double c0{0};     // Lateral offset of the route at the lidar, from the rails (0 without).
+  std::uint32_t rail_slices{0};  // Slices ahead where the rails were measured.
+  double center(double x) const { return c0 + c1 * x + c2 * x * x; }
   double offset(const PointXYZ& p) const { return p.y - center(p.x); }
 };
 struct CorridorSegment {

@@ -42,9 +42,10 @@ MOTION, GAUGE = 1, 2
 
 
 def route_offset(obj, route, signed=False):
-    """Lateral offset of an object centre from the route y = c1 x + c2 x^2 (or y = 0)."""
+    """Lateral offset of an object centre from the route y = c0 + c1 x + c2 x^2 (or y = 0)."""
     x, y = obj['center'][0], obj['center'][1]
-    offset = y - (route[0] * x + route[1] * x * x) if route and route[2] else y
+    c0 = route[4] if route and len(route) > 4 else 0.0  # Rail offset, in newer runs.
+    offset = y - (c0 + route[0] * x + route[1] * x * x) if route and route[2] else y
     return offset if signed else abs(offset)
 
 

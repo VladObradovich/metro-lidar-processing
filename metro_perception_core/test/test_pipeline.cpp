@@ -1100,3 +1100,33 @@ TEST(Route, EvidenceAtTheEndOfTheWallSupportIsMarked) {
   EXPECT_TRUE(edge_at(57));   // Within 5 m of the last wall support.
   EXPECT_FALSE(edge_at(40));  // Well inside it.
 }
+
+TEST(Route, RailsGiveTheOffsetAndDirectionOfTheTrackNearTheCar) {
+  // The car stands 0.2 m off the track centre and turned by 0.01 rad; walls and rails follow
+  // the track. The walls alone assume a route through the lidar.
+  const auto centre = [](double x) { return 0.2 + 0.01 * x; };
+  auto scene = verified_input();
+  for (int x = 1; x <= 90; ++x)
+    for (int yi = -9; yi <= 9; ++yi)
+      scene.points.push_back({double(x), centre(x) + yi * 0.2, -1.0});
+  for (double x = 1; x <= 90; x += 0.25) {
+    for (double h = 0.2; h <= 3.0; h += 0.2)
+      for (const double side : {-1.0, 1.0})
+        scene.points.push_back({x, centre(x) + side * 2.3, -1.0 + h});
+    if (x <= 30)
+      for (const double side : {-1.0, 1.0})
+        for (const double dy : {-0.03, 0.0, 0.03})
+          scene.points.push_back({x, centre(x) + side * 0.797 + dy, -0.8});  // Rail heads.
+  }
+  auto config = single_frame_config();
+  config.sensor_height_above_rail_m = 0.8;
+  const auto walls = PerceptionPipeline(config).process(scene);
+  config.rail_route_weight = 3;
+  const auto rails = PerceptionPipeline(config).process(scene);
+  ASSERT_TRUE(walls.route.valid);
+  ASSERT_TRUE(rails.route.valid);
+  EXPECT_GE(rails.route.rail_slices, 4u);
+  EXPECT_NEAR(rails.route.center(10), centre(10), 0.05);
+  EXPECT_NEAR(rails.route.center(60), centre(60), 0.1);
+  EXPECT_GT(std::abs(walls.route.center(10) - centre(10)), 0.1);  // What the rails correct.
+}
