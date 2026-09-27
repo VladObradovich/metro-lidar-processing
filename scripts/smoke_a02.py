@@ -104,8 +104,17 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             expected_trust = (FrameAnalysis.CALIBRATION_TRUST_ASSUMED if args.default
                               else FrameAnalysis.CALIBRATION_TRUST_UNKNOWN)
             assert online.calibration_trust == expected_trust
-            until(lambda: any(a.frame_sequence == online.frame_sequence for a in assessments))
-            assessment = next(a for a in assessments if a.frame_sequence == online.frame_sequence)
+
+            def assessed(analysis):
+                return next((a for a in assessments if a.session_id == analysis.session_id
+                             and a.frame_sequence == analysis.frame_sequence), None)
+
+            # The monitor can miss the first analyses while discovery settles (seen in CI);
+            # keep sending the same cloud until one of its analyses has an assessment.
+            until(lambda: any(a.reason == reason and assessed(a) is not None for a in analyses),
+                  retry=cloud)
+            online = next(a for a in analyses if a.reason == reason and assessed(a) is not None)
+            assessment = assessed(online)
             assert assessment.calibration_trust == online.calibration_trust
             assert (online.geometry_point_count, online.detection_point_count,
                     online.invalid_point_count, online.blind_point_count,
