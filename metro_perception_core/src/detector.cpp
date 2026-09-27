@@ -182,7 +182,10 @@ Plane estimate_ground(const AlgorithmConfig& config, const PreprocessedFrame& fr
   return best;
 }
 
-std::int64_t key(int az, int el) { return std::int64_t(az) * 2048 + el; }
+// Cell index stride: above the 180 / 0.05 = 3600 elevation cells of the finest allowed
+// angular_cell_deg, so that no two cells share a key.
+constexpr std::int64_t kCellStride = 4096;
+std::int64_t key(int az, int el) { return std::int64_t(az) * kCellStride + el; }
 
 // The walls give the route only relative to the near-range walls and assume it passes the
 // lidar; a car on a curve or off-centre breaks that, and the error grows with range. The rail
@@ -743,7 +746,8 @@ void GeometricDetector::process(const AlgorithmConfig& config, FrameResult& resu
     const double range = range_of(index);
     if (!(range > 0)) continue;
     const auto cell_key = cell_of(index);
-    const int az = static_cast<int>(cell_key / 2048), el = static_cast<int>(cell_key % 2048);
+    const int az = static_cast<int>(cell_key / kCellStride),
+              el = static_cast<int>(cell_key % kCellStride);
     std::uint8_t channels = in_gauge ? ObstacleCandidate::kGauge : 0;
     if (in_band && foreground(cell_key)) channels |= ObstacleCandidate::kMotion;
     if (!channels) continue;

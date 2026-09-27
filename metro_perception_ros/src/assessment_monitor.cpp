@@ -1,6 +1,7 @@
 #include "metro_perception_ros/assessment_monitor.hpp"
 
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 
@@ -67,7 +68,15 @@ GateDecision AssessmentMonitor::on_analysis(const FrameAnalysis& frame, Clock::t
         candidate.channels |= metro_perception_core::ObstacleCandidate::kMotion;
       if (reason == "GAUGE") candidate.channels |= metro_perception_core::ObstacleCandidate::kGauge;
       if (reason == "EDGE") candidate.edge = true;
-      if (reason.rfind("OFFSET=", 0) == 0) candidate.closest_offset_m = std::stod(reason.substr(7));
+      if (reason.rfind("OFFSET=", 0) == 0) {
+        // Parsed from the wire: a malformed or non-finite value keeps the default instead of
+        // throwing out of the subscription callback and stopping the monitor.
+        const char* text = reason.c_str() + 7;
+        char* end = nullptr;
+        const double offset = std::strtod(text, &end);
+        if (end != text && *end == '\0' && std::isfinite(offset))
+          candidate.closest_offset_m = offset;
+      }
     }
     result.candidates.push_back(candidate);
   }

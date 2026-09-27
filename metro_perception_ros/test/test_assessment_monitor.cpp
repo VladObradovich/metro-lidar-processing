@@ -379,3 +379,16 @@ TEST(AssessmentMonitor, TracksAreConfirmedOverFramesAndClearedWhenStale) {
   EXPECT_TRUE(out.stale);
   EXPECT_TRUE(out.tracks.empty());
 }
+
+TEST(AssessmentMonitor, MalformedOffsetReasonIsIgnoredNotFatal) {
+  AssessmentMonitor monitor(0.5);
+  std::uint64_t sequence = 0;
+  for (const std::string offset :
+       {"OFFSET=", "OFFSET=abc", "OFFSET=1.2x", "OFFSET=nan", "OFFSET=inf", "OFFSET=0.4"}) {
+    auto in = frame({.sequence = ++sequence, .candidates = {{30.0, true}}});
+    in.header.stamp.nanosec = static_cast<std::uint32_t>(sequence * 100000000);
+    in.candidates[0].reasons = {"GAUGE", offset};
+    ASSERT_NO_THROW(EXPECT_TRUE(monitor.on_analysis(in, t0 + sequence * 100ms).accepted)) << offset;
+    EXPECT_FALSE(monitor.output(t0 + sequence * 100ms).stale) << offset;
+  }
+}
