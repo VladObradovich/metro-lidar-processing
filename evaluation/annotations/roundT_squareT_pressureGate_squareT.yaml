@@ -1,0 +1,18 @@
+schema_version: 1
+bag_id: roundT_squareT_pressureGate_squareT
+reviewed: true
+time_basis: bag_stamp_ns
+review_method: owner_scene_report
+# Whole bag is negative: the data owner reports no obstacle on the track.
+# Every OBSTACLE frame in this bag counts as a false alarm.
+reviewed_intervals:
+  - start_ns: 1788356943781195141
+    end_ns: 1788356999158695083
+    label: negative
+    evidence: Owner reports no obstacle on the track in the whole bag.
+# Difficult background for false-alarm analysis; does not limit the label.
+scene_windows:
+  - start_ns: 1788356967157762942
+    end_ns: 1788356984266959703
+    note: Structural transitions in the tunnel (+23.38 to +40.49 s).
+events: []

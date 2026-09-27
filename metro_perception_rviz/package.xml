@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>metro_perception_rviz</name><version>0.1.0</version>
+  <description>RViz panel printing the current path assessment as text.</description>
+  <maintainer email="team@example.com">Hackathon Team</maintainer><license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>metro_perception_interfaces</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <!-- The panel is built only where rviz_common is installed (desktop images). -->
+  <depend>rviz_common</depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

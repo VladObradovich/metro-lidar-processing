@@ -15,3 +15,91 @@ geometry_roi:
 detection_roi:
   min: [0.0, -5.0, -3.0]
   max: [120.0, 5.0, 5.0]
+
+# Experimental B0 detection parameters; override only after reviewing labelled scenes.
+detector:
+  # Train clearance envelope from the organizers (26.09): 2.1 m wide, 3.0 m high above the
+  # track. The height is counted from the floor found under the route, as in their synthetic
+  # scene, where the "above" box starts 3.1 m and the hanging strip ends 2.9 m above it.
+  corridor_half_width_m: 1.05
+  corridor_height_m: 3.0
+  ground_max_slope: 0.15
+  ground_inlier_tolerance_m: 0.15
+  ground_max_gap_m: 10.0
+  ground_min_bin_points: 30
+  obstacle_min_height_m: 0.25
+  # Floor search, background history and candidate extent keep the former 2.5 m band.
+  candidate_margin_m: 1.45
+  angular_cell_deg: 0.25
+  min_ground_inliers: 30
+  min_candidate_cells: 3
+  min_candidate_points: 5
+  background_history_frames: 10
+  background_lag_frames: 5
+  background_margin_m: 0.5
+  background_relative_margin: 0.02
+  ego_motion_compensation: true
+  ego_max_speed_mps: 25.0
+  ego_min_contrast: 0.005
+  # An empty static gauge is evidence of a clear path up to the gauge's range.
+  gauge_certifies_clear: true
+  # The static gauge covers the whole envelope; the outer strip past 0.9 m keeps its stricter
+  # rules for compact objects (rail and platform fragments reach into it).
+  static_half_width_m: 1.05
+  # Off the centre, a component longer than 3 m along the route is track-side structure.
+  side_structure_max_length_m: 3.0
+  static_inner_half_width_m: 0.9
+  # While moving, evidence without the gauge channel must intrude into the envelope itself.
+  envelope_half_width_m: 1.05
+  # The wall fit of the route jitters by about a metre at 60 m between frames on curves.
+  route_smoothing: 0.5
+  # Evidence within 0.005 m per metre of range (at most 0.5 m) of the envelope edge, plus the
+  # frame's smoothing correction, may lie beside the envelope: it is followed but confirmed
+  # only once nearer. Most false alarms on curves at 40-80 m were of this kind.
+  route_margin_per_m: 0.005
+  # Near the farthest wall support the fitted route is least certain (a curve beginning past
+  # it): evidence within 5 m of that end is treated the same way.
+  route_support_margin_m: 5.0
+  # A close large object hides the floor; the last floor is kept for 3 frames to find it.
+  ground_hold_frames: 3
+  # Thin columns from the floor to the vault (double-track tunnels) are structure.
+  pole_rejection: true
+  # Lidar 1.075 m above the rail heads (organizers, 24.09): at stations the floor found is the
+  # bottom of a deep trough, whose contents are not obstacles.
+  sensor_height_above_rail_m: 1.075
+  rail_head_margin_m: 0.05
+  low_bump_max_length_m: 0.6
+  low_bump_min_width_m: 0.15
+  low_bump_min_prominence_m: 0.15
+  low_bump_min_context_points: 10
+  hanging_channel: true
+  hanging_tip_max_height_m: 3.0
+  hanging_min_vertical_span_m: 0.5
+  hanging_max_footprint_m: 0.25
+  hanging_min_points: 8
+
+# G4 confirmation, chosen on development data: an object is an obstacle after 2 sightings
+# in 3 frames (one extra frame of latency) and is kept through one missed frame. Standing
+# still, new motion evidence of at least still_min_points returns is confirmed at once.
+temporal:
+  confirm_hits: 2
+  confirm_window: 3
+  gauge_confirm_hits: 2
+  gauge_confirm_window: 3
+  release_misses: 2
+  still_speed_mps: 0.5
+  still_min_points: 50
+  # Owner's decision (26.09): without a measured mounting a frame with no candidate in a
+  # region evaluated at least this far is reported clear, keeping trust ASSUMED.
+  assumed_clear: true
+  assumed_clear_min_range_m: 50.0
+  # Beyond 70 m the route and floor are least certain: a track needs 4 sightings in 5 frames.
+  far_confirm_from_m: 70.0
+  far_confirm_hits: 4
+  far_confirm_window: 5
+  # Moving at 3 m/s or more, a track needs gauge evidence: the gauge sees whatever is inside
+  # the envelope, and motion evidence alone was a failure of the background difference.
+  motion_gauge_speed_mps: 3.0
+  # An object that drifts out into the edge band as the train comes nearer is beside the
+  # envelope: its confirmation is withdrawn.
+  edge_retracts: true

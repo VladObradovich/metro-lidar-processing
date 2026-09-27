@@ -1,35 +1,61 @@
 Panels:
   - Class: rviz_common/Displays
     Name: Displays
+
 Visualization Manager:
   Class: ""
   Global Options:
     Fixed Frame: hesai_lidar
     Frame Rate: 20
+
   Displays:
     - Class: rviz_default_plugins/PointCloud2
       Name: Input cloud
       Enabled: true
       Topic:
         Value: /metro_rviz/input
-        Reliability Policy: Best Effort
+        # Large clouds rarely arrive whole best effort; switch for a best-effort live driver.
+        Reliability Policy: Reliable
         History Policy: Keep Last
         Depth: 1
       Style: Points
-      Size (Pixels): 2
-      Color Transformer: AxisColor
-      Axis: Y
+      Size (Pixels): 1
+      Color Transformer: Intensity
+      Channel Name: intensity
+      Use rainbow: true
+      Autocompute Intensity Bounds: false
+      Min Intensity: 0
+      Max Intensity: 80
       Position Transformer: XYZ
+
     - Class: rviz_default_plugins/MarkerArray
-      Name: Assessment (scaffold UNKNOWN)
+      Name: Assessment
       Enabled: true
-      Marker Topic:
+      Topic:
         Value: /metro_rviz/markers
         Reliability Policy: Reliable
         Depth: 1
+
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 25
-      Pitch: 0.5
-      Yaw: 0.8
+      # Inside the tunnel just behind and above the lidar, looking along the track.
+      Focal Point:
+        X: 25
+        Y: 0
+        Z: -0.5
+      Distance: 30
+      Pitch: 0.08
+      Yaw: 3.1416
+Window Geometry:
+  Width: 1600
+  Height: 900
+  X: 0
+  Y: 0

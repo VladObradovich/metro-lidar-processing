@@ -28,6 +28,9 @@ struct SourceFrameBinding {
 
 // The same immutable YAML config and resolver are used by the node and offline evaluator.
 PreprocessingConfig load_preprocessing(const std::string& path);
+// Temporal confirmation (G4) from the `temporal:` section of the same sensor profile, so the
+// online monitor and evaluate_bag always use one rule. An empty path is the default profile.
+metro_perception_core::TemporalConfig load_temporal_config(const std::string& path);
 
 // EXACT validates the configured frame. BIND_FIRST captures the first valid frame per session and
 // rejects a different frame until SourceFrameBinding::reset() is called.

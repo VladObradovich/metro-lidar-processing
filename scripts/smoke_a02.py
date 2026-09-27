@@ -29,7 +29,7 @@ def main():
         help="Check automatic lidar-only profile",
     )
     args = parser.parse_args()
-    reason = "NOT_IMPLEMENTED" if args.default else "CALIBRATION_UNVERIFIED"
+    reason = "GROUND_UNSUPPORTED" if args.default else "CALIBRATION_UNVERIFIED"
     target = "lidar_assumed" if args.default else "test_preview"
     max_points = 2000000
     max_cloud_bytes = 256 * 1024 * 1024
@@ -57,11 +57,18 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
              else [f'sensor_profile:={profile}']),
             start_new_session=True)
 
-        def until(predicate, seconds=15):
+        def until(predicate, seconds=15, retry=None):
             end = time.monotonic() + seconds
+            next_retry = 0.0
             while not predicate():
                 if launch.poll() is not None or time.monotonic() > end:
-                    raise RuntimeError('A02 smoke deadline or launch failure')
+                    reasons = [(a.header.frame_id, a.reason) for a in analyses[-8:]]
+                    raise RuntimeError(
+                        f'A02 smoke deadline or launch failure; analyses={reasons}'
+                    )
+                if retry is not None and time.monotonic() >= next_retry:
+                    publisher.publish(retry)
+                    next_retry = time.monotonic() + 0.2
                 rclpy.spin_once(node, timeout_sec=0.05)
 
         try:
@@ -85,11 +92,10 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
                 malformed.header.frame_id = 'must_not_bind'
                 malformed.header.stamp.sec = 122
                 malformed.data = b''
-                publisher.publish(malformed)
+                # A single volatile sample can be lost during discovery; retry like the others.
                 until(lambda: any(a.processing_status == FrameAnalysis.BAD_INPUT
-                                  for a in analyses))
-            publisher.publish(cloud)
-            until(lambda: any(a.reason == reason for a in analyses))
+                                  for a in analyses), retry=malformed)
+            until(lambda: any(a.reason == reason for a in analyses), retry=cloud)
             online = next(a for a in analyses if a.reason == reason)
             assert online.header.frame_id == target
             assert online.header.stamp == cloud.header.stamp
@@ -98,8 +104,17 @@ rotation_rpy_rad: [0, 0, 1.5707963267948966]
             expected_trust = (FrameAnalysis.CALIBRATION_TRUST_ASSUMED if args.default
                               else FrameAnalysis.CALIBRATION_TRUST_UNKNOWN)
             assert online.calibration_trust == expected_trust
-            until(lambda: any(a.frame_sequence == online.frame_sequence for a in assessments))
-            assessment = next(a for a in assessments if a.frame_sequence == online.frame_sequence)
+
+            def assessed(analysis):
+                return next((a for a in assessments if a.session_id == analysis.session_id
+                             and a.frame_sequence == analysis.frame_sequence), None)
+
+            # The monitor can miss the first analyses while discovery settles (seen in CI);
+            # keep sending the same cloud until one of its analyses has an assessment.
+            until(lambda: any(a.reason == reason and assessed(a) is not None for a in analyses),
+                  retry=cloud)
+            online = next(a for a in analyses if a.reason == reason and assessed(a) is not None)
+            assessment = assessed(online)
             assert assessment.calibration_trust == online.calibration_trust
             assert (online.geometry_point_count, online.detection_point_count,
                     online.invalid_point_count, online.blind_point_count,
@@ -215,7 +230,7 @@ rotation_rpy_rad: null
                 check=True,
             )
             dynamic_offline = json.loads(dynamic_result.read_text())
-            assert dynamic_offline['reason'] == 'NOT_IMPLEMENTED'
+            assert dynamic_offline['reason'] == 'GROUND_UNSUPPORTED'
             assert dynamic_offline['transform_applied']
             assert dynamic_offline['calibration_trust'] == FrameAnalysis.CALIBRATION_TRUST_VERIFIED
             # Measurement time goes backwards: a bind_first profile may bind a new frame name.

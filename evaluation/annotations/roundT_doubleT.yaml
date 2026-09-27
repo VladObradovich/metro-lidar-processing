@@ -1,0 +1,18 @@
+schema_version: 1
+bag_id: roundT_doubleT
+reviewed: true
+time_basis: bag_stamp_ns
+review_method: owner_scene_report
+# Whole bag is negative: the data owner reports no obstacle on the track.
+# Every OBSTACLE frame in this bag counts as a false alarm.
+reviewed_intervals:
+  - start_ns: 1788359059199396182
+    end_ns: 1788359084271366826
+    label: negative
+    evidence: Owner reports no obstacle on the track in the whole bag.
+# Difficult background for false-alarm analysis; does not limit the label.
+scene_windows:
+  - start_ns: 1788359064872494607
+    end_ns: 1788359082567518475
+    note: Double-tunnel entry, changing tunnel structures (+5.67 to +23.37 s).
+events: []

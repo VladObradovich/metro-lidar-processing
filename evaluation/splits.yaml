@@ -1,7 +1,32 @@
 schema_version: 1
-status: unassigned
-# Populate before tuning. No bag is claimed to be an untouched holdout yet.
-development: []
-validation: []
+status: assigned_with_time_split_blind_holdout
+unit: entire_bag
+frozen_on: '2026-09-23'
+notes:
+  - The development bags influenced G1/G2 design or parameter selection.
+  - Validation bags were inspected and compared during G2 work; this is post-hoc validation, not a blind test.
+  - Until 2026-09-24 the only positive bag was doubleT_obstacle (development); cloud_with_fake_obj
+    adds seven positive objects.
+  - new_data was excluded from annotation and evaluation until 2026-09-25. From then on, at the
+    user's request, its first 595 s are development (negative for the whole interval by the
+    owner's report) and the rest is the blind holdout below.
+  - blind_holdout is the only untouched data. Only its total number of alarms is looked at
+    (scripts/holdout_alarms.py), never single events, and never to choose between variants;
+    it is run once for the baseline and once for an accepted version.
+  - From 2026-09-24 (after G4) false-alarm classes were reviewed on development and validation together
+    ("two halves", at the user's request); every rule adopted since is physically motivated and had to
+    improve both halves separately without losing the positive object or synthetic recall. Validation
+    figures after that date are not an independent estimate; the hidden control bags are.
+  - regression holds cloud_with_fake_obj, the organizers' bag with inserted objects, added on
+    2026-09-24 after the freeze. The detector has not been tuned on it, but its results (misses,
+    ego-motion failures) were analysed in detail, so it is not a blind test; it tracks changes
+    and is not an independent estimate.
+development: [doubleT_obstacle, doubleT_platform, roundT_pressureGate_roundT, new_data]
+validation: [roundT_doubleT, roundT_squareT_pressureGate_squareT, squareT_platform_squareT_switch]
 holdout: []
-regression: []
+regression: [cloud_with_fake_obj]
+# Part of a bag from from_bag_stamp_ns on (new_data: 595 s after its first cloud); its frames
+# carry no label, so metrics.py does not score them.
+blind_holdout:
+  - bag: new_data
+    from_bag_stamp_ns: 1789643521161078864

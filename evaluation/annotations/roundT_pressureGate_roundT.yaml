@@ -1,0 +1,18 @@
+schema_version: 1
+bag_id: roundT_pressureGate_roundT
+reviewed: true
+time_basis: bag_stamp_ns
+review_method: owner_scene_report
+# Whole bag is negative: the data owner reports no obstacle on the track.
+# Every OBSTACLE frame in this bag counts as a false alarm.
+reviewed_intervals:
+  - start_ns: 1788358838051667137
+    end_ns: 1788358864750447332
+    label: negative
+    evidence: Owner reports no obstacle on the track in the whole bag.
+# Difficult background for false-alarm analysis; does not limit the label.
+scene_windows:
+  - start_ns: 1788358839057154442
+    end_ns: 1788358852246199840
+    note: Left-side stairs/service entrance (+1.00 to +14.19 s).
+events: []

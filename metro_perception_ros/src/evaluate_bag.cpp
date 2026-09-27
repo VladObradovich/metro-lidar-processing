@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -105,6 +106,10 @@ int main(int argc, char** argv) {
     if (argc >= 6) config.algorithm.max_points = parse_limit(argv[5], "MAX_POINTS");
     if (argc >= 7) max_cloud_bytes = parse_limit(argv[6], "MAX_CLOUD_BYTES");
     metro_perception_ros::validate_pointcloud_limits(config.algorithm.max_points, max_cloud_bytes);
+    // Diagnostics: rejected components and their reasons in every row.
+    config.algorithm.record_rejected = std::getenv("METRO_DEBUG_COMPONENTS") != nullptr;
+    // Diagnostics: odometry shift errors and speed tracker state in every row.
+    config.algorithm.record_motion = std::getenv("METRO_DEBUG_MOTION") != nullptr;
     config.algorithm.validate();
 
     double lookahead_s = 0.05;
@@ -128,7 +133,8 @@ int main(int argc, char** argv) {
                                                 static_cast<std::int64_t>(lookahead_s * 1e9));
 
     metro_perception_core::PerceptionPipeline pipeline(config.algorithm);
-    metro_perception_core::TemporalMonitor monitor;
+    metro_perception_core::TemporalMonitor monitor(
+        metro_perception_ros::load_temporal_config(argc >= 5 ? argv[4] : ""));
     std::uint64_t sequence = 0;
     std::uint64_t session = 0;
     std::optional<std::int64_t> previous_stamp;
@@ -184,7 +190,9 @@ int main(int argc, char** argv) {
           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
               .count();
 
-      output << "{\"schema_version\":1,\"mode\":\"a02\",\"bag_id\":";
+      output << "{\"schema_version\":1,\"mode\":\""
+             << (config.algorithm.background_history_frames ? "geometric_rolling" : "geometric_b0")
+             << "\",\"bag_id\":";
       output << json_string(argv[1]);
       output << ",\"session_id\":" << session;
       output << ",\"frame_sequence\":" << ++sequence;
@@ -199,10 +207,98 @@ int main(int argc, char** argv) {
         output << "null";
       }
       output << ",\"distance_valid\":" << (assessment.distance_valid ? "true" : "false")
-             << ",\"candidate_count\":" << result.candidates.size()
-             << ",\"evaluation_region_valid\":"
+             << ",\"candidate_count\":" << result.candidates.size();
+      output << ",\"candidates\":[";
+      for (std::size_t i = 0; i < result.candidates.size(); ++i) {
+        if (i) output << ',';
+        const auto& candidate = result.candidates[i];
+        output << "{\"id\":" << candidate.id << ",\"distance_m\":" << std::setprecision(17)
+               << candidate.distance_m << ",\"support_points\":" << candidate.support_points
+               << ",\"center\":[" << candidate.center.x << ',' << candidate.center.y << ','
+               << candidate.center.z << "],\"size\":[" << candidate.size.x << ','
+               << candidate.size.y << ',' << candidate.size.z
+               << "],\"channels\":" << static_cast<unsigned>(candidate.channels)
+               << ",\"edge\":" << (candidate.edge ? "true" : "false")
+               << ",\"closest_offset_m\":" << candidate.closest_offset_m << '}';
+      }
+      output << "]";
+      output << ",\"evaluation_region_valid\":"
              << (result.evaluation_region_valid ? "true" : "false")
-             << ",\"processing_status\":" << static_cast<unsigned>(result.status)
+             << ",\"evaluated_range_m\":" << result.evaluated_range_m
+             << ",\"ego_motion_valid\":" << (result.ego_motion_valid ? "true" : "false")
+             << ",\"ego_speed_mps\":" << result.ego_speed_mps << ",\"ground_inliers\":"
+             << (result.corridor.empty() ? 0u : result.corridor.front().ground_inliers)
+             << ",\"ground_plane\":";
+      if (result.corridor.empty()) {
+        output << "null";
+      } else {
+        const auto& plane = result.corridor.front().ground_plane;
+        output << '[' << plane[0] << ',' << plane[1] << ',' << plane[2] << ',' << plane[3] << ']';
+      }
+      output << ",\"tracks\":[";
+      for (std::size_t i = 0; i < assessment.tracks.size(); ++i) {
+        const auto& track = assessment.tracks[i];
+        if (i) output << ',';
+        output << "{\"id\":" << track.id
+               << ",\"confirmed\":" << (track.confirmed ? "true" : "false")
+               << ",\"coasting\":" << (track.coasting ? "true" : "false")
+               << ",\"hits\":" << track.hits << ",\"age\":" << track.age_frames
+               << ",\"distance_m\":" << std::setprecision(17) << track.distance_m << ",\"center\":["
+               << track.center.x << ',' << track.center.y << ',' << track.center.z << "],\"size\":["
+               << track.size.x << ',' << track.size.y << ',' << track.size.z
+               << "],\"channels\":" << static_cast<unsigned>(track.channels) << '}';
+      }
+      output << ']';
+      if (config.algorithm.record_rejected) {
+        output << ",\"rejected\":[";
+        for (std::size_t i = 0; i < result.rejected.size(); ++i) {
+          const auto& item = result.rejected[i];
+          output << (i ? "," : "") << "{\"reason\":" << json_string(item.reason) << ",\"center\":["
+                 << item.center.x << ',' << item.center.y << ',' << item.center.z << "],\"size\":["
+                 << item.size.x << ',' << item.size.y << ',' << item.size.z
+                 << "],\"cells\":" << item.cells << ",\"points\":" << item.points
+                 << ",\"channels\":" << static_cast<unsigned>(item.channels) << '}';
+        }
+        output << ']';
+      }
+      if (config.algorithm.record_motion) {
+        const auto& motion = result.motion;
+        const auto number = [&output](double value) {
+          if (std::isfinite(value))
+            output << value;
+          else
+            output << "null";
+        };
+        output << ",\"motion\":";
+        if (!motion.recorded) {
+          output << "null";
+        } else {
+          output << "{\"has_previous\":" << (motion.has_previous ? "true" : "false")
+                 << ",\"dt_s\":";
+          number(motion.dt_s);
+          output << ",\"errors\":[";
+          for (std::size_t i = 0; i < motion.errors.size(); ++i) {
+            if (i) output << ',';
+            number(motion.errors[i]);
+          }
+          output << "],\"median\":";
+          number(motion.median);
+          output << ",\"tracked\":" << motion.tracked << ",\"global\":" << motion.global
+                 << ",\"candidate\":" << motion.candidate
+                 << ",\"adopted\":" << (motion.adopted ? "true" : "false")
+                 << ",\"escaped\":" << (motion.escaped ? "true" : "false")
+                 << ",\"speed_known\":" << (motion.speed_known ? "true" : "false")
+                 << ",\"speed_mps\":";
+          number(motion.speed_mps);
+          output << ",\"unconfirmed_s\":";
+          number(motion.unconfirmed_s);
+          output << '}';
+        }
+      }
+      output << ",\"route\":[" << result.route.c1 << ',' << result.route.c2 << ','
+             << (result.route.valid ? "true" : "false") << ',' << result.route.max_x << ','
+             << result.route.c0 << ',' << result.route.rail_slices << ']';
+      output << ",\"processing_status\":" << static_cast<unsigned>(result.status)
              << ",\"calibration_trust\":" << static_cast<unsigned>(result.calibration_trust)
              << ",\"transform_applied\":"
              << (result.preprocessed.transform_applied ? "true" : "false")
@@ -229,7 +325,7 @@ int main(int argc, char** argv) {
       throw std::runtime_error("No frames processed");
     }
 
-    std::cout << "A02 exported " << sequence << " frames\n";
+    std::cout << "Geometric detector exported " << sequence << " frames\n";
     return 0;
   } catch (const std::exception& e) {
     std::cerr << e.what() << '\n';

@@ -8,13 +8,16 @@
 #include <sstream>
 #include <thread>
 
+#include "metro_perception_core/labels.hpp"
 #include "metro_perception_interfaces/msg/frame_analysis.hpp"
+#include "metro_perception_ros/labelled_cloud.hpp"
 #include "metro_perception_ros/latest_frame_slot.hpp"
 #include "metro_perception_ros/measurement_time.hpp"
 #include "metro_perception_ros/pointcloud_adapter.hpp"
 #include "metro_perception_ros/preprocessing.hpp"
 #include "metro_perception_ros/session_gate.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
 
 using metro_perception_interfaces::msg::FrameAnalysis;
@@ -58,6 +61,11 @@ class PerceptionNode : public rclcpp::Node {
     config_.algorithm.max_points = max_points_;
     pipeline_ = std::make_unique<metro_perception_core::PerceptionPipeline>(config_.algorithm);
 
+    // Off by default: the profile TF stays private to perception. The demo turns it on so that
+    // RViz can draw the input cloud in the target frame whatever the source frame is named.
+    if (declare_parameter<bool>("publish_bound_transform", false))
+      static_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(this);
+
     buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     listener_ = std::make_unique<tf2_ros::TransformListener>(*buffer_);
     if (const auto transform =
@@ -73,24 +81,30 @@ class PerceptionNode : public rclcpp::Node {
     }
     source_ = id.str();
 
-    const auto reliability = declare_parameter<std::string>("input_reliability", "best_effort");
-    if (reliability != "best_effort" && reliability != "reliable") {
-      throw std::invalid_argument("input_reliability: best_effort or reliable");
+    const auto reliability = declare_parameter<std::string>("input_reliability", "auto");
+    if (reliability != "auto" && reliability != "best_effort" && reliability != "reliable") {
+      throw std::invalid_argument("input_reliability: auto, best_effort or reliable");
     }
-    auto qos = rclcpp::SensorDataQoS().keep_last(1);
-    if (reliability == "reliable") qos.reliable();
 
     publisher_ = create_publisher<FrameAnalysis>("~/output/analysis", 1);
-    subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-        "~/input/points", qos, [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr message) {
-          on_cloud(std::move(message));
-        });
+    // Display only: the analysed points coloured by corridor and obstacle membership.
+    if (declare_parameter<bool>("publish_labelled_cloud", false))
+      labelled_publisher_ =
+          create_publisher<sensor_msgs::msg::PointCloud2>("~/output/labelled_points", 1);
+    // Clouds of several megabytes rarely arrive whole over best-effort DDS (one lost fragment
+    // drops the message), so auto subscribes reliably, which also matches rosbag2 play. A
+    // reliable reader cannot match a best-effort writer (a live driver): auto switches to best
+    // effort while no cloud has arrived and every publisher of the topic is best effort.
+    subscribe(reliability != "best_effort");
+    if (reliability == "auto") {
+      qos_timer_ = create_wall_timer(std::chrono::seconds(1), [this] { adapt_reliability(); });
+    }
 
     worker_ = std::thread([this] { worker_loop(); });
 
     RCLCPP_WARN(get_logger(),
-                "A02 active; calibration_verified=%s. Latest-only worker enabled; detector remains "
-                "NOT_IMPLEMENTED",
+                "Experimental geometric detector active; calibration_verified=%s. "
+                "Ground support and straight corridor are required.",
                 config_.calibration_verified ? "true" : "false");
   }
 
@@ -106,6 +120,33 @@ class PerceptionNode : public rclcpp::Node {
     std::uint64_t session_id{0};
     std::chrono::steady_clock::time_point received_at;
   };
+
+  void subscribe(bool reliable) {
+    auto qos = rclcpp::SensorDataQoS().keep_last(1);
+    if (reliable) qos.reliable();
+    reliable_input_ = reliable;
+    subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+        "~/input/points", qos, [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr message) {
+          on_cloud(std::move(message));
+        });
+  }
+
+  void adapt_reliability() {
+    if (received_.load() > 0 || !reliable_input_) {
+      qos_timer_->cancel();
+      return;
+    }
+    const auto publishers = get_publishers_info_by_topic(subscription_->get_topic_name());
+    if (publishers.empty()) return;
+    for (const auto& info : publishers)
+      if (info.qos_profile().reliability() != rclcpp::ReliabilityPolicy::BestEffort) return;
+    RCLCPP_WARN(get_logger(),
+                "Every publisher of %s is best effort; subscribing best effort. Large clouds "
+                "may be lost in transport.",
+                subscription_->get_topic_name());
+    subscribe(false);
+    qos_timer_->cancel();
+  }
 
   void on_cloud(sensor_msgs::msg::PointCloud2::ConstSharedPtr message) {
     const auto received_at = std::chrono::steady_clock::now();
@@ -163,6 +204,10 @@ class PerceptionNode : public rclcpp::Node {
           if (const auto transform =
                   metro_perception_ros::resolved_static_transform(config_, source_binding_)) {
             buffer_->setTransform(*transform, "sensor_profile", true);
+            if (static_broadcaster_ && transform->child_frame_id != published_frame_) {
+              static_broadcaster_->sendTransform(*transform);
+              published_frame_ = transform->child_frame_id;
+            }
           }
           const auto tf_wait_started = std::chrono::steady_clock::now();
           auto context = resolve_context(work.message->header, config_, source_binding_, *buffer_,
@@ -205,6 +250,47 @@ class PerceptionNode : public rclcpp::Node {
     output.frame_sequence = work.frame_sequence;
     output.processing_status = static_cast<std::uint8_t>(frame.status);
     output.reason = frame.reason;
+    output.evaluation_region_valid = frame.evaluation_region_valid;
+    output.evaluated_range_m = frame.evaluated_range_m;
+    output.ego_motion_valid = frame.ego_motion_valid;
+    output.ego_speed_mps = frame.ego_speed_mps;
+    for (const auto& candidate : frame.candidates) {
+      auto& item = output.candidates.emplace_back();
+      item.candidate_id = candidate.id;
+      item.bbox.center.position.x = candidate.center.x;
+      item.bbox.center.position.y = candidate.center.y;
+      item.bbox.center.position.z = candidate.center.z;
+      item.bbox.center.orientation.w = 1.0;
+      item.bbox.size.x = candidate.size.x;
+      item.bbox.size.y = candidate.size.y;
+      item.bbox.size.z = candidate.size.z;
+      item.nearest_point.x = candidate.nearest_point.x;
+      item.nearest_point.y = candidate.nearest_point.y;
+      item.nearest_point.z = candidate.nearest_point.z;
+      item.distance_m = candidate.distance_m;
+      item.distance_valid = candidate.distance_valid;
+      item.support_points = candidate.support_points;
+      if (candidate.channels & metro_perception_core::ObstacleCandidate::kMotion)
+        item.reasons.push_back("MOTION");
+      if (candidate.channels & metro_perception_core::ObstacleCandidate::kGauge)
+        item.reasons.push_back("GAUGE");
+      if (candidate.edge) item.reasons.push_back("EDGE");
+      item.reasons.push_back("OFFSET=" + std::to_string(candidate.closest_offset_m));
+    }
+    for (const auto& segment : frame.corridor) {
+      auto& item = output.corridor.emplace_back();
+      item.start.x = segment.start.x;
+      item.start.y = segment.start.y;
+      item.start.z = segment.start.z;
+      item.end.x = segment.end.x;
+      item.end.y = segment.end.y;
+      item.end.z = segment.end.z;
+      item.width_m = segment.width_m;
+      item.height_m = segment.height_m;
+      item.ground_plane = segment.ground_plane;
+      item.geometry_valid = segment.geometry_valid;
+      item.coverage_valid = segment.coverage_valid;
+    }
     output.received_frames = received_.load();
     output.processed_frames = processed_.load();
     output.rejected_frames = rejected_.load();
@@ -220,6 +306,10 @@ class PerceptionNode : public rclcpp::Node {
             return;
           }
           publisher_->publish(output);
+          if (labelled_publisher_ && frame.preprocessed.transform_applied)
+            labelled_publisher_->publish(metro_perception_ros::make_labelled_cloud(
+                output.header, frame,
+                metro_perception_core::label_points(config_.algorithm, frame)));
         })) {
       rejected_.fetch_add(1);
     }
@@ -249,7 +339,12 @@ class PerceptionNode : public rclcpp::Node {
   bool worker_session_initialized_{false};
 
   rclcpp::Publisher<FrameAnalysis>::SharedPtr publisher_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr labelled_publisher_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
+  rclcpp::TimerBase::SharedPtr qos_timer_;
+  std::unique_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
+  std::string published_frame_;  // Source frame last sent to /tf_static; worker thread only.
+  bool reliable_input_{true};
 };
 
 int main(int argc, char** argv) {

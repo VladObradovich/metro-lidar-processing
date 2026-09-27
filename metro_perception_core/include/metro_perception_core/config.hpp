@@ -15,19 +15,265 @@ struct Bounds {
 };
 struct AlgorithmConfig {
   std::size_t max_points{2000000};
+  // Diagnostics only: keep rejected components and their reasons in FrameResult.
+  bool record_rejected{false};
+  // Diagnostics only: keep the odometry shift errors and tracker state in FrameResult.
+  bool record_motion{false};
   double blind_radius_m{0.5};  // Sensor coordinates, before translation.
   Bounds geometry_roi;
   Bounds detection_roi{{0, -5, -3}, {120, 5, 5}};
+  // Initial straight-path hypothesis, measured from the lidar origin.
+  double corridor_half_width_m{2.0};
+  double corridor_height_m{3.5};
+  double ground_max_slope{0.15};
+  double ground_inlier_tolerance_m{0.15};
+  // Longest unobserved floor stretch before the usable range ends. At least the
+  // 5 m support bin, so gaps inside one bin never exceed it.
+  double ground_max_gap_m{10.0};
+  // A large object close ahead hides the floor. For up to this many frames the last supported
+  // floor is kept to look for it; such a frame is never a clear path. 0 disables.
+  std::size_t ground_hold_frames{0};
+  // Floor returns needed for a 5 m stretch to count as observed; from ground_far_from_m on,
+  // ground_far_min_bin_points (0: the same). The floor is searched up to ground_max_x_m.
+  std::size_t ground_min_bin_points{30};
+  std::size_t ground_far_min_bin_points{0};
+  double ground_far_from_m{60.0};
+  double ground_max_x_m{90.0};
+  double obstacle_min_height_m{0.25};
+  // Candidate extent is measured this far past the corridor edge.
+  double candidate_margin_m{0.5};
+  double angular_cell_deg{0.25};
+  std::size_t min_ground_inliers{30};
+  std::size_t min_candidate_cells{3};
+  std::size_t min_candidate_points{5};
+  // Zero disables the rolling baseline for controlled B0 comparisons.
+  std::size_t background_history_frames{10};
+  std::size_t background_lag_frames{5};
+  double background_margin_m{0.5};
+  double background_relative_margin{0.02};
+  // Route centre from the tunnel walls; the corridor follows curves instead of a line.
+  bool route_estimation{true};
+  double route_min_radius_m{150.0};
+  // Weight of the previous route in the current one. Along an arc the quadratic route seen
+  // from the car barely changes between frames, while a single fit to the walls jitters by
+  // about a metre at 60 m; 0 uses each frame's fit alone.
+  double route_smoothing{0.0};
+  // Weight of rail measurements against wall slices in the route fit (0: walls only). The rail
+  // heads, found sensor_height_above_rail_m below the lidar 4-30 m ahead, give the position and
+  // direction of the track near the train; the walls give its curve further on.
+  double rail_route_weight{0.0};
+  // Lateral uncertainty of the route at distance x: route_margin_per_m * x, at most
+  // route_margin_max_m, plus the change the smoothing made to this frame's fit at x. A
+  // candidate whose evidence stays within it of the envelope edge is marked `edge`; 0 disables.
+  double route_margin_per_m{0.0};
+  double route_margin_max_m{0.5};
+  // The wall fit is least certain near its farthest support: evidence less than this far before
+  // route.max_x is marked `edge` as well; 0 disables.
+  double route_support_margin_m{0.0};
+  // Gauge channel: returns inside a narrow route gauge are candidates without any history,
+  // so obstacles fixed in the world are found while the train approaches them. Long
+  // gauge-only structures (walls, platform edges) are rejected by length.
+  bool static_channel{true};
+  // With a rolling background, let an empty gauge certify a clear path up to the gauge's range
+  // (the rest of the corridor, seen only by differencing, cannot).
+  bool gauge_certifies_clear{false};
+  // Chosen on development data: rails and track-side equipment start around 0.76 m.
+  double static_half_width_m{0.9};
+  double static_inner_half_width_m{0.9};
+  double static_outer_max_length_m{1.0};
+  double static_outer_min_width_m{0.15};
+  std::size_t static_outer_min_points{10};
+  double static_min_height_m{0.3};
+  // The lidar stands this far above the rail heads (1.075 m on the organizers' train; 0
+  // disables). The floor found under a deep trough, as at stations, lies well below the rails,
+  // and what lies in the trough is not an obstacle: returns count only from rail_head_margin_m
+  // above the rail heads, on top of the floor-based minimum heights.
+  double sensor_height_above_rail_m{0.0};
+  double rail_head_margin_m{0.1};
+  double static_max_height_m{2.5};
+  double static_max_length_m{3.0};
+  // Longer than this along the route with all evidence farther than low_object_half_width_m from
+  // the centre, a component is a side structure whatever its channels (0 disables).
+  double side_structure_max_length_m{0.0};
+  // Far gauge: past the supported floor the lidar sees almost no floor, so a clear path is not
+  // certified there, but a solid object still returns. Up to far_gauge_max_x_m (0 disables)
+  // and the farthest wall support, returns inside a narrower gauge (the route estimate and the
+  // extrapolated floor are less certain there) and high enough above the extrapolated floor
+  // are gauge evidence; a far component needs far_min_extent_m of vertical extent.
+  double far_gauge_max_x_m{0.0};
+  double far_gauge_half_width_m{0.7};
+  double far_gauge_min_height_m{0.6};
+  double far_min_extent_m{0.4};
+  // Largest route curvature (1/radius) at which the far gauge is used; 0 means any.
+  double far_gauge_max_curvature{0.0};
+  // Returns below low_object_height_m above the bed count as obstacle evidence only between
+  // the rails: rails (+-0.76 m), the contact rail (~1.5 m), cable ducts and walkways are low
+  // and lie outside low_object_half_width_m. Tall objects count anywhere in the corridor.
+  double low_object_height_m{1.0};
+  double low_object_half_width_m{0.5};
+  // A compact low object outside the rail centre must stand above the nearby
+  // returns in the same lateral strip on both sides of the object.
+  double low_bump_max_length_m{0.6};
+  double low_bump_min_width_m{0.15};
+  double low_bump_min_prominence_m{0.15};
+  std::size_t low_bump_min_context_points{10};
+  // A narrow vertical component hanging over the route counts only when its
+  // lower tip intrudes into the usable vehicle height.
+  bool hanging_channel{false};
+  // Reject thin columns that run from the floor past the envelope up to the vault.
+  bool pole_rejection{false};
+  double hanging_tip_max_height_m{3.15};
+  double hanging_min_vertical_span_m{0.5};
+  double hanging_max_footprint_m{0.25};
+  std::size_t hanging_min_points{8};
+  // Vehicle half-width with margin (a metro car is ~1.35-1.4 m). While the train moves at
+  // envelope_min_speed_mps or more, evidence without the gauge channel that stays farther
+  // from the route is not a candidate; standing still, the whole corridor counts.
+  double envelope_half_width_m{1.5};
+  double envelope_min_speed_mps{1.0};
+  // Move the baseline by lidar-only forward odometry before differencing.
+  bool ego_motion_compensation{true};
+  double ego_max_speed_mps{25.0};
+  // Required lead, in metres of mean profile error, of the best shift over the median.
+  double ego_min_contrast{0.005};
   void validate() const {
     if (max_points == 0 || max_points > 10000000)
       throw std::invalid_argument("max_points must be in [1, 10000000]");
     if (!std::isfinite(blind_radius_m) || blind_radius_m < 0)
       throw std::invalid_argument("Invalid blind_radius_m");
+    if (!std::isfinite(corridor_half_width_m) || corridor_half_width_m <= 0 ||
+        corridor_half_width_m > 5 || !std::isfinite(corridor_height_m) || corridor_height_m <= 0 ||
+        corridor_height_m > 8 || !std::isfinite(ground_max_slope) || ground_max_slope <= 0 ||
+        ground_max_slope > 0.5 || !std::isfinite(ground_inlier_tolerance_m) ||
+        ground_inlier_tolerance_m <= 0 || ground_inlier_tolerance_m > 0.5 ||
+        !std::isfinite(ground_max_gap_m) || ground_max_gap_m < 5 || ground_max_gap_m > 50 ||
+        ground_min_bin_points == 0 || ground_hold_frames > 10 ||
+        ground_far_min_bin_points > ground_min_bin_points || !std::isfinite(ground_far_from_m) ||
+        ground_far_from_m < 0 || !std::isfinite(ground_max_x_m) || ground_max_x_m < 30 ||
+        ground_max_x_m > 200 || !std::isfinite(obstacle_min_height_m) ||
+        obstacle_min_height_m <= 0 || obstacle_min_height_m > corridor_height_m ||
+        !std::isfinite(angular_cell_deg) || angular_cell_deg < 0.05 || angular_cell_deg > 1.0 ||
+        min_ground_inliers < 3 || min_candidate_cells == 0 || min_candidate_points == 0 ||
+        background_history_frames > 60 ||
+        (background_history_frames &&
+         (background_lag_frames == 0 || background_lag_frames >= background_history_frames)) ||
+        !std::isfinite(candidate_margin_m) || candidate_margin_m < 0 || candidate_margin_m > 2 ||
+        !std::isfinite(ego_max_speed_mps) || ego_max_speed_mps <= 0 || ego_max_speed_mps > 60 ||
+        !std::isfinite(ego_min_contrast) || ego_min_contrast <= 0 || ego_min_contrast > 0.3 ||
+        !std::isfinite(route_min_radius_m) || route_min_radius_m < 20 ||
+        !std::isfinite(route_smoothing) || route_smoothing < 0 || route_smoothing >= 1 ||
+        !std::isfinite(rail_route_weight) || rail_route_weight < 0 ||
+        !std::isfinite(route_margin_per_m) || route_margin_per_m < 0 ||
+        !std::isfinite(route_margin_max_m) || route_margin_max_m < 0 ||
+        !std::isfinite(route_support_margin_m) || route_support_margin_m < 0 ||
+        !std::isfinite(static_half_width_m) || static_half_width_m <= 0 ||
+        !std::isfinite(static_inner_half_width_m) || static_inner_half_width_m <= 0 ||
+        static_inner_half_width_m > static_half_width_m ||
+        !std::isfinite(static_outer_max_length_m) || static_outer_max_length_m <= 0 ||
+        static_outer_max_length_m > static_max_length_m ||
+        !std::isfinite(static_outer_min_width_m) || static_outer_min_width_m <= 0 ||
+        static_outer_min_width_m > static_half_width_m || static_outer_min_points == 0 ||
+        !std::isfinite(static_min_height_m) || static_min_height_m <= 0 ||
+        !std::isfinite(sensor_height_above_rail_m) || sensor_height_above_rail_m < 0 ||
+        sensor_height_above_rail_m > 5 || !std::isfinite(rail_head_margin_m) ||
+        rail_head_margin_m < 0 || !std::isfinite(static_max_height_m) ||
+        static_max_height_m <= static_min_height_m || !std::isfinite(static_max_length_m) ||
+        static_max_length_m <= 0 || !std::isfinite(side_structure_max_length_m) ||
+        side_structure_max_length_m < 0 || !std::isfinite(far_gauge_max_x_m) ||
+        far_gauge_max_x_m < 0 || far_gauge_max_x_m > 300 ||
+        !std::isfinite(far_gauge_half_width_m) || far_gauge_half_width_m <= 0 ||
+        !std::isfinite(far_gauge_min_height_m) || far_gauge_min_height_m < 0 ||
+        !std::isfinite(far_min_extent_m) || far_min_extent_m < 0 ||
+        !std::isfinite(far_gauge_max_curvature) || far_gauge_max_curvature < 0 ||
+        !std::isfinite(low_object_height_m) || low_object_height_m < 0 ||
+        !std::isfinite(low_object_half_width_m) || low_object_half_width_m < 0 ||
+        !std::isfinite(low_bump_max_length_m) || low_bump_max_length_m <= 0 ||
+        low_bump_max_length_m > static_max_length_m || !std::isfinite(low_bump_min_width_m) ||
+        low_bump_min_width_m <= 0 || low_bump_min_width_m > corridor_half_width_m ||
+        !std::isfinite(low_bump_min_prominence_m) || low_bump_min_prominence_m <= 0 ||
+        low_bump_min_prominence_m > low_object_height_m || low_bump_min_context_points == 0 ||
+        !std::isfinite(hanging_tip_max_height_m) || hanging_tip_max_height_m <= 0 ||
+        hanging_tip_max_height_m > corridor_height_m ||
+        !std::isfinite(hanging_min_vertical_span_m) || hanging_min_vertical_span_m <= 0 ||
+        hanging_min_vertical_span_m > corridor_height_m ||
+        !std::isfinite(hanging_max_footprint_m) || hanging_max_footprint_m <= 0 ||
+        hanging_max_footprint_m > corridor_half_width_m || hanging_min_points == 0 ||
+        !std::isfinite(envelope_half_width_m) || envelope_half_width_m < 0 ||
+        !std::isfinite(envelope_min_speed_mps) || envelope_min_speed_mps < 0 ||
+        !std::isfinite(background_margin_m) || background_margin_m < 0 ||
+        !std::isfinite(background_relative_margin) || background_relative_margin < 0 ||
+        background_relative_margin > 0.5)
+      throw std::invalid_argument("Invalid detector configuration");
     geometry_roi.validate();
     detection_roi.validate();
     for (int i = 0; i < 3; ++i)
       if (detection_roi.min[i] < geometry_roi.min[i] || detection_roi.max[i] > geometry_roi.max[i])
         throw std::invalid_argument("Detection ROI must be inside geometry ROI");
+  }
+};
+// Confirmation over frames (G4). The defaults reproduce the per-frame decision exactly.
+struct TemporalConfig {
+  // Hits a track needs within its last `window` frames to be confirmed.
+  std::size_t confirm_hits{1}, confirm_window{1};
+  // Stricter rule for tracks seen only by the gauge channel, which has no history evidence.
+  std::size_t gauge_confirm_hits{1}, gauge_confirm_window{1};
+  // Also required of a track beyond the evaluated range (the far gauge), where the route and
+  // the floor are extrapolated, or beyond far_confirm_from_m (0: only the evaluated range),
+  // where they are least certain.
+  std::size_t far_confirm_hits{1}, far_confirm_window{1};
+  double far_confirm_from_m{0.0};
+  // At or above this valid ego speed a track needs gauge evidence to be confirmed: moving, the
+  // gauge sees whatever is inside the envelope, and motion evidence alone is mostly a failure
+  // of the background difference. 0 disables.
+  double motion_gauge_speed_mps{0.0};
+  // A track whose evidence lies farther than outer_offset_m from the route centre (the outer
+  // part of the envelope, where route errors bring side structures in) also needs this rule;
+  // outer_offset_m 0 disables.
+  double outer_offset_m{0.0};
+  // A track whose closest evidence moved outwards over its last three measurements and now lies
+  // within the route uncertainty of the envelope edge (`edge`) loses its confirmation and its
+  // hits: an object beside the envelope drifts out as the route ahead of it gets certain,
+  // while route jitter moves it back and forth.
+  bool edge_retracts{false};
+  std::size_t outer_confirm_hits{1}, outer_confirm_window{1};
+  // A confirmed track survives this many missed frames minus one, coasting on ego motion.
+  std::size_t release_misses{1};
+  // Association gate: base + fraction of range + object and unknown-ego motion over dt.
+  double gate_base_m{1.0};
+  double gate_range_fraction{0.03};
+  double object_max_speed_mps{4.0};
+  double unknown_ego_speed_mps{20.0};
+  // Below this valid ego speed a track with MOTION evidence is confirmed on its first hit
+  // (standing still, differencing needs no odometry); 0 disables.
+  double still_speed_mps{0.0};
+  // Returns inside the corridor such a track needs in that frame (not a sparse flicker).
+  std::uint32_t still_min_points{50};
+  // A longer pause between analysed frames restarts all tracks.
+  double max_gap_s{0.5};
+  std::size_t max_tracks{64};
+  // Report a clear path under ASSUMED calibration (the owner's decision for data without a
+  // measured mounting). The region must then be evaluated at least this far; the state keeps
+  // its trust, so ASSUMED is never presented as VERIFIED.
+  bool assumed_clear{false};
+  double assumed_clear_min_range_m{50.0};
+  void validate() const {
+    const auto rule_ok = [](std::size_t hits, std::size_t window) {
+      return hits >= 1 && window >= hits && window <= 32;
+    };
+    if (!rule_ok(confirm_hits, confirm_window) ||
+        !rule_ok(gauge_confirm_hits, gauge_confirm_window) ||
+        !rule_ok(far_confirm_hits, far_confirm_window) || !std::isfinite(far_confirm_from_m) ||
+        !rule_ok(outer_confirm_hits, outer_confirm_window) ||
+        !std::isfinite(motion_gauge_speed_mps) || motion_gauge_speed_mps < 0 ||
+        !std::isfinite(outer_offset_m) || outer_offset_m < 0 || far_confirm_from_m < 0 ||
+        release_misses < 1 || release_misses > 32 || !std::isfinite(gate_base_m) ||
+        gate_base_m <= 0 || !std::isfinite(gate_range_fraction) || gate_range_fraction < 0 ||
+        !std::isfinite(object_max_speed_mps) || object_max_speed_mps < 0 ||
+        !std::isfinite(unknown_ego_speed_mps) || unknown_ego_speed_mps < 0 ||
+        !std::isfinite(still_speed_mps) || still_speed_mps < 0 || !std::isfinite(max_gap_s) ||
+        max_gap_s <= 0 || max_tracks == 0 || max_tracks > 1024 ||
+        !std::isfinite(assumed_clear_min_range_m) || assumed_clear_min_range_m <= 0)
+      throw std::invalid_argument("Invalid temporal configuration");
   }
 };
 }  // namespace metro_perception_core

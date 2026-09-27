@@ -1,87 +1,48 @@
 #include <chrono>
-#include <cmath>
+#include <memory>
 
-#include "metro_perception_core/temporal_monitor.hpp"
-#include "metro_perception_interfaces/msg/frame_analysis.hpp"
-#include "metro_perception_interfaces/msg/path_assessment.hpp"
-#include "metro_perception_ros/measurement_time.hpp"
-#include "metro_perception_ros/wire_enum_decode.hpp"
+#include "metro_perception_ros/assessment_monitor.hpp"
+#include "metro_perception_ros/preprocessing.hpp"
 #include "rclcpp/rclcpp.hpp"
 using metro_perception_interfaces::msg::FrameAnalysis;
 using metro_perception_interfaces::msg::PathAssessment;
+using metro_perception_ros::AssessmentMonitor;
 class ObstacleMonitor : public rclcpp::Node {
  public:
   ObstacleMonitor() : Node("obstacle_monitor") {
-    timeout_ = declare_parameter<double>("timeout_s", 0.5);
-    if (!std::isfinite(timeout_) || timeout_ <= 0) {
-      throw std::invalid_argument("timeout_s must be positive");
-    }
-    output_.state = PathAssessment::UNKNOWN;
-    output_.reason = "WAITING_FOR_INPUT";
-    output_.stale = true;
+    // The confirmation rule comes from the same sensor profile as the detector (G4).
+    const auto profile = declare_parameter<std::string>("sensor_profile", "");
+    monitor_ =
+        std::make_unique<AssessmentMonitor>(declare_parameter<double>("timeout_s", 0.5),
+                                            metro_perception_ros::load_temporal_config(profile));
     publisher_ = create_publisher<PathAssessment>("~/output/assessment", 1);
     subscription_ = create_subscription<FrameAnalysis>(
         "~/input/analysis", 1, [this](FrameAnalysis::ConstSharedPtr frame) {
-          // R02: support explicit reset/source retirement before production use.
-          if (seen_ && frame->source_instance_id == output_.source_instance_id &&
-              (frame->session_id < output_.session_id ||
-               (frame->session_id == output_.session_id &&
-                frame->frame_sequence <= output_.frame_sequence))) {
+          const auto decision = monitor_->on_analysis(*frame, AssessmentMonitor::Clock::now());
+          if (!decision.accepted) {
+            // The last valid result and its age stay untouched; the watchdog still applies.
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), steady_clock_, 2000, "Rejected analysis %s/%lu/%lu: %s",
+                frame->source_instance_id.c_str(), static_cast<unsigned long>(frame->session_id),
+                static_cast<unsigned long>(frame->frame_sequence), decision.reason);
             return;
           }
-          if (!seen_ || frame->source_instance_id != output_.source_instance_id ||
-              frame->session_id != output_.session_id) {
-            monitor_.reset();
+          if (decision.reset) {
+            RCLCPP_INFO(get_logger(), "Monitor reset (%s): source %s session %lu", decision.reason,
+                        frame->source_instance_id.c_str(),
+                        static_cast<unsigned long>(frame->session_id));
           }
-          metro_perception_core::FrameResult result;
-          result.status = metro_perception_ros::decode_analysis_status(frame->processing_status);
-          result.reason = frame->reason;
-          if (result.status == metro_perception_core::AnalysisStatus::BAD_INPUT &&
-              frame->processing_status != FrameAnalysis::BAD_INPUT) {
-            result.reason = "INVALID_PROCESSING_STATUS";
-          }
-          result.calibration_trust =
-              metro_perception_ros::decode_calibration_trust(frame->calibration_trust);
-          const auto stamp =
-              metro_perception_ros::decode_measurement_time_ns(frame->header.stamp).value_or(0);
-          const auto assessment = monitor_.update(result, stamp);
-          output_.header = frame->header;
-          output_.source_instance_id = frame->source_instance_id;
-          output_.session_id = frame->session_id;
-          output_.frame_sequence = frame->frame_sequence;
-          output_.state = static_cast<std::uint8_t>(assessment.state);
-          output_.reason = assessment.reason;
-          output_.calibration_trust = static_cast<std::uint8_t>(assessment.calibration_trust);
-          output_.distance_valid = false;
-          output_.stale = false;
-          processing_age_ms_ = frame->processing_age_ms;
-          received_at_ = std::chrono::steady_clock::now();
-          seen_ = true;
           publish();
         });
+    // Steady-clock heartbeat: works without /clock and never advances the observation stamp.
     timer_ = create_wall_timer(std::chrono::milliseconds(100), [this]() { publish(); });
   }
 
  private:
-  void publish() {
-    if (seen_) {
-      const double elapsed =
-          std::chrono::duration<double>(std::chrono::steady_clock::now() - received_at_).count();
-      output_.result_age_ms = elapsed * 1000 + processing_age_ms_;
-      if (output_.result_age_ms > timeout_ * 1000) {
-        output_.state = PathAssessment::UNKNOWN;
-        output_.reason = monitor_.on_timeout().reason;
-        output_.stale = true;
-        output_.distance_valid = false;
-      }
-    }
-    publisher_->publish(output_);
-  }
-  bool seen_{false};
-  double timeout_{0.5}, processing_age_ms_{0};
-  std::chrono::steady_clock::time_point received_at_;
-  metro_perception_core::TemporalMonitor monitor_;
-  PathAssessment output_;
+  void publish() { publisher_->publish(monitor_->output(AssessmentMonitor::Clock::now())); }
+
+  std::unique_ptr<AssessmentMonitor> monitor_;
+  rclcpp::Clock steady_clock_{RCL_STEADY_TIME};  // Log throttling must not depend on /clock.
   rclcpp::Publisher<PathAssessment>::SharedPtr publisher_;
   rclcpp::Subscription<FrameAnalysis>::SharedPtr subscription_;
   rclcpp::TimerBase::SharedPtr timer_;
