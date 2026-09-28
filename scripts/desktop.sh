@@ -79,12 +79,17 @@ case "$action" in
         if [[ "$nvidia" == true ]]; then
             echo 'NVIDIA GPU: enabled (--no-nvidia renders RViz with Mesa on the CPU)'
         fi
-        if ! "${compose[@]}" up -d "${compose_args[@]}"; then
-            if [[ "$nvidia" != true || "$nvidia_auto" != true ]]; then
-                exit 1
-            fi
+        started=false
+        if "${compose[@]}" up -d "${compose_args[@]}"; then
+            started=true
+        elif [[ "$nvidia" == true && "$nvidia_auto" == true ]]; then
             echo 'NVIDIA GPU could not be attached; starting without it (Mesa rendering).' >&2
-            "${compose_no_nvidia[@]}" up -d "${compose_args[@]}"
+            "${compose_no_nvidia[@]}" up -d "${compose_args[@]}" && started=true
+        fi
+        if [[ "$started" != true ]]; then
+            # The proxy waits for the first container without a timeout; stop it here.
+            "${proxy[@]}" stop
+            exit 1
         fi
         ;;
     down)

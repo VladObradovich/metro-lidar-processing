@@ -208,14 +208,18 @@ def handle_client(client: socket.socket, source_path: Path) -> None:
 
 
 WATCH_INTERVAL = 2.0
-# Covers a container recreate (old one gone, new one not yet running).
+# Covers a container recreate (old one gone, new one not yet running). Before the first
+# container exists (an image build may take long) the watcher does not time out;
+# scripts/desktop.sh stops the proxy when `compose up` fails.
 WATCH_GRACE = 10.0
-# Covers the image build before the first container of a fresh `up` exists.
-WATCH_STARTUP_TIMEOUT = 600.0
 
 
 def containers_running(labels) -> bool | None:
-    """True/False if a matching container runs; None if Docker is unavailable."""
+    """True/False if a matching container runs; None if Docker is not installed.
+
+    A failed or timed-out query counts as running: only a successful empty answer shows
+    that the container is gone, so a briefly unavailable daemon keeps the proxy alive.
+    """
     command = ["docker", "ps", "-q"]
     for label in labels:
         command += ["--filter", f"label={label}"]
@@ -227,11 +231,13 @@ def containers_running(labels) -> bool | None:
         return None
     except subprocess.TimeoutExpired:
         return True
-    return result.returncode == 0 and bool(result.stdout.strip())
+    if result.returncode != 0:
+        return True
+    return bool(result.stdout.strip())
 
 
 def watch_containers(labels, stopping: threading.Event) -> None:
-    """Request shutdown once no container with all `labels` is running."""
+    """Request shutdown once a seen container with all `labels` no longer runs."""
     seen = False
     last_seen = time.monotonic()
     while not stopping.wait(WATCH_INTERVAL):
@@ -243,7 +249,7 @@ def watch_containers(labels, stopping: threading.Event) -> None:
         if running:
             seen = True
             last_seen = now
-        elif now - last_seen > (WATCH_GRACE if seen else WATCH_STARTUP_TIMEOUT):
+        elif seen and now - last_seen > WATCH_GRACE:
             print("X11 proxy: container is gone; stopping", flush=True)
             stopping.set()
             return
