@@ -11,7 +11,7 @@ services:
     user: "${METRO_UID:-1000}:${METRO_GID:-1000}"
     volumes:
       - type: bind
-        source: ./rosbags
+        source: ${METRO_BAGS_DIR:-./rosbags}
         target: /data
         read_only: true
       - type: bind

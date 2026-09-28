@@ -5,6 +5,7 @@ import importlib.util
 import os
 from pathlib import Path
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -60,6 +61,71 @@ def test_cli_still_reports_proxy_failure(isolated_runtime, monkeypatch):
     monkeypatch.setattr(sys, 'argv', ['x11_proxy.py', 'start'])
     assert proxy.main() == 1
     assert not (isolated_runtime / 'desktop.env').exists()
+
+
+def test_watch_stops_proxy_after_container_disappears(monkeypatch):
+    states = iter([True, True, False, False, False])
+    monkeypatch.setattr(proxy, 'containers_running', lambda _labels: next(states))
+    monkeypatch.setattr(proxy, 'WATCH_INTERVAL', 0.01)
+    monkeypatch.setattr(proxy, 'WATCH_GRACE', 0.015)
+    stopping = threading.Event()
+
+    proxy.watch_containers(['a=b'], stopping)
+
+    assert stopping.is_set()
+
+
+def test_watch_survives_container_recreate(monkeypatch):
+    states = iter([True, False, True, True])
+    monkeypatch.setattr(proxy, 'containers_running', lambda _labels: next(states, True))
+    monkeypatch.setattr(proxy, 'WATCH_INTERVAL', 0.01)
+    monkeypatch.setattr(proxy, 'WATCH_GRACE', 1.0)
+    stopping = threading.Event()
+    watcher = threading.Thread(target=proxy.watch_containers, args=(['a=b'], stopping))
+    watcher.start()
+    watcher.join(timeout=0.2)
+
+    assert not stopping.is_set()
+    stopping.set()
+    watcher.join(timeout=1)
+
+
+def test_watch_waits_for_first_container_without_timeout(monkeypatch):
+    monkeypatch.setattr(proxy, 'containers_running', lambda _labels: False)
+    monkeypatch.setattr(proxy, 'WATCH_INTERVAL', 0.01)
+    monkeypatch.setattr(proxy, 'WATCH_GRACE', 0.015)
+    stopping = threading.Event()
+    watcher = threading.Thread(target=proxy.watch_containers, args=(['a=b'], stopping))
+    watcher.start()
+    watcher.join(timeout=0.2)
+
+    assert not stopping.is_set()
+    stopping.set()
+    watcher.join(timeout=1)
+
+
+@pytest.mark.parametrize('returncode, stdout, expected', [
+    (0, 'abc123\n', True),
+    (0, '', False),
+    (1, '', True),
+])
+def test_failed_docker_query_counts_as_running(monkeypatch, returncode, stdout, expected):
+    def run(*_args, **_kwargs):
+        return subprocess.CompletedProcess([], returncode, stdout=stdout, stderr='')
+
+    monkeypatch.setattr(proxy.subprocess, 'run', run)
+
+    assert proxy.containers_running(['a=b']) is expected
+
+
+def test_watch_is_disabled_without_docker(monkeypatch):
+    monkeypatch.setattr(proxy, 'containers_running', lambda _labels: None)
+    monkeypatch.setattr(proxy, 'WATCH_INTERVAL', 0.01)
+    stopping = threading.Event()
+
+    proxy.watch_containers(['a=b'], stopping)
+
+    assert not stopping.is_set()
 
 
 def test_pump_forwards_file_descriptors():
