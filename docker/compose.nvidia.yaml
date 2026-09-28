@@ -1,11 +1,14 @@
 # Added by scripts/desktop.sh when the NVIDIA container toolkit is present (--no-nvidia skips
 # it): RViz renders on the NVIDIA GPU. The detector itself runs on the CPU.
+# `deploy.devices` (not `gpus:`, which needs Compose 2.30) works with Compose 2.27 and without a
+# registered nvidia runtime. The GLX vendor is not forced: libglvnd asks the X server, so an
+# NVIDIA Xorg display gets the NVIDIA driver and a remote desktop (Xvnc, xrdp) gets Mesa instead
+# of failing to create a GL context.
 services:
   desktop:
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
-      __GLX_VENDOR_LIBRARY_NAME: nvidia
     deploy:
       resources:
         reservations:

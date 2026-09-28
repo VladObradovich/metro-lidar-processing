@@ -17,7 +17,7 @@ services:
         source: ${METRO_X11_DIR:-/tmp/.X11-unix}
         target: /tmp/.X11-unix
       - type: bind
-        source: ./rosbags
+        source: ${METRO_BAGS_DIR:-./rosbags}
         target: /data
         read_only: true
       - type: bind
