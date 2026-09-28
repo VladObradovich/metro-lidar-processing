@@ -1,5 +1,6 @@
 *
 !Dockerfile
+!analysis-requirements.txt
 !entrypoint.sh
 !ros-dev-env.sh
 !gui-env.sh

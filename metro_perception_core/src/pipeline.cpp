@@ -1,6 +1,8 @@
 #include "metro_perception_core/pipeline.hpp"
 
 #include <cmath>
+
+#include "metro_perception_core/detector.hpp"
 namespace metro_perception_core {
 namespace {
 bool finite(const PointXYZ& p) {
@@ -29,9 +31,10 @@ bool valid(const RigidTransform& t) {
 PerceptionPipeline::PerceptionPipeline(AlgorithmConfig config) : config_(config) {
   config_.validate();
 }
-FrameResult PerceptionPipeline::process(const FrameInput& frame) const {
+FrameResult PerceptionPipeline::process(const FrameInput& frame) {
   FrameResult result;
   auto fail = [&](AnalysisStatus status, const char* reason) {
+    detector_.reset();
     result.status = status;
     result.reason = reason;
     return result;
@@ -79,7 +82,7 @@ FrameResult PerceptionPipeline::process(const FrameInput& frame) const {
     return fail(AnalysisStatus::INVALID_GEOMETRY, "CALIBRATION_UNVERIFIED");
   if (out.geometry_points.empty())
     return fail(AnalysisStatus::INVALID_GEOMETRY, "EMPTY_GEOMETRY_ROI");
-  // A03-A07 still required. A valid crop alone does not establish free space.
+  detector_.process(config_, result, frame.context.measurement_time_ns);
   return result;
 }
 }  // namespace metro_perception_core

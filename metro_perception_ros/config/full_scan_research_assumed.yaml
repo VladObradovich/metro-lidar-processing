@@ -1,0 +1,60 @@
+# RESEARCH ONLY: full 360-degree LiDAR with an assumed forward axis (-sensor Y).
+# Kept for comparison (evaluate_all.py --full-scan-research). Full-scan bags are now scored
+# with the shipped forward_sector_assumed.yaml, which crops a 360-degree cloud to the same
+# forward axis; full_scan_unresolved.yaml keeps every frame UNKNOWN.
+# Its detector values predate the organizers' envelope (26.09) and are not maintained.
+source_frame_mode: exact
+source_frame: lidar_livox
+target_frame: lidar_assumed
+calibration_verified: false
+allow_unverified_calibration: true
+translation_m: [0.0, 0.0, 0.0]
+rotation_rpy_rad: [0.0, 0.0, 1.5707963267948966]
+calibration_source: 'Research assumption only: full-scan -sensor Y is train forward, as in the forward-sector bags; NOT verified'
+blind_radius_m: 0.5
+geometry_roi:
+  min: [-10.0, -20.0, -10.0]
+  max: [150.0, 20.0, 15.0]
+detection_roi:
+  min: [0.0, -5.0, -3.0]
+  max: [120.0, 5.0, 5.0]
+
+# Experimental B0 detection parameters; override only after reviewing labelled scenes.
+detector:
+  corridor_half_width_m: 2.0
+  corridor_height_m: 3.5
+  ground_max_slope: 0.15
+  ground_inlier_tolerance_m: 0.15
+  ground_max_gap_m: 10.0
+  ground_min_bin_points: 30
+  obstacle_min_height_m: 0.25
+  candidate_margin_m: 0.5
+  angular_cell_deg: 0.25
+  min_ground_inliers: 30
+  min_candidate_cells: 3
+  min_candidate_points: 5
+  background_history_frames: 10
+  background_lag_frames: 5
+  background_margin_m: 0.5
+  background_relative_margin: 0.02
+  ego_motion_compensation: true
+  ego_max_speed_mps: 25.0
+  ego_min_contrast: 0.005
+  # An empty static gauge is evidence of a clear path up to the gauge's range.
+  gauge_certifies_clear: true
+
+# G4 confirmation, chosen on development data: an object is an obstacle after 2 sightings
+# in 3 frames (one extra frame of latency) and is kept through one missed frame. Standing
+# still, new motion evidence of at least still_min_points returns is confirmed at once.
+temporal:
+  confirm_hits: 2
+  confirm_window: 3
+  gauge_confirm_hits: 2
+  gauge_confirm_window: 3
+  release_misses: 2
+  still_speed_mps: 0.5
+  still_min_points: 50
+  # Owner's decision (26.09): without a measured mounting a frame with no candidate in a
+  # region evaluated at least this far is reported clear, keeping trust ASSUMED.
+  assumed_clear: true
+  assumed_clear_min_range_m: 50.0

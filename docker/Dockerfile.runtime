@@ -12,6 +12,7 @@ COPY metro_perception_bringup/package.xml /ws/src/metro_perception_bringup/packa
 COPY metro_perception_core/package.xml /ws/src/metro_perception_core/package.xml
 COPY metro_perception_interfaces/package.xml /ws/src/metro_perception_interfaces/package.xml
 COPY metro_perception_ros/package.xml /ws/src/metro_perception_ros/package.xml
+COPY metro_perception_rviz/package.xml /ws/src/metro_perception_rviz/package.xml
 RUN rosdep update --rosdistro humble \
     && apt-get update \
     && rosdep install --from-paths src --ignore-src --rosdistro humble \
@@ -23,8 +24,9 @@ COPY metro_perception_bringup /ws/src/metro_perception_bringup
 COPY metro_perception_core /ws/src/metro_perception_core
 COPY metro_perception_interfaces /ws/src/metro_perception_interfaces
 COPY metro_perception_ros /ws/src/metro_perception_ros
+COPY metro_perception_rviz /ws/src/metro_perception_rviz
 RUN /bin/bash -o pipefail -c 'source /opt/ros/humble/setup.bash \
-    && colcon build --merge-install --cmake-args -DBUILD_TESTING=OFF \
+    && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
     && rm -rf /ws/src /ws/build /ws/log'
 
 FROM ros:humble-ros-base AS runtime
@@ -33,7 +35,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
-    python3-numpy python3-opencv python3-yaml \
+    python3-numpy python3-scipy python3-matplotlib python3-opencv python3-yaml python3-pip \
     ros-humble-rclpy ros-humble-sensor-msgs \
     libyaml-cpp0.7 ros-humble-ament-index-cpp ros-humble-tf2-ros ros-humble-tf2 ros-humble-geometry-msgs \
     ros-humble-rclcpp ros-humble-vision-msgs ros-humble-visualization-msgs \
@@ -43,6 +45,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rmw-cyclonedds-cpp \
     && apt-get purge -y python3-colcon-core python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
+
+COPY docker/analysis-requirements.txt /tmp/analysis-requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /tmp/analysis-requirements.txt \
+    && rm /tmp/analysis-requirements.txt
 
 WORKDIR /ws
 COPY --from=builder /ws/install /opt/metro/install

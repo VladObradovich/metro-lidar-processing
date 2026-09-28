@@ -26,7 +26,7 @@ jobs:
       - name: C++ clang-format
         run: |
           mapfile -d '' files < <(
-            find metro_perception_core metro_perception_ros \
+            find metro_perception_core metro_perception_ros metro_perception_rviz \
               -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) \
               -print0
           )
@@ -72,6 +72,9 @@ jobs:
           python3 scripts/smoke_perception.py
           python3 scripts/smoke_a02.py
           python3 scripts/smoke_a02.py --default
+          python3 scripts/smoke_monitor.py
+          python3 scripts/smoke_detector.py
+          python3 scripts/smoke_ego_motion.py
           python3 scripts/smoke_namespace_isolation.py
           python3 scripts/smoke_worker_overload.py
           python3 scripts/smoke_tf_replay.py
@@ -94,6 +97,12 @@ jobs:
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_a02.py
       - name: TF replay regressions in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_tf_replay.py
+      - name: Monitor gating and watchdog in installed runtime
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_monitor.py
+      - name: Geometric B0 detection in installed runtime
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_detector.py
+      - name: Motion compensation in installed runtime
+        run: docker run --rm -i --init --network none metro-scaffold:test python3 - < scripts/smoke_ego_motion.py
       - name: Default lidar only profile in installed runtime
         run: docker run --rm -i --init --network none metro-scaffold:test python3 - --default < scripts/smoke_a02.py
 
@@ -107,4 +116,4 @@ jobs:
       - name: Verify RViz is installed
         run: |
           docker run --rm --network none metro-desktop:test \
-            bash -lc 'command -v rviz2 >/dev/null && ros2 pkg prefix metro_perception_bringup >/dev/null'
+            bash -lc 'command -v rviz2 >/dev/null && ros2 pkg prefix metro_perception_bringup >/dev/null && test -f "$(ros2 pkg prefix metro_perception_rviz)/lib/libassessment_panel.so"'

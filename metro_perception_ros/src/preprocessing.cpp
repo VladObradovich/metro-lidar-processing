@@ -30,14 +30,57 @@ bool valid_frame_name(const std::string& frame) {
   return !frame.empty() && frame[0] != '/' && frame != "*";
 }
 
+std::string profile_file(const std::string& path) {
+  return path.empty() ? ament_index_cpp::get_package_share_directory("metro_perception_ros") +
+                            "/config/forward_sector_assumed.yaml"
+                      : path;
+}
+
 }  // namespace
+
+metro_perception_core::TemporalConfig load_temporal_config(const std::string& path) {
+  metro_perception_core::TemporalConfig c;
+  const auto n = YAML::LoadFile(profile_file(path));
+  if (const auto temporal = n["temporal"]) {
+    if (!temporal.IsMap()) throw std::invalid_argument("temporal must be a mapping");
+    auto read_count = [&](const char* key, std::size_t& value) {
+      if (temporal[key]) value = temporal[key].as<std::size_t>();
+    };
+    auto read_double = [&](const char* key, double& value) {
+      if (temporal[key]) value = temporal[key].as<double>();
+    };
+    read_count("confirm_hits", c.confirm_hits);
+    read_count("confirm_window", c.confirm_window);
+    read_count("gauge_confirm_hits", c.gauge_confirm_hits);
+    read_count("gauge_confirm_window", c.gauge_confirm_window);
+    read_count("far_confirm_hits", c.far_confirm_hits);
+    read_count("far_confirm_window", c.far_confirm_window);
+    read_double("far_confirm_from_m", c.far_confirm_from_m);
+    read_double("motion_gauge_speed_mps", c.motion_gauge_speed_mps);
+    read_double("outer_offset_m", c.outer_offset_m);
+    if (temporal["edge_retracts"]) c.edge_retracts = temporal["edge_retracts"].as<bool>();
+    read_count("outer_confirm_hits", c.outer_confirm_hits);
+    read_count("outer_confirm_window", c.outer_confirm_window);
+    read_count("release_misses", c.release_misses);
+    read_double("gate_base_m", c.gate_base_m);
+    read_double("gate_range_fraction", c.gate_range_fraction);
+    read_double("object_max_speed_mps", c.object_max_speed_mps);
+    read_double("unknown_ego_speed_mps", c.unknown_ego_speed_mps);
+    read_double("still_speed_mps", c.still_speed_mps);
+    if (temporal["still_min_points"])
+      c.still_min_points = temporal["still_min_points"].as<std::uint32_t>();
+    read_double("max_gap_s", c.max_gap_s);
+    read_count("max_tracks", c.max_tracks);
+    if (temporal["assumed_clear"]) c.assumed_clear = temporal["assumed_clear"].as<bool>();
+    read_double("assumed_clear_min_range_m", c.assumed_clear_min_range_m);
+  }
+  c.validate();
+  return c;
+}
 
 PreprocessingConfig load_preprocessing(const std::string& path) {
   PreprocessingConfig c;
-  const auto file = path.empty()
-                        ? ament_index_cpp::get_package_share_directory("metro_perception_ros") +
-                              "/config/forward_sector_assumed.yaml"
-                        : path;
+  const auto file = profile_file(path);
   const auto n = YAML::LoadFile(file);
 
   const auto mode = n["source_frame_mode"] ? n["source_frame_mode"].as<std::string>() : "exact";
@@ -105,6 +148,83 @@ PreprocessingConfig load_preprocessing(const std::string& path) {
       item.second->min = triple(n[item.first]["min"]);
       item.second->max = triple(n[item.first]["max"]);
     }
+  }
+  if (const auto detector = n["detector"]) {
+    if (!detector.IsMap()) throw std::invalid_argument("detector must be a mapping");
+    auto read_double = [&](const char* key, double& value) {
+      if (detector[key]) value = detector[key].as<double>();
+    };
+    auto read_count = [&](const char* key, std::size_t& value) {
+      if (detector[key]) value = detector[key].as<std::size_t>();
+    };
+    read_double("corridor_half_width_m", c.algorithm.corridor_half_width_m);
+    read_double("corridor_height_m", c.algorithm.corridor_height_m);
+    read_double("ground_max_slope", c.algorithm.ground_max_slope);
+    read_double("ground_inlier_tolerance_m", c.algorithm.ground_inlier_tolerance_m);
+    read_double("ground_max_gap_m", c.algorithm.ground_max_gap_m);
+    read_count("ground_min_bin_points", c.algorithm.ground_min_bin_points);
+    read_count("ground_hold_frames", c.algorithm.ground_hold_frames);
+    read_count("ground_far_min_bin_points", c.algorithm.ground_far_min_bin_points);
+    read_double("ground_far_from_m", c.algorithm.ground_far_from_m);
+    read_double("ground_max_x_m", c.algorithm.ground_max_x_m);
+    read_double("obstacle_min_height_m", c.algorithm.obstacle_min_height_m);
+    read_double("angular_cell_deg", c.algorithm.angular_cell_deg);
+    read_count("min_ground_inliers", c.algorithm.min_ground_inliers);
+    read_count("min_candidate_cells", c.algorithm.min_candidate_cells);
+    read_count("min_candidate_points", c.algorithm.min_candidate_points);
+    read_count("background_history_frames", c.algorithm.background_history_frames);
+    read_count("background_lag_frames", c.algorithm.background_lag_frames);
+    read_double("background_margin_m", c.algorithm.background_margin_m);
+    read_double("background_relative_margin", c.algorithm.background_relative_margin);
+    read_double("candidate_margin_m", c.algorithm.candidate_margin_m);
+    if (detector["route_estimation"])
+      c.algorithm.route_estimation = detector["route_estimation"].as<bool>();
+    read_double("route_min_radius_m", c.algorithm.route_min_radius_m);
+    read_double("route_smoothing", c.algorithm.route_smoothing);
+    read_double("rail_route_weight", c.algorithm.rail_route_weight);
+    read_double("route_margin_per_m", c.algorithm.route_margin_per_m);
+    read_double("route_margin_max_m", c.algorithm.route_margin_max_m);
+    read_double("route_support_margin_m", c.algorithm.route_support_margin_m);
+    if (detector["static_channel"])
+      c.algorithm.static_channel = detector["static_channel"].as<bool>();
+    if (detector["gauge_certifies_clear"])
+      c.algorithm.gauge_certifies_clear = detector["gauge_certifies_clear"].as<bool>();
+    read_double("static_half_width_m", c.algorithm.static_half_width_m);
+    read_double("static_inner_half_width_m", c.algorithm.static_inner_half_width_m);
+    read_double("static_outer_max_length_m", c.algorithm.static_outer_max_length_m);
+    read_double("static_outer_min_width_m", c.algorithm.static_outer_min_width_m);
+    read_count("static_outer_min_points", c.algorithm.static_outer_min_points);
+    read_double("static_min_height_m", c.algorithm.static_min_height_m);
+    read_double("sensor_height_above_rail_m", c.algorithm.sensor_height_above_rail_m);
+    read_double("rail_head_margin_m", c.algorithm.rail_head_margin_m);
+    read_double("static_max_height_m", c.algorithm.static_max_height_m);
+    read_double("static_max_length_m", c.algorithm.static_max_length_m);
+    read_double("side_structure_max_length_m", c.algorithm.side_structure_max_length_m);
+    read_double("far_gauge_max_x_m", c.algorithm.far_gauge_max_x_m);
+    read_double("far_gauge_half_width_m", c.algorithm.far_gauge_half_width_m);
+    read_double("far_gauge_min_height_m", c.algorithm.far_gauge_min_height_m);
+    read_double("far_min_extent_m", c.algorithm.far_min_extent_m);
+    read_double("far_gauge_max_curvature", c.algorithm.far_gauge_max_curvature);
+    read_double("envelope_half_width_m", c.algorithm.envelope_half_width_m);
+    read_double("envelope_min_speed_mps", c.algorithm.envelope_min_speed_mps);
+    read_double("low_object_height_m", c.algorithm.low_object_height_m);
+    read_double("low_object_half_width_m", c.algorithm.low_object_half_width_m);
+    read_double("low_bump_max_length_m", c.algorithm.low_bump_max_length_m);
+    read_double("low_bump_min_width_m", c.algorithm.low_bump_min_width_m);
+    read_double("low_bump_min_prominence_m", c.algorithm.low_bump_min_prominence_m);
+    read_count("low_bump_min_context_points", c.algorithm.low_bump_min_context_points);
+    if (detector["pole_rejection"])
+      c.algorithm.pole_rejection = detector["pole_rejection"].as<bool>();
+    if (detector["hanging_channel"])
+      c.algorithm.hanging_channel = detector["hanging_channel"].as<bool>();
+    read_double("hanging_tip_max_height_m", c.algorithm.hanging_tip_max_height_m);
+    read_double("hanging_min_vertical_span_m", c.algorithm.hanging_min_vertical_span_m);
+    read_double("hanging_max_footprint_m", c.algorithm.hanging_max_footprint_m);
+    read_count("hanging_min_points", c.algorithm.hanging_min_points);
+    if (detector["ego_motion_compensation"])
+      c.algorithm.ego_motion_compensation = detector["ego_motion_compensation"].as<bool>();
+    read_double("ego_max_speed_mps", c.algorithm.ego_max_speed_mps);
+    read_double("ego_min_contrast", c.algorithm.ego_min_contrast);
   }
   if (c.source_frame_mode == SourceFrameMode::BIND_FIRST && !c.has_static_transform)
     throw std::invalid_argument("bind_first requires an explicit static transform");

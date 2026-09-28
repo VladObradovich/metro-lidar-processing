@@ -1,0 +1,111 @@
+# Detector display: the depth video and the assessment as text (metro_perception_rviz panel)
+# on the left, the labelled cloud with the corridor lines on the right.
+# Grey: returns by distance; green: inside the vehicle envelope; red: obstacle candidates.
+# Topics are remapped from /metro_rviz/* by perception.launch.py (rviz:=true). The Detection
+# display (all markers: boxes, labels, state text) is off; Panels > Displays turns it on.
+Panels:
+  - Class: metro_perception_rviz/Assessment
+    Name: Assessment
+    Topic: /metro_rviz/assessment
+
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Background Color: 25; 25; 28
+    Fixed Frame: lidar_assumed
+    Frame Rate: 20
+
+  Displays:
+    - Class: rviz_default_plugins/Image
+      Name: Depth
+      Enabled: true
+      Normalize Range: false
+      Transport Hint: raw
+      Topic:
+        Value: /metro_rviz/depth
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Cloud
+      Enabled: true
+      Topic:
+        Value: /metro_rviz/cloud
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+        Depth: 1
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: RGB8
+      Position Transformer: XYZ
+      Decay Time: 0
+
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Corridor
+      Enabled: true
+      Topic:
+        Value: /metro_rviz/corridor
+        Reliability Policy: Reliable
+        Depth: 1
+
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Detection
+      Enabled: false
+      Topic:
+        Value: /metro_rviz/markers
+        Reliability Policy: Reliable
+        Depth: 1
+
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 10
+      Plane Cell Count: 16
+      Offset:
+        X: 70
+        Y: 0
+        Z: -1.4
+      Color: 70; 70; 75
+
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      # Just behind and above the lidar, looking along the track.
+      Focal Point:
+        X: 30
+        Y: 0
+        Z: -0.5
+      Distance: 38
+      Pitch: 0.12
+      Yaw: 3.1416
+    Saved:
+      - Class: rviz_default_plugins/Orbit
+        Name: Top
+        Target Frame: <Fixed Frame>
+        Focal Point:
+          X: 40
+          Y: 0
+          Z: 0
+        Distance: 60
+        Pitch: 1.5697
+        Yaw: 3.1416
+Window Geometry:
+  Hide Left Dock: false
+  Hide Right Dock: true
+  Depth:
+    collapsed: false
+  Assessment:
+    collapsed: false
+  Width: 1600
+  Height: 900
+  X: 0
+  Y: 0

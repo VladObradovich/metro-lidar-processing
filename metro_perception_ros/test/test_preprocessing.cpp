@@ -88,6 +88,12 @@ TEST(Profile, LoadsAndRejectsUnsafeConfiguration) {
   EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
   save("calibration_verified: false\nrotation_rpy_rad: [0, 0, 0]\n");
   EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
+  save("calibration_verified: false\ndetector:\n  low_bump_min_prominence_m: -1\n");
+  EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
+  save(
+      "calibration_verified: false\ndetector:\n  static_half_width_m: 1.25\n"
+      "  static_inner_half_width_m: 1.3\n");
+  EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
   {
     std::ofstream file(path);
     file << "source_frame_mode: bind_first\nsource_frame: null\ntarget_frame: base_link\n"
@@ -95,6 +101,46 @@ TEST(Profile, LoadsAndRejectsUnsafeConfiguration) {
             "translation_m: [0, 0, 0]\nrotation_rpy_rad: [0, 0, 0]\n";
   }
   EXPECT_THROW(load_preprocessing(path), std::invalid_argument);
+  std::remove(path.c_str());
+}
+
+TEST(Profile, TemporalRuleIsReadAndValidated) {
+  // The shipped profile carries the confirmation rule chosen for G4.
+  const auto shipped = load_temporal_config("");
+  EXPECT_EQ(shipped.confirm_hits, 2u);
+  EXPECT_EQ(shipped.confirm_window, 3u);
+  EXPECT_EQ(shipped.release_misses, 2u);
+  EXPECT_TRUE(shipped.assumed_clear);
+  EXPECT_DOUBLE_EQ(shipped.assumed_clear_min_range_m, 50.0);
+  EXPECT_DOUBLE_EQ(shipped.far_confirm_from_m, 70.0);
+  EXPECT_TRUE(shipped.edge_retracts);
+  EXPECT_EQ(shipped.far_confirm_hits, 4u);
+  EXPECT_EQ(shipped.far_confirm_window, 5u);
+  EXPECT_DOUBLE_EQ(shipped.motion_gauge_speed_mps, 3.0);
+  const auto path = std::string("/tmp/metro-temporal-test-") + std::to_string(getpid()) + ".yaml";
+  auto save = [&](const std::string& text) { std::ofstream(path) << text; };
+  // Without a temporal section the decision stays per frame.
+  save("source_frame: lidar\n");
+  const auto per_frame = load_temporal_config(path);
+  EXPECT_EQ(per_frame.confirm_hits, 1u);
+  EXPECT_EQ(per_frame.confirm_window, 1u);
+  EXPECT_EQ(per_frame.release_misses, 1u);
+  EXPECT_FALSE(per_frame.assumed_clear);
+  save(
+      "temporal:\n  confirm_hits: 3\n  confirm_window: 5\n  max_gap_s: 1.5\n"
+      "  far_confirm_hits: 4\n  far_confirm_window: 5\n");
+  const auto read = load_temporal_config(path);
+  EXPECT_EQ(read.confirm_hits, 3u);
+  EXPECT_EQ(read.confirm_window, 5u);
+  EXPECT_DOUBLE_EQ(read.max_gap_s, 1.5);
+  EXPECT_EQ(read.far_confirm_hits, 4u);
+  EXPECT_EQ(read.far_confirm_window, 5u);
+  save("temporal:\n  confirm_hits: 4\n  confirm_window: 3\n");
+  EXPECT_THROW(load_temporal_config(path), std::invalid_argument);
+  save("temporal:\n  assumed_clear: true\n  assumed_clear_min_range_m: -1\n");
+  EXPECT_THROW(load_temporal_config(path), std::invalid_argument);
+  save("temporal: 2\n");
+  EXPECT_THROW(load_temporal_config(path), std::invalid_argument);
   std::remove(path.c_str());
 }
 
@@ -124,6 +170,22 @@ TEST(Profile, DefaultForwardSectorBindsRuntimeFramePerSession) {
   EXPECT_TRUE(c.allow_unverified_calibration);
   EXPECT_FALSE(c.calibration_verified);
   EXPECT_TRUE(c.has_static_transform);
+  // The organizers' 2.1 x 3.0 m envelope and the 1.075 m lidar height above the rail heads.
+  EXPECT_DOUBLE_EQ(c.algorithm.corridor_half_width_m, 1.05);
+  EXPECT_DOUBLE_EQ(c.algorithm.corridor_height_m, 3.0);
+  EXPECT_DOUBLE_EQ(c.algorithm.static_half_width_m, 1.05);
+  EXPECT_DOUBLE_EQ(c.algorithm.envelope_half_width_m, 1.05);
+  EXPECT_DOUBLE_EQ(c.algorithm.sensor_height_above_rail_m, 1.075);
+  EXPECT_DOUBLE_EQ(c.algorithm.route_smoothing, 0.5);
+  EXPECT_DOUBLE_EQ(c.algorithm.far_gauge_max_x_m, 0.0);  // The far gauge is off.
+  EXPECT_DOUBLE_EQ(c.algorithm.route_margin_per_m, 0.005);
+  EXPECT_DOUBLE_EQ(c.algorithm.route_support_margin_m, 5.0);
+  EXPECT_DOUBLE_EQ(c.algorithm.side_structure_max_length_m, 3.0);
+  EXPECT_EQ(c.algorithm.ground_hold_frames, 3u);
+  EXPECT_TRUE(c.algorithm.pole_rejection);
+  EXPECT_DOUBLE_EQ(c.algorithm.ground_max_x_m, 90.0);  // The floor is not followed further.
+  EXPECT_DOUBLE_EQ(c.algorithm.low_bump_min_prominence_m, 0.15);
+  EXPECT_TRUE(c.algorithm.hanging_channel);
 
   SourceFrameBinding binding;
   EXPECT_FALSE(bind_source_frame(c, binding, ""));
@@ -144,7 +206,7 @@ TEST(Profile, DefaultForwardSectorBindsRuntimeFramePerSession) {
   input.points = {{0, -10, 0}};
   input.context = resolve_context(h, c, binding, buffer);
   const auto result = PerceptionPipeline(c.algorithm).process(input);
-  EXPECT_EQ(result.status, AnalysisStatus::NOT_IMPLEMENTED);
+  EXPECT_EQ(result.status, AnalysisStatus::INVALID_GEOMETRY);
   EXPECT_TRUE(result.preprocessed.transform_applied);
   EXPECT_EQ(result.calibration_trust, CalibrationTrust::ASSUMED);
   ASSERT_EQ(result.preprocessed.geometry_points.size(), 1u);

@@ -161,7 +161,7 @@ def main():
             analyses_a,
             assessments_a,
         )
-        assert first_a.reason == 'NOT_IMPLEMENTED'
+        assert first_a.reason == 'GROUND_UNSUPPORTED'
         assert first_a.transform_applied
         assert first_a.calibration_assumed
         spin_for(0.5)
@@ -184,7 +184,7 @@ def main():
             analyses_b,
             assessments_b,
         )
-        assert first_b.reason == 'NOT_IMPLEMENTED'
+        assert first_b.reason == 'GROUND_UNSUPPORTED'
         assert first_b.transform_applied
         assert first_b.calibration_assumed
         assert first_b.source_instance_id != first_a.source_instance_id

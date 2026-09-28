@@ -117,7 +117,7 @@ metro_perception_core::FrameInput decode_cloud(const sensor_msgs::msg::PointClou
 }
 metro_perception_core::FrameResult process_cloud(
     const sensor_msgs::msg::PointCloud2& message,
-    const metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
+    metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
     const metro_perception_core::FrameContext& context, std::size_t max_cloud_bytes) {
   return process_cloud_with_context(
       message, pipeline, max_points, [&context] { return context; }, max_cloud_bytes);
@@ -125,7 +125,7 @@ metro_perception_core::FrameResult process_cloud(
 
 metro_perception_core::FrameResult process_cloud_with_context(
     const sensor_msgs::msg::PointCloud2& message,
-    const metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
+    metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
     const std::function<metro_perception_core::FrameContext()>& resolve,
     std::size_t max_cloud_bytes) {
   try {

@@ -18,7 +18,7 @@ void validate_pointcloud_limits(std::size_t max_points, std::size_t max_cloud_by
 // Input/resource errors from decoding or the resolver become fail-closed frame results.
 metro_perception_core::FrameResult process_cloud_with_context(
     const sensor_msgs::msg::PointCloud2& message,
-    const metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
+    metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points,
     const std::function<metro_perception_core::FrameContext()>& resolve,
     std::size_t max_cloud_bytes = kDefaultMaxCloudBytes);
 
@@ -29,8 +29,7 @@ metro_perception_core::FrameInput decode_cloud(const sensor_msgs::msg::PointClou
 // Shared online/offline decoding and preprocessing path; no latest-TF fallback.
 metro_perception_core::FrameResult process_cloud(
     const sensor_msgs::msg::PointCloud2& message,
-    const metro_perception_core::PerceptionPipeline& pipeline,
-    std::size_t max_points = kDefaultMaxPoints,
+    metro_perception_core::PerceptionPipeline& pipeline, std::size_t max_points = kDefaultMaxPoints,
     const metro_perception_core::FrameContext& context = {},
     std::size_t max_cloud_bytes = kDefaultMaxCloudBytes);
 

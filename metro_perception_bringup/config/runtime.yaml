@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    input_reliability: best_effort
+    input_reliability: auto
     max_processing_age_s: 0.30
     tf_wait_timeout_s: 0.05
     timeout_s: 0.5

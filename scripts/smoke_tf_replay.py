@@ -78,39 +78,39 @@ def main():
             actual = [(row['session_id'], row['processing_status']) for row in rows]
             assert actual == expected, (name, actual, expected)
             for row in rows:
-                if row['processing_status'] == 1:
+                if row['processing_status'] == 4:
                     assert row['geometry_point_count'] == 1, (name, row)
-                    assert row['reason'] == 'NOT_IMPLEMENTED', (name, row)
+                    assert row['reason'] == 'GROUND_UNSUPPORTED', (name, row)
             print(f'PASS: {name}: {actual}', flush=True)
 
-        check('tf_before', [('/tf', transform(100)), ('/points', cloud(100))], [(0, 1)])
-        check('tf_after', [('/points', cloud(100)), ('/tf', transform(100))], [(0, 1)])
+        check('tf_before', [('/tf', transform(100)), ('/points', cloud(100))], [(0, 4)])
+        check('tf_after', [('/points', cloud(100)), ('/tf', transform(100))], [(0, 4)])
         check('tf_too_late', [('/points', cloud(100)), ('/tf', transform(100))],
               [(0, 3)], spacing_ns=100000000)
         check('tf_custom_window', [('/points', cloud(100)), ('/tf', transform(100))],
-              [(0, 1)], spacing_ns=100000000, lookahead=0.2)
+              [(0, 4)], spacing_ns=100000000, lookahead=0.2)
         check('tf_zero_window', [('/points', cloud(100)), ('/tf', transform(100))],
               [(0, 3)], lookahead=0)
         check('interpolation', [('/tf', transform(99)), ('/points', cloud(100)),
-                                ('/tf', transform(101))], [(0, 1)])
+                                ('/tf', transform(101))], [(0, 4)])
         check('no_latest_fallback', [('/points', cloud(100)), ('/tf', transform(101))], [(0, 3)])
-        check('static_after', [('/points', cloud(100)), ('/tf_static', transform(0))], [(0, 1)])
+        check('static_after', [('/points', cloud(100)), ('/tf_static', transform(0))], [(0, 4)])
         for stamp in (99, 1):  # Also cover resets beyond the TF buffer's cache duration.
             check(f'reset_before_{stamp}', [
                 ('/tf', transform(100)), ('/points', cloud(100)),
                 ('/tf', transform(stamp)), ('/points', cloud(stamp)),
-            ], [(0, 1), (1, 1)])
+            ], [(0, 4), (1, 4)])
             check(f'reset_after_{stamp}', [
                 ('/tf', transform(100)), ('/points', cloud(100)),
                 ('/points', cloud(stamp)), ('/tf', transform(stamp)),
-            ], [(0, 1), (1, 1)])
+            ], [(0, 4), (1, 4)])
         check('discard_old_session', [
             ('/tf', transform(99)), ('/tf', transform(100)),
             ('/points', cloud(100)), ('/points', cloud(99)),
-        ], [(0, 1), (1, 3)])
+        ], [(0, 4), (1, 3)])
         check('malformed_first', [
             ('/points', cloud(100, 'must_not_bind', True)), ('/points', cloud(101)),
-        ], [(0, 2), (0, 1)], default=True)
+        ], [(0, 2), (0, 4)], default=True)
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(vision_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ObstacleCandidate.msg" "msg/CorridorSegment.msg"
-  "msg/FrameAnalysis.msg" "msg/PathAssessment.msg"
+  "msg/FrameAnalysis.msg" "msg/PathAssessment.msg" "msg/ObstacleTrack.msg"
   DEPENDENCIES std_msgs geometry_msgs vision_msgs)
 ament_export_dependencies(rosidl_default_runtime)
 ament_package()

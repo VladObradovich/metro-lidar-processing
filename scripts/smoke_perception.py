@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check scaffold UNKNOWN, observation identity, watchdog and clean shutdown."""
+"""Check scaffold UNKNOWN, identity, watchdog, best-effort input, demo TF and shutdown."""
 import signal
 import os
 import struct
@@ -7,7 +7,9 @@ import subprocess
 import time
 
 import rclpy
+from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 from sensor_msgs.msg import PointCloud2, PointField
+from tf2_msgs.msg import TFMessage
 from visualization_msgs.msg import MarkerArray
 from metro_perception_interfaces.msg import PathAssessment
 
@@ -19,9 +21,15 @@ def main():
     markers = []
     subscription = node.create_subscription(
         PathAssessment, '/scaffold_smoke/assessment', received.append, 10)
-    publisher = node.create_publisher(PointCloud2, '/scaffold_smoke/points', 1)
+    # A live driver publishes best effort: input_reliability auto must switch to it.
+    publisher = node.create_publisher(
+        PointCloud2, '/scaffold_smoke/points', qos_profile_sensor_data)
     marker_subscription = node.create_subscription(
         MarkerArray, '/scaffold_smoke/markers', markers.append, 10)
+    static_tf = []
+    tf_subscription = node.create_subscription(
+        TFMessage, '/tf_static', static_tf.append,
+        QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
     launch = subprocess.Popen([
         'ros2', 'launch', 'metro_perception_bringup', 'demo.launch.py', 'rviz:=false',
         'namespace:=scaffold_smoke', 'input_topic:=/scaffold_smoke/points',
@@ -49,12 +57,16 @@ def main():
                         for index, name in enumerate(('x', 'y', 'z'))]
         cloud.data = struct.pack('<fff', 0., -10., 0.)
         deadline = time.monotonic() + 10
-        while not any(row.reason == 'NOT_IMPLEMENTED' and not row.stale for row in received):
+        while not any(row.reason == 'GROUND_UNSUPPORTED' and not row.stale for row in received):
             if time.monotonic() > deadline:
                 raise RuntimeError('No decoded frame assessment')
             publisher.publish(cloud)
             rclpy.spin_once(node, timeout_sec=0.1)
-        fresh = next(row for row in reversed(received) if row.reason == 'NOT_IMPLEMENTED')
+        fresh = next(row for row in reversed(received) if row.reason == 'GROUND_UNSUPPORTED')
+        # The demo publishes the bound input frame so RViz can draw the cloud.
+        spin_until(lambda: any(t.header.frame_id == 'lidar_assumed' and
+                               t.child_frame_id == 'private_scaffold_lidar'
+                               for message in static_tf for t in message.transforms), seconds=3)
         spin_until(lambda: any(row.reason == 'INPUT_PAUSED_OR_STOPPED' and row.stale
                                for row in received), seconds=3)
         stale = next(row for row in reversed(received) if row.stale and row.frame_sequence)
@@ -67,8 +79,8 @@ def main():
         spin_until(lambda: any('INPUT_PAUSED_OR_STOPPED' in marker.text
                                for array in markers for marker in array.markers), seconds=3)
         print(
-            'PASS: default lidar-only no-ring cloud -> NOT_IMPLEMENTED/UNKNOWN '
-            '-> steady-clock timeout; stamp preserved'
+            'PASS: best-effort lidar-only no-ring cloud -> GROUND_UNSUPPORTED/UNKNOWN '
+            '-> bound frame on /tf_static -> steady-clock timeout; stamp preserved'
         )
     finally:
         if launch.poll() is None:
@@ -81,6 +93,7 @@ def main():
             raise RuntimeError('Launch did not stop after SIGINT')
         node.destroy_subscription(subscription)
         node.destroy_subscription(marker_subscription)
+        node.destroy_subscription(tf_subscription)
         node.destroy_node()
         rclpy.shutdown()
 

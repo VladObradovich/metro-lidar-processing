@@ -16,6 +16,9 @@ ObstacleCandidate[] candidates
 CorridorSegment[] corridor
 bool evaluation_region_valid
 float64 evaluated_range_m
+# Lidar-only forward speed; the monitor predicts tracks with it.
+bool ego_motion_valid
+float64 ego_speed_mps
 float64 processing_age_ms
 # Time spent waiting for the latest-only worker before processing starts.
 float64 queue_age_ms
