@@ -170,7 +170,7 @@ TEST(Profile, DefaultForwardSectorBindsRuntimeFramePerSession) {
   EXPECT_TRUE(c.allow_unverified_calibration);
   EXPECT_FALSE(c.calibration_verified);
   EXPECT_TRUE(c.has_static_transform);
-  // The organizers' 2.1 x 3.0 m envelope and the 1.075 m lidar height above the rail heads.
+  // The 2.1 x 3.0 m envelope and the 1.075 m lidar height above the rail heads.
   EXPECT_DOUBLE_EQ(c.algorithm.corridor_half_width_m, 1.05);
   EXPECT_DOUBLE_EQ(c.algorithm.corridor_height_m, 3.0);
   EXPECT_DOUBLE_EQ(c.algorithm.static_half_width_m, 1.05);

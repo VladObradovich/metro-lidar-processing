@@ -1,0 +1,276 @@
+{
+  "schema_version": 1,
+  "quality_commit": "f13e569edb332696b438290adf2570bb3b21fc3d",
+  "timing_commit": "ba69723b941a3c7537335db375b9b3e8b9df486e",
+  "quality_reproducible": true,
+  "timing_reproducible": true,
+  "quality": {
+    "doubleT_obstacle": {
+      "frames": {
+        "declared": 201,
+        "processed": 201,
+        "lost": 0
+      },
+      "negative_frames": 0,
+      "false_alarm_frames": 0,
+      "negative_decision_coverage": null,
+      "median_evaluated_range_m": null,
+      "events": [
+        {
+          "id": "person_enters_track_01",
+          "frames": 56,
+          "obstacle_frames": 12,
+          "detected": true,
+          "first_alarm_delay_s": 0.97813184,
+          "first_alarm_distance_m": 45.62225341796875,
+          "object_confirmed": false,
+          "first_matched_distance_m": null,
+          "first_matched_delay_s": null,
+          "object_hits": 0
+        },
+        {
+          "id": "person_on_track_far_02",
+          "frames": 201,
+          "obstacle_frames": 68,
+          "detected": true,
+          "first_alarm_delay_s": 1.086799992,
+          "first_alarm_distance_m": 55.54998779296875,
+          "object_confirmed": true,
+          "first_matched_distance_m": 55.54998779296875,
+          "first_matched_delay_s": 1.086799992,
+          "object_hits": 56
+        }
+      ],
+      "distance": {
+        "matched": 0,
+        "mean_abs_error_m": null,
+        "max_abs_error_m": null
+      }
+    },
+    "doubleT_platform": {
+      "frames": {
+        "declared": 345,
+        "processed": 345,
+        "lost": 0
+      },
+      "negative_frames": 345,
+      "false_alarm_frames": 0,
+      "negative_decision_coverage": 0.863768115942029,
+      "median_evaluated_range_m": 69.85993194580078
+    },
+    "roundT_doubleT": {
+      "frames": {
+        "declared": 252,
+        "processed": 252,
+        "lost": 0
+      },
+      "negative_frames": 252,
+      "false_alarm_frames": 0,
+      "negative_decision_coverage": 0.7341269841269841,
+      "median_evaluated_range_m": 69.41305535888671
+    },
+    "roundT_pressureGate_roundT": {
+      "frames": {
+        "declared": 268,
+        "processed": 268,
+        "lost": 0
+      },
+      "negative_frames": 268,
+      "false_alarm_frames": 0,
+      "negative_decision_coverage": 0.8134328358208955,
+      "median_evaluated_range_m": 59.865932717895504
+    },
+    "roundT_squareT_pressureGate_squareT": {
+      "frames": {
+        "declared": 545,
+        "processed": 545,
+        "lost": 0
+      },
+      "negative_frames": 545,
+      "false_alarm_frames": 0,
+      "negative_decision_coverage": 0.8788990825688073,
+      "median_evaluated_range_m": 64.8519
+    },
+    "squareT_platform_squareT_switch": {
+      "frames": {
+        "declared": 877,
+        "processed": 877,
+        "lost": 0
+      },
+      "negative_frames": 877,
+      "false_alarm_frames": 0,
+      "negative_decision_coverage": 0.9304446978335233,
+      "median_evaluated_range_m": 69.4705
+    },
+    "new_data": {
+      "frames": {
+        "declared": 11271,
+        "processed": 11271,
+        "lost": 0
+      },
+      "negative_frames": 5950,
+      "false_alarm_frames": 26,
+      "negative_decision_coverage": 0.7581512605042017,
+      "median_evaluated_range_m": 69.22027587890625
+    },
+    "cloud_with_fake_obj": {
+      "frames": {
+        "declared": 1510,
+        "processed": 1510,
+        "lost": 0
+      },
+      "negative_frames": 833,
+      "false_alarm_frames": 0,
+      "negative_decision_coverage": 0.8499399759903962,
+      "median_evaluated_range_m": 59.93299865722656,
+      "events": [
+        {
+          "id": "box_central_01",
+          "frames": 231,
+          "obstacle_frames": 78,
+          "detected": true,
+          "first_alarm_delay_s": 14.487978484,
+          "first_alarm_distance_m": 64.22417449951172,
+          "object_confirmed": true,
+          "first_matched_distance_m": 64.22417449951172,
+          "first_matched_delay_s": 14.487978484,
+          "object_hits": 78
+        },
+        {
+          "id": "box_center_left_02",
+          "frames": 24,
+          "obstacle_frames": 24,
+          "detected": true,
+          "first_alarm_delay_s": 0.0,
+          "first_alarm_distance_m": 40.77804183959961,
+          "object_confirmed": true,
+          "first_matched_distance_m": 40.77804183959961,
+          "first_matched_delay_s": 0.0,
+          "object_hits": 23
+        },
+        {
+          "id": "low_box_right_03",
+          "frames": 24,
+          "obstacle_frames": 16,
+          "detected": true,
+          "first_alarm_delay_s": 0.0,
+          "first_alarm_distance_m": 42.66376102809016,
+          "object_confirmed": true,
+          "first_matched_distance_m": 42.66376102809016,
+          "first_matched_delay_s": 0.0,
+          "object_hits": 16
+        },
+        {
+          "id": "box_right_route_04",
+          "frames": 24,
+          "obstacle_frames": 6,
+          "detected": true,
+          "first_alarm_delay_s": 0.60873222,
+          "first_alarm_distance_m": 33.12664794921875,
+          "object_confirmed": true,
+          "first_matched_distance_m": 33.12664794921875,
+          "first_matched_delay_s": 0.60873222,
+          "object_hits": 6
+        },
+        {
+          "id": "box_right_edge_06",
+          "frames": 102,
+          "obstacle_frames": 0,
+          "detected": false,
+          "first_alarm_delay_s": null,
+          "first_alarm_distance_m": null,
+          "object_confirmed": false,
+          "first_matched_distance_m": null,
+          "first_matched_delay_s": null,
+          "object_hits": 0
+        },
+        {
+          "id": "low_box_central_09",
+          "frames": 50,
+          "obstacle_frames": 26,
+          "detected": true,
+          "first_alarm_delay_s": 1.205328206,
+          "first_alarm_distance_m": 63.81797409057617,
+          "object_confirmed": true,
+          "first_matched_distance_m": 63.81797409057617,
+          "first_matched_delay_s": 1.205328206,
+          "object_hits": 26
+        },
+        {
+          "id": "thin_hanging_strip_10",
+          "frames": 10,
+          "obstacle_frames": 2,
+          "detected": true,
+          "first_alarm_delay_s": 0.7907397,
+          "first_alarm_distance_m": 8.396623611450195,
+          "object_confirmed": true,
+          "first_matched_distance_m": 8.396623611450195,
+          "first_matched_delay_s": 0.7907397,
+          "object_hits": 2
+        }
+      ],
+      "distance": {
+        "matched": 151,
+        "mean_abs_error_m": 0.02898590813449984,
+        "max_abs_error_m": 0.2968999786376969
+      },
+      "negative_object_alarm_frames": 0,
+      "negative_object_count": 3
+    }
+  },
+  "timing": {
+    "doubleT_obstacle": {
+      "p50": 32.349363,
+      "p95": 35.537633,
+      "p99": 37.696555
+    },
+    "doubleT_platform": {
+      "p50": 31.725524,
+      "p95": 37.8436588,
+      "p99": 38.96787576
+    },
+    "roundT_doubleT": {
+      "p50": 23.7516165,
+      "p95": 31.4843318,
+      "p99": 33.38841800000001
+    },
+    "roundT_pressureGate_roundT": {
+      "p50": 31.9650425,
+      "p95": 50.481204999999996,
+      "p99": 56.29172499999996
+    },
+    "roundT_squareT_pressureGate_squareT": {
+      "p50": 44.439,
+      "p95": 53.136,
+      "p99": 55.960907999999975
+    },
+    "squareT_platform_squareT_switch": {
+      "p50": 42.8201,
+      "p95": 52.17681539999996,
+      "p99": 64.71961176
+    },
+    "new_data": {
+      "p50": 30.640068,
+      "p95": 48.9264475,
+      "p99": 75.34287219999996
+    },
+    "cloud_with_fake_obj": {
+      "p50": 48.496469000000005,
+      "p95": 57.43978894999999,
+      "p99": 61.2716501
+    }
+  },
+  "source_sha256": {
+    "results/final-f13e569/quality.json": "9e761c4e85d652a65fc9f7917fe0aed2ced298af13e4f32dad83d101316125c2",
+    "results/final-ba69723-idle/quality.json": "9c6b390f8a1d76edaf9b5be7a3dd767008faa8311218b7a3bbcac95d18d0b3a0",
+    "results/final-f13e569/manifest.json": "bf66addb8f8769e0d1b0df69e5857955e48872e07f6821353e1ee2d299e27988",
+    "results/final-ba69723-idle/manifest.json": "c88ba95362b4b9f9e8213f9ad54dfb38f285e07698465f7f7c4097a3cb5b3ba9"
+  },
+  "blind_totals": {
+    "new_data": {
+      "frames": 5321,
+      "obstacle_frames": 16,
+      "verification": "scripts/holdout_alarms.py results/final-f13e569; aggregate output only"
+    }
+  }
+}

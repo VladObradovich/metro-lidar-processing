@@ -1,0 +1,263 @@
+messages:
+  header: Stamp исходного наблюдения; frame_id системы, в которой дана геометрия.
+    Heartbeat assessment не меняет stamp.
+  source_instance_id: Идентификатор экземпляра perception; часть ключа наблюдения.
+  session_id: Номер сессии источника; смена обнуляет временную историю монитора.
+  frame_sequence: Номер входного кадра. Пропуски допустимы из-за latest-only; дубликаты
+    отклоняются.
+  processing_status: 'Код результата обработки: 0 OK, 1 NOT_IMPLEMENTED, 2 BAD_INPUT,
+    3 TF_UNAVAILABLE, 4 INVALID_GEOMETRY.'
+  reason: Текстовая причина анализа или решения. Нужна для диагностики UNKNOWN.
+  candidates: Геометрические кандидаты одного кадра; подтверждения трека в этом поле
+    нет.
+  corridor: Сегменты габарита того же кадра; пусто при ошибке анализа / stale assessment.
+  evaluation_region_valid: Пригодность области для решения об отсутствии кандидатов.
+  evaluated_range_m: Фактически оценённая продольная дальность, м; не максимум ROI.
+  ego_motion_valid: Флаг пригодности лидарной оценки продольного движения.
+  ego_speed_mps: Скорость собственного движения по лидару, м/с; читать при ego_motion_valid.
+  processing_age_ms: Локальный возраст от приёма облака до analysis, мс.
+  queue_age_ms: Локальное ожидание перед стартом worker, мс.
+  tf_wait_ms: Время resolve_context / ожидания точного TF, мс.
+  received_frames: Число поступивших облаков с начала процесса.
+  processed_frames: Число завершённых обработок, включая результаты, которые позднее
+    могут быть отвергнуты.
+  rejected_frames: Счётчик отказов обработки или публикации; не обязательно отдельная
+    непересекающаяся группа входов.
+  overwritten_frames: Число вытесненных ожидающих кадров / очищенных pending при смене
+    сессии.
+  calibration_trust: 'Уровень доверия кадра: 0 UNKNOWN, 1 ASSUMED, 2 VERIFIED; авторитетное
+    поле решения.'
+  transform_applied: Преобразование облака применено; тогда анализ публикуется в target_frame.
+  calibration_verified: Флаг configured-профиля. Не заменяет per-frame calibration_trust.
+  geometry_point_count: Количество очищенных точек внутри geometry ROI.
+  detection_point_count: Количество точек, вошедших в detection ROI.
+  invalid_point_count: Удалённые NaN, Inf и нулевые XYZ.
+  blind_point_count: Точки внутри слепой сферы сенсора.
+  outside_roi_point_count: Точки вне широкой geometry ROI после transform.
+  calibration_assumed: Профиль разрешает unverified calibration при calibration_verified=false.
+  candidate_id: Идентификатор кандидата внутри кадра; не track_id.
+  bbox: 'BoundingBox3D: центр и размеры в header.frame_id. Узлы заполняют quaternion
+    с w=1.'
+  nearest_point: Ближайшая принятая точка объекта в габарите.
+  distance_m: Продольная дистанция, м. В assessment валидна только при distance_valid.
+  distance_valid: Пригодность дистанции. У итогового assessment false соответствует
+    NaN.
+  support_points: Число исходных возвратов, поддерживающих кандидата.
+  support_rings: Поле для поддержки по кольцам; текущая публикация его не рассчитывает.
+  support_rings_valid: В текущей публикации false; support_rings не интерпретировать
+    как оценённое значение.
+  geometry_quality: Резерв диагностической оценки качества; текущий publisher явно
+    не заполняет.
+  reasons: 'Строковые метки. Для кандидата: MOTION, GAUGE, EDGE, OFFSET=…; для track
+    — каналы.'
+  track_id: ID трека, локальный временному монитору; используйте вместе с ключом источника/сессии.
+  confirmed: Трек прошёл временное подтверждение.
+  coasting: 'Нет нового измерения в кадре: bbox/дистанция прогнозируются.'
+  hits: Число evidence-hits в применяемой истории; EDGE не даёт новый hit.
+  age_frames: Число обработанных шагов с создания трека.
+  state: 0 UNKNOWN, 1 OBSTACLE, 2 NO_OBSTACLE_DETECTED.
+  reported_objects: Кандидаты именно текущего свежего успешного кадра; не список подтверждённых
+    треков.
+  tracks: Tentative и confirmed треки; при stale список очищается.
+  result_age_ms: 'Возраст принятого analysis: processing_age_ms + время ожидания в
+    мониторе.'
+  stale: Принятое наблюдение устарело либо вход ещё не получен.
+  rejected_analyses: Количество отказов gate с момента старта монитора.
+  last_rejection_reason: Последняя причина отказа gate; не причина текущего состояния.
+  start: Начало сегмента коридора в целевой системе.
+  end: Конец сегмента коридора в целевой системе.
+  width_m: Полная ширина сегмента, м.
+  height_m: Высота сегмента над поверхностью, м.
+  ground_plane: Нормированные коэффициенты [a,b,c,d] плоскости ax+by+cz+d=0.
+  geometry_valid: Геометрия сегмента пригодна для интерпретации.
+  coverage_valid: Покрытие сегмента наблюдениями пригодно.
+parameters:
+  max_points: Максимум точек кадра; [1;10 000 000]. Онлайн/CLI limit задаётся отдельно.
+  record_rejected: Включить диагностику отвергнутых компонент. Офлайн — METRO_DEBUG_COMPONENTS;
+    не YAML detector.
+  record_motion: Записывать диагностику сдвигов/скорости. Офлайн — METRO_DEBUG_MOTION;
+    не YAML detector.
+  blind_radius_m: Радиус слепой сферы до transform, м; ≥0. В YAML расположен на верхнем
+    уровне.
+  corridor_half_width_m: Полуширина габарита, м; (0;5].
+  corridor_height_m: Высота габарита, м; (0;8].
+  ground_max_slope: Максимальный модуль наклона плоскости; (0;0,5].
+  ground_inlier_tolerance_m: Допуск опорной точки от пола, м; (0;0,5].
+  ground_max_gap_m: Максимальный разрыв наблюдаемого пола, м; [5;50].
+  ground_hold_frames: Удерживать пол при окклюзии столько кадров; 0 отключает, ≤10.
+    Clear по удержанному полу не подтверждается.
+  ground_min_bin_points: Минимум возвратов в 5-метровом интервале пола; ≥1.
+  ground_far_min_bin_points: Дальний минимум возвратов; 0 означает обычный порог,
+    ≤ground_min_bin_points.
+  ground_far_from_m: Начало дальнего порога пола, м; ≥0.
+  ground_max_x_m: Предел поиска/опоры пола, м; [30;200].
+  obstacle_min_height_m: Минимальная высота свидетельства, м; >0 и ≤corridor_height_m.
+  candidate_margin_m: Запас для определения размеров за краем габарита, м; [0;2].
+    Не расширяет сам габарит.
+  angular_cell_deg: Шаг угловой ячейки, градусы; [0,05;1].
+  min_ground_inliers: Минимум inliers оценки плоскости; ≥3.
+  min_candidate_cells: Минимум ячеек компоненты; ≥1.
+  min_candidate_points: Минимум исходных точек компоненты; ≥1.
+  background_history_frames: Длина rolling baseline; [0;60], 0 выключает историю.
+  background_lag_frames: Лаг фона; при истории 1≤lag<history.
+  background_margin_m: Абсолютный запас разности дальности, м; ≥0.
+  background_relative_margin: Доля дальности в запасе разности; [0;0,5].
+  route_estimation: Оценивать ось пути по стенам; bool.
+  route_min_radius_m: Минимальный радиус кривизны оси, м; ≥20.
+  route_smoothing: Вес предыдущей оценки оси; [0;1), 0 — без сглаживания.
+  rail_route_weight: Вес измерений рельсов при уточнении оси; ≥0; 0 выключает.
+  route_margin_per_m: Боковой рост uncertainty на метр x; ≥0; 0 выключает базовую
+    полосу.
+  route_margin_max_m: Верхняя граница базовой боковой uncertainty, м; ≥0.
+  route_support_margin_m: Отступ от дальнего конца wall support для EDGE, м; ≥0, 0
+    выключает.
+  static_channel: Включить GAUGE без фона; bool.
+  gauge_certifies_clear: Разрешить пустому пригодному GAUGE подтверждать clear в своей
+    области; bool.
+  static_half_width_m: Внешняя полуширина GAUGE, м; >0.
+  static_inner_half_width_m: Полуширина внутреннего GAUGE, м; >0 и ≤static_half_width_m.
+  static_outer_max_length_m: Максимальная длина во внешней полосе, м; >0 и ≤static_max_length_m.
+  static_outer_min_width_m: Минимальная ширина во внешней полосе, м; >0 и ≤static_half_width_m.
+  static_outer_min_points: Минимум точек во внешней полосе; ≥1.
+  static_min_height_m: Минимальная высота обычного GAUGE, м; >0.
+  sensor_height_above_rail_m: Высота сенсора над головкой рельса, м; [0;5], 0 отключает
+    rail-height ограничение.
+  rail_head_margin_m: Запас над головкой рельса, м; ≥0.
+  static_max_height_m: Верхняя высота обычного GAUGE, м; >static_min_height_m.
+  static_max_length_m: Максимальная длина gauge-only объекта, м; >0.
+  side_structure_max_length_m: Порог длины боковой конструкции, м; ≥0; 0 выключает.
+  far_gauge_max_x_m: Предел extrapolated GAUGE, м; [0;300]; 0 выключает. В shipped
+    отключён.
+  far_gauge_half_width_m: Полуширина extrapolated GAUGE, м; >0.
+  far_gauge_min_height_m: Минимальная высота дальнего GAUGE, м; ≥0.
+  far_min_extent_m: Минимальный вертикальный размер дальнего объекта, м; ≥0.
+  far_gauge_max_curvature: Допустимая кривизна дальнего GAUGE, 1/м; ≥0, 0 — без этого
+    ограничения.
+  low_object_height_m: Граница низкого объекта над bed, м; ≥0.
+  low_object_half_width_m: Центральная полоса для низких объектов, м; ≥0.
+  low_bump_max_length_m: Максимальная длина компактного low bump, м; >0 и ≤static_max_length_m.
+  low_bump_min_width_m: Минимальная ширина low bump, м; >0 и ≤corridor_half_width_m.
+  low_bump_min_prominence_m: Выступ над контекстом до/после объекта, м; >0 и ≤low_object_height_m.
+  low_bump_min_context_points: Минимум точек в каждой стороне контекста low bump;
+    ≥1.
+  hanging_channel: Включить узкие подвешенные объекты, входящие в габарит; bool.
+  pole_rejection: Отбрасывать тонкие колонны от пола до свода; bool.
+  hanging_tip_max_height_m: Максимальная высота нижнего конца подвеса, м; >0 и ≤corridor_height_m.
+  hanging_min_vertical_span_m: Минимальный вертикальный span подвеса, м; >0 и ≤corridor_height_m.
+  hanging_max_footprint_m: Максимальный footprint подвеса, м; >0 и ≤corridor_half_width_m.
+  hanging_min_points: Минимум исходных точек подвеса; ≥1.
+  envelope_half_width_m: Граница MOTION-only при движении, м; ≥0.
+  envelope_min_speed_mps: Скорость применения envelope rule, м/с; ≥0.
+  ego_motion_compensation: Сдвигать baseline по лидарной оценке движения; bool.
+  ego_max_speed_mps: Предел оцениваемой скорости, м/с; (0;60].
+  ego_min_contrast: Минимальная выраженность минимума ошибки сдвига, м; (0;0,3].
+  confirm_hits: Hits для обычного трека; 1≤hits≤confirm_window.
+  confirm_window: Окно обычного подтверждения, кадры; hits≤window≤32.
+  gauge_confirm_hits: Hits для gauge-only трека; 1≤hits≤gauge_confirm_window.
+  gauge_confirm_window: Окно gauge-only подтверждения; hits≤window≤32.
+  far_confirm_hits: Дополнительные hits дальнего трека; 1≤hits≤far_confirm_window.
+  far_confirm_window: Окно дальнего подтверждения; hits≤window≤32.
+  far_confirm_from_m: Начало дальнего правила, м; ≥0. 0 — лишь за evaluated range.
+  motion_gauge_speed_mps: От этой валидной скорости для подтверждения нужен GAUGE,
+    м/с; ≥0; 0 выключает.
+  outer_offset_m: Смещение от оси для доп. outer-rule, м; ≥0; 0 выключает.
+  edge_retracts: Снимать подтверждение при устойчивом уходе EDGE наружу; bool.
+  outer_confirm_hits: Дополнительные hits outer-трека; 1≤hits≤outer_confirm_window.
+  outer_confirm_window: Окно outer-подтверждения; hits≤window≤32.
+  release_misses: Число misses для удаления confirmed; [1;32]. Удержание — misses−1
+    кадр.
+  gate_base_m: Базовый радиус association gate, м; >0.
+  gate_range_fraction: Дополнение gate как доля дальности; ≥0.
+  object_max_speed_mps: Допуск скорости объекта в association gate, м/с; ≥0.
+  unknown_ego_speed_mps: Допуск при неизвестной ego-speed, м/с; ≥0.
+  still_speed_mps: Порог стоянки |v| для мгновенного MOTION-hit, м/с; ≥0; 0 выключает.
+  still_min_points: Минимальная плотность для мгновенного MOTION-подтверждения.
+  max_gap_s: Разрыв измерений для сброса треков, с; >0.
+  max_tracks: Лимит, после которого удаляются слабые tentative; [1;1024]. Подтверждённые
+    сохраняются.
+  assumed_clear: Разрешить clear при ASSUMED и пригодной области; bool.
+  assumed_clear_min_range_m: Минимальная область clear при ASSUMED, м; >0; shipped
+    50 м.
+groups:
+- - A.1
+  - Вход и диагностические флаги
+  - - max_points
+    - record_rejected
+    - record_motion
+    - blind_radius_m
+- - A.2
+  - Габарит и поверхность
+  - - corridor_half_width_m
+    - corridor_height_m
+    - ground_max_slope
+    - ground_inlier_tolerance_m
+    - ground_max_gap_m
+    - ground_hold_frames
+    - ground_min_bin_points
+    - ground_far_min_bin_points
+    - ground_far_from_m
+    - ground_max_x_m
+    - obstacle_min_height_m
+    - candidate_margin_m
+- - A.3
+  - Угловые компоненты и фон
+  - - angular_cell_deg
+    - min_ground_inliers
+    - min_candidate_cells
+    - min_candidate_points
+    - background_history_frames
+    - background_lag_frames
+    - background_margin_m
+    - background_relative_margin
+- - A.4
+  - Ось пути и неопределённость
+  - - route_estimation
+    - route_min_radius_m
+    - route_smoothing
+    - rail_route_weight
+    - route_margin_per_m
+    - route_margin_max_m
+    - route_support_margin_m
+- - A.5
+  - Обычный GAUGE и головка рельса
+  - - static_channel
+    - gauge_certifies_clear
+    - static_half_width_m
+    - static_inner_half_width_m
+    - static_outer_max_length_m
+    - static_outer_min_width_m
+    - static_outer_min_points
+    - static_min_height_m
+    - sensor_height_above_rail_m
+    - rail_head_margin_m
+    - static_max_height_m
+    - static_max_length_m
+    - side_structure_max_length_m
+- - A.6
+  - Дальнее расширение
+  - - far_gauge_max_x_m
+    - far_gauge_half_width_m
+    - far_gauge_min_height_m
+    - far_min_extent_m
+    - far_gauge_max_curvature
+- - A.7
+  - Низкие объекты, подвесы и колонны
+  - - low_object_height_m
+    - low_object_half_width_m
+    - low_bump_max_length_m
+    - low_bump_min_width_m
+    - low_bump_min_prominence_m
+    - low_bump_min_context_points
+    - hanging_channel
+    - pole_rejection
+    - hanging_tip_max_height_m
+    - hanging_min_vertical_span_m
+    - hanging_max_footprint_m
+    - hanging_min_points
+- - A.8
+  - Собственное движение
+  - - envelope_half_width_m
+    - envelope_min_speed_mps
+    - ego_motion_compensation
+    - ego_max_speed_mps
+    - ego_min_contrast

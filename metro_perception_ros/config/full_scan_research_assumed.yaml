@@ -2,7 +2,7 @@
 # Kept for comparison (evaluate_all.py --full-scan-research). Full-scan bags are now scored
 # with the shipped forward_sector_assumed.yaml, which crops a 360-degree cloud to the same
 # forward axis; full_scan_unresolved.yaml keeps every frame UNKNOWN.
-# Its detector values predate the organizers' envelope (26.09) and are not maintained.
+# Its detector values predate the 2.1 x 3.0 m envelope and are not maintained.
 source_frame_mode: exact
 source_frame: lidar_livox
 target_frame: lidar_assumed

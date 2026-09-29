@@ -1,0 +1,19 @@
+<svg height="355" viewbox="0 0 900 355" width="900" xmlns="http://www.w3.org/2000/svg"><defs><marker id="arrow" markerheight="8" markerwidth="8" orient="auto" refx="7" refy="3"><path d="M0,0 L0,6 L7,3 Z" fill="#14978e"></path></marker></defs><style>text{font-family:"Noto Sans",sans-serif;fill:#1d3349}.small{font-size:16px}.label{font-size:19px;font-weight:bold}.line{stroke:#14978e;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+<rect fill="#f1f6f8" height="355" rx="18" width="900" x="0" y="0"></rect>
+<rect fill="#dce8ef" height="85" rx="10" width="155" x="25" y="40"></rect>
+<text class="label" text-anchor="middle" x="103" y="74">PointCloud2</text><text class="small" text-anchor="middle" x="103" y="101">/lidar_points</text>
+<rect fill="#cceee8" height="85" rx="10" width="180" x="245" y="40"></rect>
+<text class="label" text-anchor="middle" x="335" y="73">perception</text><text class="small" text-anchor="middle" x="335" y="101">анализ кадра</text>
+<rect fill="#cceee8" height="85" rx="10" width="175" x="505" y="40"></rect>
+<text class="label" text-anchor="middle" x="592" y="73">monitor</text><text class="small" text-anchor="middle" x="592" y="101">треки и решение</text>
+<rect fill="#dce8ef" height="85" rx="10" width="135" x="740" y="40"></rect>
+<text class="label" text-anchor="middle" x="807" y="73">Потребитель</text><text class="small" text-anchor="middle" x="807" y="101">assessment</text>
+<path class="line" d="M180 82 H242"></path><path class="line" d="M425 82 H502"></path><path class="line" d="M680 82 H737"></path>
+<text class="small" text-anchor="middle" x="464" y="28">FrameAnalysis</text><text class="small" text-anchor="middle" x="710" y="151">PathAssessment</text>
+<rect fill="#1d3349" height="88" rx="10" width="180" x="245" y="210"></rect>
+<text style="fill:white;font-size:19px;font-weight:bold" text-anchor="middle" x="335" y="244">C++ core</text><text style="fill:#bce7e2;font-size:16px" text-anchor="middle" x="335" y="272">единые алгоритмы</text>
+<path class="line" d="M335 125 V207"></path>
+<rect fill="#dce8ef" height="88" rx="10" width="155" x="25" y="210"></rect><text class="label" text-anchor="middle" x="102" y="246">evaluate_bag</text><text class="small" text-anchor="middle" x="102" y="273">офлайн</text><path class="line" d="M180 253 H242"></path>
+<rect fill="#dce8ef" height="88" rx="10" width="370" x="505" y="210"></rect><text class="label" text-anchor="middle" x="690" y="245">RViz / depth_image / visualizer</text><text class="small" text-anchor="middle" x="690" y="273">облако, видео, маркеры, текст</text><path class="line" d="M592 125 V207"></path>
+<text class="small" text-anchor="middle" x="450" y="333">Визуализация опциональна. Офлайн использует тот же детектор и temporal monitor.</text>
+</svg>

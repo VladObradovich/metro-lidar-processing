@@ -998,7 +998,7 @@ TEST(Candidates, ObjectsInADeepTroughBelowTheRailsAreNotObstacles) {
 
 TEST(Route, EvidenceWithinTheRouteUncertaintyOfTheEdgeIsMarked) {
   auto config = single_frame_config();
-  config.corridor_half_width_m = 1.05;  // The organizers' envelope, as in the profile.
+  config.corridor_half_width_m = 1.05;  // The reference envelope, as in the profile.
   config.route_margin_per_m = 0.005;    // 0.3 m at 60 m, 0.1 m at 20 m.
   auto run = [&](double x, double y0, double y1) {
     auto scene = curved_tunnel(1e9);

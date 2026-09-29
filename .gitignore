@@ -6,3 +6,5 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .devcontainer/.runtime/
+.venv-docs/
+docs/_generated/

@@ -18,7 +18,7 @@ detection_roi:
 
 # Experimental B0 detection parameters; override only after reviewing labelled scenes.
 detector:
-  # Train clearance envelope from the organizers (26.09): 2.1 m wide, 3.0 m high above the
+  # Train clearance envelope: 2.1 m wide, 3.0 m high above the
   # track. The height is counted from the floor found under the route, as in their synthetic
   # scene, where the "above" box starts 3.1 m and the hanging strip ends 2.9 m above it.
   corridor_half_width_m: 1.05
@@ -64,7 +64,7 @@ detector:
   ground_hold_frames: 3
   # Thin columns from the floor to the vault (double-track tunnels) are structure.
   pole_rejection: true
-  # Lidar 1.075 m above the rail heads (organizers, 24.09): at stations the floor found is the
+  # Lidar 1.075 m above the rail heads: at stations the floor found is the
   # bottom of a deep trough, whose contents are not obstacles.
   sensor_height_above_rail_m: 1.075
   rail_head_margin_m: 0.05

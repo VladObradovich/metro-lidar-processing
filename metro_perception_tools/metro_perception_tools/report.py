@@ -117,7 +117,7 @@ def quality_lines(data):
         )
         if negative.get('events'):
             lines.append(
-                '- Тревоги на объектах класса outside/above по разметке (класс организаторов; '
+                '- Тревоги на объектах класса outside/above по разметке (класс из разметки сцены; '
                 'граница габарита в проекте не задана, поэтому это не обязательно ошибка '
                 'алгоритма): подтверждённый трек на объекте при OBSTACLE в '
                 f"{negative['alarm_frames']} из {negative['reference_frames']} кадров; "

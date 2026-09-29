@@ -2,7 +2,7 @@
 <package format="3">
   <name>metro_perception_rviz</name><version>0.1.0</version>
   <description>RViz panel printing the current path assessment as text.</description>
-  <maintainer email="team@example.com">Hackathon Team</maintainer><license>MIT</license>
+  <maintainer email="vladislav.icgod@gmail.com">VladObradovich</maintainer><license>MIT</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>metro_perception_interfaces</depend>
   <depend>pluginlib</depend>

@@ -84,7 +84,7 @@ struct AlgorithmConfig {
   double static_outer_min_width_m{0.15};
   std::size_t static_outer_min_points{10};
   double static_min_height_m{0.3};
-  // The lidar stands this far above the rail heads (1.075 m on the organizers' train; 0
+  // The lidar stands this far above the rail heads (1.075 m on the reference train; 0
   // disables). The floor found under a deep trough, as at stations, lies well below the rails,
   // and what lies in the trough is not an obstacle: returns count only from rail_head_margin_m
   // above the rail heads, on top of the floor-based minimum heights.

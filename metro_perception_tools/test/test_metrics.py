@@ -294,7 +294,7 @@ def test_object_checks_are_grouped_by_object_distance():
 
 def test_alarm_on_an_annotated_negative_object_is_counted_on_every_frame():
     side = {'min': [10.0, 2.0, -1.0], 'max': [11.0, 3.0, 1.0]}
-    distractor = {'id': 'side', 'label': 'negative', 'organizer_class': 'outside',
+    distractor = {'id': 'side', 'label': 'negative', 'envelope_class': 'outside',
                   'start_ns': 0, 'end_ns': 3 * S,
                   'reference_frames': [{'bag_stamp_ns': t * S, 'distance_m': 10.0,
                                         'person_roi_assumed_m': side} for t in range(4)]}
@@ -328,7 +328,7 @@ def test_report_shows_distance_bins_and_alarms_on_negative_objects(tmp_path):
         {'id': 'box', 'label': 'positive', 'start_ns': 0, 'end_ns': 0,
          'reference_frames': [{'bag_stamp_ns': 0, 'distance_m': 10.0,
                                'person_roi_assumed_m': roi}]},
-        {'id': 'side', 'label': 'negative', 'organizer_class': 'above', 'start_ns': S,
+        {'id': 'side', 'label': 'negative', 'envelope_class': 'above', 'start_ns': S,
          'end_ns': S, 'reference_frames': [{'bag_stamp_ns': S, 'distance_m': 30.0,
                                             'person_roi_assumed_m': side}]}])
     path = tmp_path / 'evaluation/annotations/scene.yaml'

@@ -26,7 +26,7 @@ Matching rules (docs/evaluation-metrics.md):
   over the reference frames within it are reported apart from the totals, which
   also count objects the profile cannot reach;
 - events labelled negative with ROIs are annotated objects whose class should
-  raise no alarm (e.g. the organizers' outside/above objects). A frame alarms on
+  raise no alarm (e.g. objects outside or above the envelope). A frame alarms on
   one when it is OBSTACLE and a decisive object lies in its ROI (+ margin); this
   is counted on every labelled frame, also where another object makes the frame
   positive and the frame-level FP cannot see it. Whether such an alarm is an
@@ -197,7 +197,7 @@ def negative_object_checks(rows, events, intervals, tolerance_ns, margin):
                 continue
             alarm = nearest['state'] == 'OBSTACLE' and any(
                 inside_roi(obj['center'], roi, margin) for obj in decisive_objects(nearest))
-            checks.append({'event_id': event['id'], 'class': event.get('organizer_class'),
+            checks.append({'event_id': event['id'], 'class': event.get('envelope_class'),
                            'bag_stamp_ns': nearest['bag_stamp_ns'], 'alarm': alarm,
                            'label': frame_label(nearest['bag_stamp_ns'], intervals)})
     per_event = {}

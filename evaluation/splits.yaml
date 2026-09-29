@@ -16,8 +16,8 @@ notes:
   - From 2026-09-24 (after G4) false-alarm classes were reviewed on development and validation together
     ("two halves", at the user's request); every rule adopted since is physically motivated and had to
     improve both halves separately without losing the positive object or synthetic recall. Validation
-    figures after that date are not an independent estimate; the hidden control bags are.
-  - regression holds cloud_with_fake_obj, the organizers' bag with inserted objects, added on
+    figures after that date are not an independent estimate; new independent recordings would be.
+  - regression holds cloud_with_fake_obj, the bag with inserted synthetic objects, added on
     2026-09-24 after the freeze. The detector has not been tuned on it, but its results (misses,
     ego-motion failures) were analysed in detail, so it is not a blind test; it tracks changes
     and is not an independent estimate.

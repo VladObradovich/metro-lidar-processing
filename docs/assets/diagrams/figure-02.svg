@@ -1,0 +1,10 @@
+<svg height="350" viewbox="0 0 900 350" width="900" xmlns="http://www.w3.org/2000/svg"><defs><marker id="arrow" markerheight="8" markerwidth="8" orient="auto" refx="7" refy="3"><path d="M0,0 L0,6 L7,3 Z" fill="#14978e"></path></marker></defs><style>text{font-family:"Noto Sans",sans-serif;fill:#1d3349}.small{font-size:16px}.label{font-size:19px;font-weight:bold}.line{stroke:#14978e;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+<rect fill="#f1f6f8" height="350" rx="15" width="900"></rect>
+<path d="M80 295 V200 Q80 30 320 30 Q560 30 560 200 V295" fill="#e5edf2" stroke="#9eafbd" stroke-width="3"></path>
+<rect fill="#cceee8" height="210" rx="4" stroke="#14978e" stroke-width="3" width="220" x="210" y="70"></rect>
+<path d="M320 50 V305" stroke="#14978e" stroke-dasharray="7 6"></path>
+<path d="M120 280 H520" stroke="#1d3349" stroke-width="4"></path><rect fill="#1d3349" height="15" width="24" x="244" y="270"></rect><rect fill="#1d3349" height="15" width="24" x="370" y="270"></rect>
+<circle cx="320" cy="205" fill="#1d3349" r="8"></circle><path class="line" d="M328 204 H385"></path><text class="small" x="348" y="191">y</text><path class="line" d="M320 196 V153"></path><text class="small" x="331" y="165">z</text>
+<rect fill="#db6551" height="35" width="36" x="302" y="236"></rect><text class="label" x="604" y="76">Габарит: 2,1 × 3,0 м</text><text class="small" x="604" y="109">Полуширина: 1,05 м</text><text class="small" x="604" y="145">Сенсор: 1,075 м над рельсом</text><text class="small" x="604" y="181">Красный: объект внутри</text><text class="small" x="604" y="217">Зелёный: проверяемый коридор</text><text class="small" x="604" y="253">x направлен вперёд, из рисунка</text>
+<text class="small" text-anchor="middle" x="320" y="326">Поперечная схема; размеры не в масштабе</text>
+</svg>

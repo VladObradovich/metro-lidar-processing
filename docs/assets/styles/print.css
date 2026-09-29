@@ -1,0 +1,59 @@
+
+@font-face{font-family:Noto;src:url(file:///usr/share/fonts/truetype/noto/NotoSans-Regular.ttf)}
+@font-face{font-family:Noto;src:url(file:///usr/share/fonts/truetype/noto/NotoSans-Bold.ttf);font-weight:700}
+@font-face{font-family:Noto;src:url(file:///usr/share/fonts/truetype/noto/NotoSans-Italic.ttf);font-style:italic}
+@font-face{font-family:Mono;src:url(file:///usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf)}
+@page {size:A4;margin:21mm 19mm 21mm 22mm;
+ @top-left{content:'METRO PERCEPTION';font:700 7.5pt Noto;color:#607586;letter-spacing:1.1px}
+ @top-right{content:string(chapter);font:7.5pt Noto;color:#607586}
+ @bottom-left{content:'ТЕХНИЧЕСКОЕ РУКОВОДСТВО {{ doc_version }} от {{ doc_date }}';font:7pt Noto;color:#607586}
+ @bottom-right{content:counter(page) ' / ' counter(pages);font:700 9pt Noto;color:#14978e}
+}
+@page cover {margin:0;background:#fff;@top-left{content:none}@top-right{content:none}@bottom-left{content:none}@bottom-right{content:none}}
+*{box-sizing:border-box}
+html{font-family:Noto,sans-serif;font-size:9.8pt;line-height:1.44;color:#253e52}
+body{margin:0}
+p{margin:0 0 3.2mm;text-align:left;orphans:3;widows:3}
+a{color:#087f78;text-decoration:none}
+b,strong{font-weight:700}
+h1{font-size:25pt;line-height:1.2;letter-spacing:-.6px;color:#102b42;margin:0 0 5mm;string-set:chapter content(text);bookmark-level:1;page-break-after:avoid}
+h1 span{display:block;font-size:11pt;letter-spacing:2px;color:#14978e;margin-bottom:4mm}
+h2{font-size:13pt;line-height:1.3;color:#102b42;margin:5.8mm 0 2.5mm;bookmark-level:2;page-break-after:avoid}
+.chapter{break-before:page}.keep{break-inside:avoid}.message-constants{break-after:avoid}
+.chapter .part{font-size:8pt;color:#14978e;font-weight:700;letter-spacing:1px;margin:0 0 5mm}
+.lead{font-size:12pt;line-height:1.5;color:#607586;margin:0 0 7mm;border-bottom:1px solid #d8e2e9;padding-bottom:5mm}
+ul,ol{padding-left:5mm;margin:0 0 4mm}li{padding-left:1mm;margin-bottom:2mm;orphans:2;widows:2}
+code{font:8.15pt Mono,monospace;color:#204c66;overflow-wrap:anywhere}
+.codebox{border:1px solid #d5e3e9;background:#f3f7f9;border-radius:2mm;margin:4mm 0 5mm;break-inside:avoid;padding:3mm 4mm}
+.code-label{font-size:6.8pt;letter-spacing:.7px;font-weight:700;color:#14978e;margin-bottom:2mm}
+pre{font:8pt/1.52 Mono,monospace;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:#173b53;tab-size:2}
+table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:8.6pt;line-height:1.4;margin:0 0 5mm}
+thead{display:table-header-group}tr{break-inside:avoid}th{padding:2.6mm 2.5mm;background:#193d55;color:white;font-size:8pt;text-align:left;font-weight:700}
+td{padding:2mm 2.5mm;border-bottom:1px solid #d7e2e9;vertical-align:top;overflow-wrap:anywhere}td code{font-size:7.5pt}
+tbody tr:nth-child(even){background:#f2f6f8}
+.table-caption{font-size:8pt;font-weight:700;color:#607586;margin:4mm 0 2mm;break-after:avoid}
+aside{padding:3.5mm 4mm;background:#edf7f5;border-left:3px solid #14978e;margin:4mm 0 5mm;break-inside:avoid;font-size:9.4pt}
+aside.important{background:#fbf4e8;border-color:#c79d45}
+aside strong{display:block;margin-bottom:2mm;color:#173b53}
+aside p{margin:0}
+.source{font-size:7.5pt;line-height:1.5;color:#728590;margin:2.5mm 0 0;padding-top:1.5mm;break-before:avoid;border-top:1px solid #d8e2e9;overflow-wrap:anywhere}.source code{font-size:7pt;color:#728590}
+figure{margin:4mm 0 5mm;break-inside:avoid}figure svg{display:block;width:100%;height:auto}figcaption{font-size:8pt;color:#607586;margin-top:2mm}
+.cover{page:cover;width:210mm;height:297mm;position:relative;overflow:hidden;background:#fff}
+.cover svg{display:block;width:210mm;height:297mm}
+.toc{break-before:page}.toc h1{string-set:chapter 'Содержание'}
+.toc .part-title{font-size:7.8pt;font-weight:bold;color:#14978e;letter-spacing:.5px;margin:5mm 0 2mm;break-after:avoid}
+.toc-row{display:block;font-size:9.5pt;line-height:1.55;color:#253e52;margin:1.8mm 0;break-inside:avoid}
+.toc-row::after{content:leader('.') target-counter(attr(href),page);color:#607586}
+.toc-sub{display:block;font-size:8pt;color:#607586;padding-left:5mm;line-height:1.35;margin:.7mm 0;break-inside:avoid}
+.toc-sub::after{content:leader('.') target-counter(attr(href),page)}
+#chapter-В{font-size:22pt;margin-bottom:3mm}
+.chapter:has(#chapter-В) .part{margin-bottom:3mm}
+.chapter:has(#chapter-В) .lead{font-size:10pt;margin-bottom:3mm;padding-bottom:3mm}
+.chapter:has(#chapter-В) h1 span{margin-bottom:2mm}
+.chapter:has(#chapter-В) h2{font-size:11pt;margin-top:3mm;margin-bottom:2mm}
+.chapter:has(#chapter-В) table{font-size:8.4pt;line-height:1.4;margin-bottom:3mm}
+.chapter:has(#chapter-В) td{padding:1.8mm 2mm}
+.chapter:has(#chapter-В) th{padding:1.8mm 2mm;font-size:7.5pt}
+.chapter:has(#chapter-В) td code{font-size:6.7pt}
+.chapter:has(#chapter-В) .table-caption{margin-top:2mm;margin-bottom:1.3mm;font-size:7.4pt}
+.colophon{font-size:8pt;margin-top:5mm;color:#607586;border-top:1px solid #d8e2e9;padding-top:3mm}

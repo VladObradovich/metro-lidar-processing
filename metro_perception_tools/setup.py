@@ -15,8 +15,8 @@ setup(
     install_requires=['setuptools'],
     tests_require=['pytest'],
     zip_safe=True,
-    maintainer='Hackathon Team',
-    maintainer_email='team@example.com',
+    maintainer='VladObradovich',
+    maintainer_email='vladislav.icgod@gmail.com',
     description='Auxiliary tools for metro tunnel lidar data.',
     license='MIT',
     entry_points={

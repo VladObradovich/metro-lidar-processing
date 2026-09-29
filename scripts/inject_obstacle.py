@@ -37,8 +37,8 @@ ROI_PAD_M = 0.1
 MIN_VISIBLE_POINTS = 10
 MAX_EVENT_DISTANCE_M = 200.0
 MAX_RANGE_M = 200.0  # Pandar128 ranging limit at 10 % reflectivity.
-# The lidar stands 1.075 m above the rail heads (organizers). An object lying on the track rests
-# on the rails: below them it would be in the trough, which the organizers do not count.
+# The lidar stands 1.075 m above the rail heads. An object lying on the track rests
+# on the rails: below them it would be in the trough, which is not an obstacle.
 RAIL_BELOW_LIDAR_M = 1.075
 DISTANCE_BINS_M = (0, 20, 40, 60, 80, 100, 120, 150, 200)
 

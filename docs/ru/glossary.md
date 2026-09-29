@@ -1,0 +1,11 @@
+(chapter-В)=
+# В Глоссарий
+
+<p class="lead">Термины, состояния и обозначения, используемые в системе.</p>
+
+(s-C-1)=
+## В.1 Глоссарий
+
+<div class="table-caption">Таблица 58. Термины</div>
+
+<table><colgroup><col style="width:28%"/><col style="width:72%"/></colgroup><thead><tr><th>Термин</th><th>Значение в этом проекте</th></tr></thead><tbody><tr><td>Bag / rosbag2</td><td>Каталог записанных ROS-сообщений, metadata.yaml и файлы storage.</td></tr><tr><td>ROI</td><td>Ограниченная область координат. Geometry ROI даёт контекст; detection ROI — подмножество анализа.</td></tr><tr><td>Габарит</td><td>Объём предполагаемого прохода поезда относительно оси и локальной поверхности.</td></tr><tr><td>Опора / support</td><td>Возвраты, которые подтверждают геометрическую гипотезу либо компоненту.</td></tr><tr><td>Кандидат</td><td>Геометрический объект одного кадра до temporal confirmation.</td></tr><tr><td>Трек</td><td>Последовательность связанных наблюдений объекта; confirmed/tentative.</td></tr><tr><td>MOTION</td><td>Свидетельство изменения относительно rolling baseline после ego-компенсации.</td></tr><tr><td>GAUGE</td><td>Свидетельство объекта внутри route gauge без требования новизны относительно фона.</td></tr><tr><td>EDGE</td><td>Всё evidence в полосе неопределённости края; не даёт новый confirmation hit.</td></tr><tr><td>Coasting</td><td>Удержание подтверждённого трека с прогнозом, без нового измерения в кадре.</td></tr><tr><td>Stale</td><td>Устаревшее принятое наблюдение; объекты очищены, ключ сохраняется.</td></tr><tr><td>Heartbeat</td><td>Повторная публикация того же наблюдения для актуального возраста/watchdog.</td></tr><tr><td>TF</td><td>Преобразование координат между фреймами; для облака ищется на header.stamp.</td></tr><tr><td>QoS</td><td>Политика доставки ROS/DDS: reliable/best_effort и глубина очереди.</td></tr><tr><td>Latest-only</td><td>Один worker и один pending; новый pending вытесняет предыдущий.</td></tr><tr><td>Holdout</td><td>Выборка, исключённая из подбора; в этом проекте blind interval new_data допускает только итог.</td></tr><tr><td>Object match</td><td>Совпадение decisive объекта с ROI разметки; сильнее state-level alarm.</td></tr><tr><td>Provenance / manifest</td><td>Происхождение запуска: commit, image, hashes, profiles и выбранные данные.</td></tr></tbody></table>

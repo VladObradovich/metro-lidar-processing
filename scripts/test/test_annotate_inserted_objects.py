@@ -42,10 +42,10 @@ def obj(x, y=0.0, n=20, z=(-1.0, 0.0), width=0.3):
     return {'n': n, 'min': [x, y - width / 2, z[0]], 'max': [x + 0.3, y + width / 2, z[1]]}
 
 
-def hand_track(frames, name, organizer_class, index, speed=15.0):
+def hand_track(frames, name, envelope_class, index, speed=15.0):
     """Track that owns cluster index in every given frame."""
     observed = {i: index for i in range(len(frames))}
-    return {'id': name, 'class': organizer_class, 'description': name, 'observed': observed,
+    return {'id': name, 'class': envelope_class, 'description': name, 'observed': observed,
             'x': {i: frames[i]['objects'][index]['min'][0] for i in observed},
             'n': {i: frames[i]['objects'][index]['n'] for i in observed}, 'speed_end': speed}
 
@@ -105,7 +105,7 @@ class TrackTest(unittest.TestCase):
 
     def test_follow_back_from_the_closest_approach(self):
         frames = self.approach()
-        track = tool.follow_object(frames, {'id': 'a', 'organizer_class': 'inside',
+        track = tool.follow_object(frames, {'id': 'a', 'envelope_class': 'inside',
                                             'description': 'test', 'video_s': [0, 3.9]})
         self.assertEqual(len(track['observed']), 37)
         self.assertNotIn(10, track['observed'])
@@ -115,9 +115,9 @@ class TrackTest(unittest.TestCase):
     def test_labels(self):
         frames = self.approach() + [frame(4.0 + 0.1 * k) for k in range(10)]
         frames += [frame(5.0 + 0.1 * k, obj(20.0 - k, y=-3.0)) for k in range(5)]
-        inside = tool.follow_object(frames, {'id': 'a', 'organizer_class': 'inside',
+        inside = tool.follow_object(frames, {'id': 'a', 'envelope_class': 'inside',
                                              'description': 'test', 'video_s': [0, 3.9]})
-        outside = tool.follow_object(frames, {'id': 'b', 'organizer_class': 'outside',
+        outside = tool.follow_object(frames, {'id': 'b', 'envelope_class': 'outside',
                                               'description': 'side', 'video_s': [5.0, 5.4]})
         kinds, notes, spans, unlinked = tool.label_frames(
             frames, [inside, outside], horizon=100.0, min_returns=10, near=1.0)
@@ -175,7 +175,7 @@ class TrackTest(unittest.TestCase):
 
     def test_never_observable_inside_object_is_an_error(self):
         frames = [frame(0.1 * k, obj(20.0 - k, n=3)) for k in range(10)]
-        track = tool.follow_object(frames, {'id': 'a', 'organizer_class': 'inside',
+        track = tool.follow_object(frames, {'id': 'a', 'envelope_class': 'inside',
                                             'description': 'test', 'video_s': [0, 0.9]})
         with self.assertRaises(ValueError):
             tool.label_frames(frames, [track], horizon=100.0, min_returns=10, near=1.0)
@@ -184,7 +184,7 @@ class TrackTest(unittest.TestCase):
 class SceneTest(unittest.TestCase):
 
     def test_scene_objects_come_from_the_bag_entry(self):
-        objects = [{'id': 'a', 'organizer_class': 'inside', 'video_s': [0, 1],
+        objects = [{'id': 'a', 'envelope_class': 'inside', 'video_s': [0, 1],
                     'description': 'test'}]
         context = {'bags': {'scene': {'objects': objects}, 'plain': {'description': 'no table'}}}
         self.assertEqual(tool.scene_objects(context, 'scene'), objects)

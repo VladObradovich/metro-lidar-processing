@@ -1,0 +1,95 @@
+name: Metro Perception
+language: ru
+manual:
+- path: concepts/overview
+  id: chapter-1
+  number: '1'
+  title: О проекте
+  part: 'ЧАСТЬ I: НАЧАЛО РАБОТЫ'
+- path: tutorials/first-run
+  id: chapter-2
+  number: '2'
+  title: Быстрый старт
+  part: 'ЧАСТЬ I: НАЧАЛО РАБОТЫ'
+- path: guides/installation
+  id: chapter-3
+  number: '3'
+  title: Среды, установка и доставка
+  part: 'ЧАСТЬ I: НАЧАЛО РАБОТЫ'
+- path: guides/operation
+  id: chapter-4
+  number: '4'
+  title: Эксплуатация и RViz
+  part: 'ЧАСТЬ I: НАЧАЛО РАБОТЫ'
+- path: concepts/architecture
+  id: chapter-5
+  number: '5'
+  title: Архитектура системы
+  part: 'ЧАСТЬ II: УСТРОЙСТВО И КОНТРАКТЫ'
+- path: concepts/coordinates-and-calibration
+  id: chapter-6
+  number: '6'
+  title: Координаты и калибровка
+  part: 'ЧАСТЬ II: УСТРОЙСТВО И КОНТРАКТЫ'
+- path: concepts/detection
+  id: chapter-7
+  number: '7'
+  title: Алгоритм обнаружения
+  part: 'ЧАСТЬ II: УСТРОЙСТВО И КОНТРАКТЫ'
+- path: concepts/tracking-and-time
+  id: chapter-8
+  number: '8'
+  title: Треки, время и свежесть
+  part: 'ЧАСТЬ II: УСТРОЙСТВО И КОНТРАКТЫ'
+- path: reference/ros-api
+  id: chapter-9
+  number: '9'
+  title: ROS API и сообщения
+  part: 'ЧАСТЬ III: СПРАВОЧНИК И НАСТРОЙКА'
+- path: guides/configuration
+  id: chapter-10
+  number: '10'
+  title: Конфигурация
+  part: 'ЧАСТЬ III: СПРАВОЧНИК И НАСТРОЙКА'
+- path: guides/offline-evaluation
+  id: chapter-11
+  number: '11'
+  title: Офлайн-оценка и артефакты
+  part: 'ЧАСТЬ IV: ОЦЕНКА И РАЗРАБОТКА'
+- path: development/data-and-metrics
+  id: chapter-12
+  number: '12'
+  title: Данные, разметка и метрики
+  part: 'ЧАСТЬ IV: ОЦЕНКА И РАЗРАБОТКА'
+- path: development/results-and-limits
+  id: chapter-13
+  number: '13'
+  title: Зафиксированные результаты и пределы
+  part: 'ЧАСТЬ IV: ОЦЕНКА И РАЗРАБОТКА'
+- path: development/build-and-test
+  id: chapter-14
+  number: '14'
+  title: Разработка и проверка изменений
+  part: 'ЧАСТЬ IV: ОЦЕНКА И РАЗРАБОТКА'
+- path: guides/troubleshooting
+  id: chapter-15
+  number: '15'
+  title: Диагностика проблем
+  part: 'ЧАСТЬ IV: ОЦЕНКА И РАЗРАБОТКА'
+- path: reference/parameters
+  id: chapter-А
+  number: А
+  title: Полный справочник параметров
+  part: 'ПРИЛОЖЕНИЯ: ТЕХНИЧЕСКИЙ СПРАВОЧНИК'
+- path: reference/command-line
+  id: chapter-Б
+  number: Б
+  title: Инструменты командной строки
+  part: 'ПРИЛОЖЕНИЯ: ТЕХНИЧЕСКИЙ СПРАВОЧНИК'
+- path: glossary
+  id: chapter-В
+  number: В
+  title: Глоссарий
+  part: 'ПРИЛОЖЕНИЯ: ТЕХНИЧЕСКИЙ СПРАВОЧНИК'
+prose_source_commit: bd03ba96d2be
+version_source: metro_perception_core/package.xml

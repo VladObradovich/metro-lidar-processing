@@ -1,0 +1,10 @@
+<svg height="310" viewbox="0 0 900 310" width="900" xmlns="http://www.w3.org/2000/svg"><defs><marker id="arrow" markerheight="8" markerwidth="8" orient="auto" refx="7" refy="3"><path d="M0,0 L0,6 L7,3 Z" fill="#14978e"></path></marker></defs><style>text{font-family:"Noto Sans",sans-serif;fill:#1d3349}.small{font-size:16px}.label{font-size:19px;font-weight:bold}.line{stroke:#14978e;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+<rect fill="#f1f6f8" height="310" rx="15" width="900"></rect>
+<text class="label" x="30" y="42">Один объект, штатное подтверждение 2 из 3</text>
+<path d="M85 126 H820" stroke="#a8b8c6" stroke-width="3"></path>
+<circle cx="120" cy="126" fill="#dfb158" r="16"></circle><circle cx="310" cy="126" fill="#db6551" r="16"></circle><circle cx="500" cy="126" fill="#db6551" r="16"></circle><circle cx="690" cy="126" fill="#14978e" r="16"></circle>
+<text class="label" text-anchor="middle" x="120" y="83">Кадр 1</text><text class="label" text-anchor="middle" x="310" y="83">Кадр 2</text><text class="label" text-anchor="middle" x="500" y="83">Кадр 3</text><text class="label" text-anchor="middle" x="690" y="83">Кадр 4</text>
+<text class="small" text-anchor="middle" x="120" y="169">есть кандидат</text><text class="small" text-anchor="middle" x="310" y="169">снова измерен</text><text class="small" text-anchor="middle" x="500" y="169">один пропуск</text><text class="small" text-anchor="middle" x="690" y="169">ещё пропуск</text>
+<text class="small" text-anchor="middle" x="120" y="202">UNKNOWN</text><text class="small" text-anchor="middle" x="310" y="202">OBSTACLE</text><text class="small" text-anchor="middle" x="500" y="202">OBSTACLE, coasting</text><text class="small" text-anchor="middle" x="690" y="202">трек удалён</text>
+<text class="small" text-anchor="middle" x="450" y="258">После удаления состояние определяется кандидатами, геометрией и доверием.</text><text class="small" text-anchor="middle" x="450" y="285">Пауза входа отдельно приводит к UNKNOWN по watchdog.</text>
+</svg>

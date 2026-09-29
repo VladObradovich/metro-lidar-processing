@@ -1,5 +1,5 @@
 schema_version: 1
-data_root: 'EXTERNAL: pass --dataset-root; rosbags/ (mounted as /data) = extracted for_hackathon/ from the organizers archive'
+data_root: 'EXTERNAL: pass --dataset-root; rosbags/ (mounted as /data) = the extracted source data archive'
 bags:
 - id: doubleT_obstacle
   path: doubleT_obstacle
